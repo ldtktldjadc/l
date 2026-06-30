@@ -755,7 +755,7 @@ ThemeManager:ApplyToGroupbox(ThemeSection)
 
 local AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
 
-local pastebinCode = "loadstring(game:HttpGet('https://pastebin.com/raw/nnpV1trs'))()"
+local pastebinCode = "loadstring(game:HttpGet('https://raw.githubusercontent.com/ldtktldjadc/l/refs/heads/main/ModpackRivals.luau'))()"
 
 AutoExecSection:AddToggle("AutoExecuteToggle", {
     Text = "Auto Execute (Keep Script)",
