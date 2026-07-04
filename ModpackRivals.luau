@@ -999,6 +999,6 @@ AutoExecSection:AddToggle("AutoExecuteToggle", {
 SaveManager:SetLibrary(Library)
 SaveManager:SetFolder("NewModpackRivals")
 SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({})
+SaveManager:SetIgnoreIndexes({"AutoExecuteToggle"})
 SaveManager:BuildConfigSection(Tabs.Config)
 SaveManager:LoadAutoloadConfig()
