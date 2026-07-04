@@ -732,7 +732,7 @@ do
         local myTeamID = lp:GetAttribute("TeamID")
         for _, p in next, Players:GetPlayers() do
             if p == lp then continue end
-            if wbTeamCheck then
+            if getgenv().WallBangTeamCheck then
                 local theirID = p:GetAttribute("TeamID")
                 if myTeamID == nil or theirID == nil or myTeamID == theirID then continue end
             end
@@ -822,11 +822,12 @@ WallBangSection:AddToggle("WallBangEnabled", {
     end
 })
 
+getgenv().WallBangTeamCheck = false
 WallBangSection:AddToggle("WallBangTeamCheck", {
     Text = "Team Check",
     Default = false,
     Callback = function(value)
-        wbTeamCheck = value
+        getgenv().WallBangTeamCheck = value
     end
 })
 
@@ -987,15 +988,6 @@ AutoExecSection:AddToggle("AutoExecuteToggle", {
 SaveManager:SetLibrary(Library)
 SaveManager:SetFolder("NewModpackRivals")
 SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({"AutoExecuteToggle"})
+SaveManager:SetIgnoreIndexes({})
 SaveManager:BuildConfigSection(Tabs.Config)
 SaveManager:LoadAutoloadConfig()
-
--- AutoExecuteはSaveManagerではなくファイルの有無で復元する
-pcall(function()
-    if isfile and (isfile("autoexec/ModpackRivals.lua") or isfile("ModpackRivals_AutoExec.lua")) then
-        if Toggles.AutoExecuteToggle then
-            Toggles.AutoExecuteToggle:SetValue(true)
-        end
-    end
-end)
