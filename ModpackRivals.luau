@@ -956,7 +956,8 @@ local AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
 
 local pastebinCode = "loadstring(game:HttpGet('https://raw.githubusercontent.com/ldtktldjadc/l/refs/heads/main/ModpackRivals.luau'))()"
 
-AutoExecSection:AddToggle("AutoExecuteToggle", {
+-- ライブラリが確実に保存対象として認識できるように Toggles に明示
+Toggles.AutoExecuteToggle = AutoExecSection:AddToggle("AutoExecuteToggle", {
     Text = "Auto Execute (Keep Script)",
     Default = false,
     Callback = function(value)
