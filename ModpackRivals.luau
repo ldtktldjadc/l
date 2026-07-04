@@ -664,6 +664,7 @@ do
     wb.__task1 = nil; wb.__old_gun = nil; wb.__old_melee = nil; wb.__tp_time = 0
     wb.__is_tp_active = false; wb.__locked_target = nil; wb.__last_duel = nil
     wb.__curr = nil; wb.__pause_desync = false; wb.__target = nil
+    wb.__targetMode = "Closest"  -- "Closest", "Farthest", "LowestHP", "HighestHP"
 
     function wb:Shutdown()
         self.__active = false
@@ -727,8 +728,12 @@ do
             if lt ~= lp and lt.Character and ltHum and ltHum.Health > 0 then return lt end
             self.__locked_target = nil
         end
-        local best, bestDist = nil, math.huge
-        local mousePos = UIS:GetMouseLocation()
+        local mode = self.__targetMode or "Closest"
+        local best = nil
+        -- Closest/Farthest は自分の体からの3D距離、LowestHP/HighestHP はHPで比較
+        local bestVal = (mode == "Farthest" or mode == "HighestHP") and -math.huge or math.huge
+        local myHRP = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+        local myPos = myHRP and myHRP.Position
         local myTeamID = lp:GetAttribute("TeamID")
         for _, p in next, Players:GetPlayers() do
             if p == lp then continue end
@@ -740,9 +745,18 @@ do
             local body = char:FindFirstChild("HitboxBody") or char:FindFirstChild("HitboxBodySmall") or char:FindFirstChild("HumanoidRootPart")
             local hum = char:FindFirstChildWhichIsA("Humanoid")
             if not (body and hum and hum.Health > 0) then continue end
-            local sp = cam:WorldToViewportPoint(body.Position)
-            local dist = (mousePos - Vector2.new(sp.X, sp.Y)).Magnitude
-            if dist < bestDist then bestDist = dist; best = p end
+            local val
+            if mode == "Closest" then
+                val = myPos and (body.Position - myPos).Magnitude or 0
+                if val < bestVal then bestVal = val; best = p end
+            elseif mode == "Farthest" then
+                local dist3d = myPos and (body.Position - myPos).Magnitude or 0
+                if dist3d > bestVal then bestVal = dist3d; best = p end
+            elseif mode == "LowestHP" then
+                if hum.Health < bestVal then bestVal = hum.Health; best = p end
+            elseif mode == "HighestHP" then
+                if hum.Health > bestVal then bestVal = hum.Health; best = p end
+            end
         end
         if best then self.__locked_target = best end
         return best
@@ -828,6 +842,19 @@ WallBangSection:AddToggle("WallBangTeamCheck", {
     Default = false,
     Callback = function(value)
         getgenv().WallBangTeamCheck = value
+    end
+})
+
+WallBangSection:AddDropdown("WallBangTargetMode", {
+    Values = {"Closest", "Farthest", "LowestHP", "HighestHP"},
+    Default = 1,
+    Multi = false,
+    Text = "Target Mode",
+    Callback = function(value)
+        if getgenv().__WallBangV1 then
+            getgenv().__WallBangV1.__targetMode = value
+            getgenv().__WallBangV1.__locked_target = nil
+        end
     end
 })
 
