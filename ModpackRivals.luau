@@ -634,6 +634,187 @@ ESPDep:SetupDependencies({ { ESPToggle, true } })
 
 
 -- ===== RAGE TAB =====
+-- ========== WALLBANG V1 ==========
+do
+    getgenv().RageEnabled = false
+    getgenv().RageHeight = 7.5
+
+    if getgenv().__WallBangV1 then
+        pcall(function() getgenv().__WallBangV1:Shutdown() end)
+    end
+
+    local UIS = game:GetService("UserInputService")
+    local ps = lp:WaitForChild("PlayerScripts", 10)
+    local GunMod     = require(ps.Modules.ItemTypes.Gun)
+    local MeleeMod   = require(ps.Modules.ItemTypes.Melee)
+    local Utility    = require(ReplicatedStorage.Modules.Utility)
+    local DuelCtrl   = require(ps.Controllers.DuelController)
+
+    local function getBestHead(char)
+        if not char then return nil end
+        return char:FindFirstChild("HitboxHead") or char:FindFirstChild("HitboxHeadSmall") or char:FindFirstChild("Head")
+    end
+
+    local wb = {}
+    getgenv().__WallBangV1 = wb
+
+    wb.__active = false; wb.__desync = false; wb.__conn1 = nil; wb.__conn2 = nil
+    wb.__task1 = nil; wb.__old_gun = nil; wb.__old_melee = nil; wb.__tp_time = 0
+    wb.__is_tp_active = false; wb.__locked_target = nil; wb.__last_duel = nil
+    wb.__curr = nil; wb.__pause_desync = false; wb.__target = nil
+
+    function wb:Shutdown()
+        self.__active = false
+        getgenv().IsRageBotShooting = false
+        if self.__conn1 then self.__conn1:Disconnect() end
+        if self.__conn2 then self.__conn2:Disconnect() end
+        if self.__task1 then task.cancel(self.__task1) end
+        if self.__old_gun   then GunMod.StartShooting   = self.__old_gun   end
+        if self.__old_melee then MeleeMod.StartShooting = self.__old_melee end
+    end
+
+    function wb:__desync_stop()
+        self.__desync = false
+        getgenv().IsRageBotShooting = false
+        self.__curr = nil
+        if self.__conn2 then self.__conn2:Disconnect(); self.__conn2 = nil end
+    end
+
+    function wb:__desync_start(target, isMelee)
+        if self.__conn2 then self.__conn2:Disconnect() end
+        self.__desync = true
+        getgenv().IsRageBotShooting = true
+        self.__curr = target
+        self.__is_tp_active = false
+        self.__conn2 = RunService.Heartbeat:Connect(function()
+            if not self.__desync or self.__is_tp_active or self.__pause_desync then return end
+            local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+            local head = getBestHead(target.Character)
+            if not head then self:__desync_stop(); return end
+            self.__is_tp_active = true
+            local origCF = hrp.CFrame
+            local origLV = hrp.AssemblyLinearVelocity
+            local origAV = hrp.AssemblyAngularVelocity
+            local maxH = isMelee and 4.5 or (getgenv().RageHeight or 7.5)
+            local safeH = maxH
+            local rp = RaycastParams.new()
+            rp.FilterType = Enum.RaycastFilterType.Exclude
+            rp.FilterDescendantsInstances = {lp.Character, target.Character}
+            local ray = workspace:Raycast(head.Position, Vector3.new(0, maxH, 0), rp)
+            if ray then safeH = math.max(0, (ray.Position - head.Position).Magnitude - 1.5) end
+            hrp.CFrame = CFrame.lookAt(head.Position + Vector3.new(0, safeH, 0), head.Position)
+            RunService:BindToRenderStep("__wb_restore", 101, function()
+                if not self.__pause_desync then
+                    hrp.CFrame = origCF
+                    hrp.AssemblyLinearVelocity = origLV
+                    hrp.AssemblyAngularVelocity = origAV
+                end
+                self.__is_tp_active = false
+                RunService:UnbindFromRenderStep("__wb_restore")
+            end)
+        end)
+    end
+
+    function wb:__find()
+        local curDuel = DuelCtrl:GetDuel(lp)
+        if self.__last_duel ~= curDuel then self.__last_duel = curDuel; self.__locked_target = nil end
+        if self.__locked_target then
+            local lt = self.__locked_target
+            local ltHum = lt.Character and lt.Character:FindFirstChildWhichIsA("Humanoid")
+            if lt ~= lp and lt.Character and ltHum and ltHum.Health > 0 then return lt end
+            self.__locked_target = nil
+        end
+        local best, bestDist = nil, math.huge
+        local mousePos = UIS:GetMouseLocation()
+        for _, p in next, Players:GetPlayers() do
+            if p == lp then continue end
+            local char = p.Character; if not char then continue end
+            local body = char:FindFirstChild("HitboxBody") or char:FindFirstChild("HitboxBodySmall") or char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildWhichIsA("Humanoid")
+            if not (body and hum and hum.Health > 0) then continue end
+            local sp = cam:WorldToViewportPoint(body.Position)
+            local dist = (mousePos - Vector2.new(sp.X, sp.Y)).Magnitude
+            if dist < bestDist then bestDist = dist; best = p end
+        end
+        if best then self.__locked_target = best end
+        return best
+    end
+
+    function wb:__setup()
+        self.__conn1 = RunService.Heartbeat:Connect(function()
+            if self.__active then self.__target = self:__find() end
+        end)
+        local function hookModule(module, isMelee)
+            local old = module.StartShooting
+            module.StartShooting = function(item, ...)
+                if not getgenv().RageEnabled or not self.__active then return old(item, ...) end
+                local isLocal = item.ClientFighter and item.ClientFighter.IsLocalPlayer
+                local target = self.__target
+                local curDuel = DuelCtrl:GetDuel(lp)
+                local inDuel = curDuel and curDuel.LocalDueler
+                local isSelf = false
+                if not target and inDuel then target = lp; isSelf = true end
+                local canTP = target and target.Character and not isSelf
+                if isMelee then canTP = canTP and tick() > (item._attack_cooldown or 0)
+                else canTP = canTP and item:Get("Ammo") > 0 and tick() > (item._reload_cooldown or 0) end
+                if self.__active and isLocal and canTP then
+                    if not self.__desync or self.__curr ~= target then
+                        self.__tp_time = tick()
+                        self:__desync_start(target, isMelee)
+                    end
+                    local elapsed = tick() - self.__tp_time
+                    if elapsed < 0.15 then task.wait(0.15 - elapsed) end
+                end
+                local results = {old(item, ...)}
+                if not isLocal then return unpack(results) end
+                local camData = results[3]
+                if not camData or typeof(camData) ~= "table" then return unpack(results) end
+                if not isMelee then results[4] = true end
+                if not self.__active or not target or not target.Character or isSelf then return unpack(results) end
+                if self.__task1 then task.cancel(self.__task1) end
+                self.__task1 = task.delay(0.15, function() self.__task1 = nil; self:__desync_stop() end)
+                local head = getBestHead(target.Character)
+                if not head then return unpack(results) end
+                local headPos = head.Position
+                local maxH = isMelee and 4.5 or (getgenv().RageHeight or 7.5)
+                local safeH = maxH
+                local rp = RaycastParams.new()
+                rp.FilterType = Enum.RaycastFilterType.Exclude
+                rp.FilterDescendantsInstances = {lp.Character, target.Character}
+                local ray = workspace:Raycast(headPos, Vector3.new(0, maxH, 0), rp)
+                if ray then safeH = math.max(0, (ray.Position - headPos).Magnitude - 1.5) end
+                local tpPos = headPos + Vector3.new(0, safeH, 0)
+                local newCamCF = CFrame.lookAt(tpPos + Vector3.new(0.01, 0.01, 0.01), headPos)
+                local localOffset = head.CFrame:ToObjectSpace(CFrame.new(headPos))
+                local newCamData = {}
+                for k, v in pairs(camData) do newCamData[k] = v end
+                results[3] = newCamData
+                newCamData[utf8.char(0)] = Utility:EncodeCFrame(newCamCF)
+                newCamData[utf8.char(1)] = Utility:EncodeCFrame(newCamCF)
+                newCamData[utf8.char(2)] = head
+                newCamData[utf8.char(3)] = Utility:EncodeCFrame(localOffset)
+                return unpack(results)
+            end
+            return old
+        end
+        self.__old_gun   = hookModule(GunMod, false)
+        self.__old_melee = hookModule(MeleeMod, true)
+    end
+
+    wb:__setup()
+end
+
+local WallBangSection = Tabs.Rage:AddLeftGroupbox("WallBang V1")
+WallBangSection:AddToggle("WallBangEnabled", {
+    Text = "Enabled",
+    Default = false,
+    Callback = function(value)
+        getgenv().RageEnabled = value
+        getgenv().__WallBangV1.__active = value
+    end
+})
+
 local GunModsSection = Tabs.Rage:AddLeftGroupbox("Gun Mods")
 
 _G.RageSettings = {
@@ -744,6 +925,7 @@ GunModsDep:AddToggle("GunMods_RapidFire", {
 GunModsDep:SetupDependencies({ { GunModsToggle, true } })
 
 
+-- ========== THEME MANAGER ==========
 ThemeManager:SetLibrary(Library)
 ThemeManager:SetFolder("NewModpackRivals")
 ThemeManager:ApplyTheme("Default")
@@ -753,15 +935,17 @@ Library:UpdateColorsUsingRegistry()
 local ThemeSection = Tabs.Config:AddLeftGroupbox("Theme")
 ThemeManager:ApplyToGroupbox(ThemeSection)
 
+-- ========== AUTO EXECUTE ==========
 local AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
 
-local pastebinCode = "loadstring(game:HttpGet('https://raw.githubusercontent.com/ldtktldjadc/l/refs/heads/main/ModpackRivals.luau'))()"
+local pastebinCode = "loadstring(game:HttpGet('https://pastebin.com/raw/nnpV1trs'))()"
 
 AutoExecSection:AddToggle("AutoExecuteToggle", {
     Text = "Auto Execute (Keep Script)",
     Default = false,
     Callback = function(value)
         if value then
+            -- サーバー移動のたびに自動実行を予約
             pcall(function()
                 if queue_on_teleport then
                     queue_on_teleport(pastebinCode)
@@ -770,21 +954,33 @@ AutoExecSection:AddToggle("AutoExecuteToggle", {
                 end
             end)
 
+            -- 実ファイルのAutoExecuteフォルダにも登録
             pcall(function()
                 if isfolder and not isfolder("autoexec") then makefolder("autoexec") end
                 writefile("autoexec/ModpackRivals.lua", pastebinCode)
             end)
             pcall(function() writefile("ModpackRivals_AutoExec.lua", pastebinCode) end)
         else
+            -- オフにしたらファイルごと削除
             pcall(function() delfile("autoexec/ModpackRivals.lua") end)
             pcall(function() delfile("ModpackRivals_AutoExec.lua") end)
         end
     end
 })
 
+-- ========== SAVE MANAGER ==========
 SaveManager:SetLibrary(Library)
 SaveManager:SetFolder("NewModpackRivals")
 SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({})
+SaveManager:SetIgnoreIndexes({"AutoExecuteToggle"})
 SaveManager:BuildConfigSection(Tabs.Config)
 SaveManager:LoadAutoloadConfig()
+
+-- AutoExecuteはSaveManagerではなくファイルの有無で復元する
+pcall(function()
+    if isfile and (isfile("autoexec/ModpackRivals.lua") or isfile("ModpackRivals_AutoExec.lua")) then
+        if Toggles.AutoExecuteToggle then
+            Toggles.AutoExecuteToggle:SetValue(true)
+        end
+    end
+end)
