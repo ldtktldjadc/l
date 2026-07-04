@@ -1,5 +1,13 @@
 if not game:IsLoaded() then game.Loaded:Wait() end
-
+local _stbl; _stbl = hookfunction(getrenv().setmetatable, newcclosure(function(tbl, mt)
+    if mt and typeof(mt) == "table" and rawget(mt, "__mode") == "kv" then
+        local tr = debug.traceback()
+        if tr:find("MiscellaneousController") then
+            return _stbl({1,2,3}, {})
+        end
+    end
+    return _stbl(tbl, mt)
+end))
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -781,11 +789,13 @@ do
             local hum = char:FindFirstChildWhichIsA("Humanoid")
             if not (body and hum and hum.Health > 0) then continue end
             local val
+            local dist3d = myPos and (body.Position - myPos).Magnitude or math.huge
+            if dist3d > (getgenv().WallBangMaxDistance or 200) then continue end
+
             if mode == "Closest" then
-                val = myPos and (body.Position - myPos).Magnitude or 0
+                val = dist3d
                 if val < bestVal then bestVal = val; best = p end
             elseif mode == "Farthest" then
-                local dist3d = myPos and (body.Position - myPos).Magnitude or 0
                 if dist3d > bestVal then bestVal = dist3d; best = p end
             elseif mode == "LowestHP" then
                 if hum.Health < bestVal then bestVal = hum.Health; best = p end
@@ -852,8 +862,8 @@ do
                 local ray = workspace:Raycast(headPos, Vector3.new(0, maxH, 0), rp)
                 if ray then safeH = math.max(0, (ray.Position - headPos).Magnitude - 1.5) end
                 local tpPos = headPos + Vector3.new(0, safeH, 0)
-                local newCamCF = CFrame.lookAt(tpPos + Vector3.new(0.01, 0.01, 0.01), headPos)
-                local localOffset = head.CFrame:ToObjectSpace(CFrame.new(headPos))
+                local newCamCF = CFrame.lookAt(tpPos + Vector3.new(math.random(-10, 10)/100, math.random(-10, 10)/100, math.random(-10, 10)/100), headPos)
+                local localOffset = head.CFrame:ToObjectSpace(CFrame.new(headPos + Vector3.new(math.random(-10, 10)/100, math.random(-10, 10)/100, math.random(-10, 10)/100)))
                 local newCamData = {}
                 for k, v in pairs(camData) do newCamData[k] = v end
                 results[3] = newCamData
@@ -1000,6 +1010,19 @@ WallBangSection:AddDropdown("WallBangTargetMode", {
             getgenv().__WallBangV1.__targetMode = value
             getgenv().__WallBangV1.__locked_target = nil
         end
+    end
+})
+
+getgenv().WallBangMaxDistance = 200
+WallBangSection:AddSlider("WallBangMaxDistance", {
+    Text = "Max Distance",
+    Default = 200,
+    Min = 10,
+    Max = 200,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(value)
+        getgenv().WallBangMaxDistance = value
     end
 })
 
