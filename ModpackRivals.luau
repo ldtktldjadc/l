@@ -658,6 +658,8 @@ do
     local wb = {}
     getgenv().__WallBangV1 = wb
 
+    local wbTeamCheck = false
+
     wb.__active = false; wb.__desync = false; wb.__conn1 = nil; wb.__conn2 = nil
     wb.__task1 = nil; wb.__old_gun = nil; wb.__old_melee = nil; wb.__tp_time = 0
     wb.__is_tp_active = false; wb.__locked_target = nil; wb.__last_duel = nil
@@ -727,8 +729,13 @@ do
         end
         local best, bestDist = nil, math.huge
         local mousePos = UIS:GetMouseLocation()
+        local myTeamID = lp:GetAttribute("TeamID")
         for _, p in next, Players:GetPlayers() do
             if p == lp then continue end
+            if wbTeamCheck then
+                local theirID = p:GetAttribute("TeamID")
+                if myTeamID == nil or theirID == nil or myTeamID == theirID then continue end
+            end
             local char = p.Character; if not char then continue end
             local body = char:FindFirstChild("HitboxBody") or char:FindFirstChild("HitboxBodySmall") or char:FindFirstChild("HumanoidRootPart")
             local hum = char:FindFirstChildWhichIsA("Humanoid")
@@ -812,6 +819,14 @@ WallBangSection:AddToggle("WallBangEnabled", {
     Callback = function(value)
         getgenv().RageEnabled = value
         getgenv().__WallBangV1.__active = value
+    end
+})
+
+WallBangSection:AddToggle("WallBangTeamCheck", {
+    Text = "Team Check",
+    Default = false,
+    Callback = function(value)
+        wbTeamCheck = value
     end
 })
 
@@ -938,7 +953,7 @@ ThemeManager:ApplyToGroupbox(ThemeSection)
 -- ========== AUTO EXECUTE ==========
 local AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
 
-local pastebinCode = "loadstring(game:HttpGet('https://pastebin.com/raw/nnpV1trs'))()"
+local pastebinCode = "loadstring(game:HttpGet('https://raw.githubusercontent.com/ldtktldjadc/l/refs/heads/main/ModpackRivals.luau'))()"
 
 AutoExecSection:AddToggle("AutoExecuteToggle", {
     Text = "Auto Execute (Keep Script)",
