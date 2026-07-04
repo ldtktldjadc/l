@@ -956,13 +956,26 @@ local AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
 
 local pastebinCode = "loadstring(game:HttpGet('https://raw.githubusercontent.com/ldtktldjadc/l/refs/heads/main/ModpackRivals.luau'))()"
 
--- ライブラリが確実に保存対象として認識できるように Toggles に明示
-Toggles.AutoExecuteToggle = AutoExecSection:AddToggle("AutoExecuteToggle", {
+local _autoExecOn = false
+pcall(function()
+    if isfile then
+        _autoExecOn = isfile("autoexec/ModpackRivals.lua") or isfile("ModpackRivals_AutoExec.lua") or false
+    end
+end)
+
+-- 起動時にファイルが存在していれば queue_on_teleport を再登録
+if _autoExecOn then
+    pcall(function()
+        if queue_on_teleport then queue_on_teleport(pastebinCode)
+        elseif syn and syn.queue_on_teleport then syn.queue_on_teleport(pastebinCode) end
+    end)
+end
+
+AutoExecSection:AddToggle("AutoExecuteToggle", {
     Text = "Auto Execute (Keep Script)",
-    Default = false,
+    Default = _autoExecOn,
     Callback = function(value)
         if value then
-            -- サーバー移動のたびに自動実行を予約
             pcall(function()
                 if queue_on_teleport then
                     queue_on_teleport(pastebinCode)
@@ -970,17 +983,14 @@ Toggles.AutoExecuteToggle = AutoExecSection:AddToggle("AutoExecuteToggle", {
                     syn.queue_on_teleport(pastebinCode)
                 end
             end)
-
-            -- 実ファイルのAutoExecuteフォルダにも登録
             pcall(function()
                 if isfolder and not isfolder("autoexec") then makefolder("autoexec") end
                 writefile("autoexec/ModpackRivals.lua", pastebinCode)
             end)
             pcall(function() writefile("ModpackRivals_AutoExec.lua", pastebinCode) end)
         else
-            -- オフにしたらファイルごと削除
-            pcall(function() delfile("autoexec/ModpackRivals.lua") end)
-            pcall(function() delfile("ModpackRivals_AutoExec.lua") end)
+            pcall(function() if isfile("autoexec/ModpackRivals.lua") then delfile("autoexec/ModpackRivals.lua") end end)
+            pcall(function() if isfile("ModpackRivals_AutoExec.lua") then delfile("ModpackRivals_AutoExec.lua") end end)
         end
     end
 })
