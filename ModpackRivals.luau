@@ -239,6 +239,7 @@ local espSettings = {
     Bone = false, BoneColor = Color3.fromRGB(255, 255, 255),
     Tracer = false, TracerColor = Color3.fromRGB(255, 255, 255),
     Name = false, NameColor = Color3.fromRGB(255, 255, 255),
+    HP = false, HPColor = Color3.fromRGB(50, 255, 50),
 }
 getgenv().ESPSettings_TeamCheck = false
 
@@ -295,6 +296,16 @@ local function createPlayerEsp(p)
     weaponText.Visible = false
     weaponText.Parent = billboard
 
+    local hpBarBg = Instance.new("Frame")
+    hpBarBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    hpBarBg.BorderSizePixel = 1
+    hpBarBg.BorderColor3 = Color3.new(0,0,0)
+    hpBarBg.Visible = false
+    hpBarBg.Parent = espContainer
+    local hpBarFill = Instance.new("Frame")
+    hpBarFill.BorderSizePixel = 0
+    hpBarFill.Parent = hpBarBg
+
     espCache[p] = {
         NameTag = Instance.new("TextLabel"),
         DistanceTag = Instance.new("TextLabel"),
@@ -304,6 +315,8 @@ local function createPlayerEsp(p)
         WeaponBillboard = billboard,
         WeaponText = weaponText,
         AmmoText = ammoText,
+        HPBarBg = hpBarBg,
+        HPBarFill = hpBarFill,
         Bones = {
             Head_Torso = createLine(),
             Torso_LArm = createLine(),
@@ -328,6 +341,7 @@ local function clearPlayerEsp(p)
         pcall(function() espCache[p].Box:Destroy() end)
         pcall(function() espCache[p].Tracer:Destroy() end)
         pcall(function() if espCache[p].WeaponBillboard then espCache[p].WeaponBillboard:Destroy() end end)
+        pcall(function() if espCache[p].HPBarBg then espCache[p].HPBarBg:Destroy() end end)
         for _, b in pairs(espCache[p].Bones) do pcall(function() b:Destroy() end) end
         espCache[p] = nil
     end
@@ -363,6 +377,7 @@ RunService.RenderStepped:Connect(function()
             c.Box.Visible = false
             c.Tracer.Visible = false
             c.WeaponBillboard.Enabled = false
+            if c.HPBarBg then c.HPBarBg.Visible = false end
             for _, b in pairs(c.Bones) do b.Visible = false end
         end
         return
@@ -384,6 +399,7 @@ RunService.RenderStepped:Connect(function()
                 c.Box.Visible = false
                 c.Tracer.Visible = false
                 c.WeaponBillboard.Enabled = false
+                if c.HPBarBg then c.HPBarBg.Visible = false end
                 for _, b in pairs(c.Bones) do b.Visible = false end
             end
             continue
@@ -494,10 +510,25 @@ RunService.RenderStepped:Connect(function()
                 else
                     cache.Tracer.Visible = false
                 end
+
+                if espSettings.HP and cache.HPBarBg then
+                    local hpW = math.clamp(height / 8, 2, 6)
+                    cache.HPBarBg.Size = UDim2.new(0, hpW, 0, height)
+                    cache.HPBarBg.Position = UDim2.new(0, topPos.X - (width / 2) - hpW - 5, 0, topPos.Y)
+                    local hpPct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+                    cache.HPBarFill.Size = UDim2.new(1, 0, hpPct, 0)
+                    cache.HPBarFill.Position = UDim2.new(0, 0, 1 - hpPct, 0)
+                    cache.HPBarFill.BackgroundColor3 = espSettings.HPColor
+                    cache.HPBarBg.Visible = true
+                    cache.HPBarFill.Visible = true
+                elseif cache.HPBarBg then
+                    cache.HPBarBg.Visible = false
+                end
             else
                 cache.Box.Visible = false
                 cache.DistanceTag.Visible = false
                 cache.Tracer.Visible = false
+                if cache.HPBarBg then cache.HPBarBg.Visible = false end
             end
 
             if espSettings.Bone then
@@ -521,6 +552,7 @@ RunService.RenderStepped:Connect(function()
             cache.DistanceTag.Visible = false
             cache.Box.Visible = false
             cache.Tracer.Visible = false
+            if cache.HPBarBg then cache.HPBarBg.Visible = false end
             for _, b in pairs(cache.Bones) do b.Visible = false end
         end
     end
@@ -627,6 +659,9 @@ ESPDep:AddToggle("ESP_Tracer", { Text = "TracerESP", Default = false, Callback =
 
 ESPDep:AddToggle("ESP_Name", { Text = "NameESP", Default = false, Callback = function(v) espSettings.Name = v end })
     :AddColorPicker("ESP_Name_Color", { Default = espSettings.NameColor, Callback = function(v) espSettings.NameColor = v end })
+
+ESPDep:AddToggle("ESP_HP", { Text = "HP Bar", Default = false, Callback = function(v) espSettings.HP = v end })
+    :AddColorPicker("ESP_HP_Color", { Default = espSettings.HPColor, Callback = function(v) espSettings.HPColor = v end })
 
 ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callback = function(v) getgenv().ESPSettings_TeamCheck = v end })
 
@@ -769,6 +804,17 @@ do
         local function hookModule(module, isMelee)
             local old = module.StartShooting
             module.StartShooting = function(item, ...)
+                -- AntiKatana: パリィ中の敵が画面に映っているなら射撃をブロック
+                if getgenv().WBAntiKatana and not isMelee then
+                    local now = tick()
+                    local _cam = workspace.CurrentCamera
+                    for _p, endTime in pairs(DeflectingPlayers) do
+                        if now < endTime and _p ~= lp and _p.Character and _p.Character:FindFirstChild("HumanoidRootPart") then
+                            local _, onScr = _cam:WorldToViewportPoint(_p.Character.HumanoidRootPart.Position)
+                            if onScr then return old(item, ...) end
+                        end
+                    end
+                end
                 if not getgenv().RageEnabled or not self.__active then return old(item, ...) end
                 local isLocal = item.ClientFighter and item.ClientFighter.IsLocalPlayer
                 local target = self.__target
@@ -826,6 +872,96 @@ do
     wb:__setup()
 end
 
+-- ========== AUTO RAGE ==========
+do
+    getgenv().AutoRageEnabled = false
+
+    local ps_ar = lp:WaitForChild("PlayerScripts", 10)
+    local FighterCtrl_AR = ps_ar and pcall(function() return require(ps_ar.Controllers.FighterController) end) and require(ps_ar.Controllers.FighterController)
+    local DuelCtrl_AR    = ps_ar and pcall(function() return require(ps_ar.Controllers.DuelController) end) and require(ps_ar.Controllers.DuelController)
+
+    local function arFindTarget()
+        local myTeam = lp:GetAttribute("TeamID")
+        local myChar = lp.Character
+        local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return nil end
+        local curDuel = nil
+        pcall(function() curDuel = DuelCtrl_AR and DuelCtrl_AR:GetDuel(lp) end)
+        local best, bestDist = nil, math.huge
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p == lp then continue end
+            if getgenv().WallBangTeamCheck then
+                local theirTeam = p:GetAttribute("TeamID")
+                if myTeam and theirTeam and theirTeam == myTeam then continue end
+            end
+            local char = p.Character; if not char then continue end
+            local hum = char:FindFirstChildWhichIsA("Humanoid")
+            if not hum or hum.Health <= 0 then continue end
+            local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("HitboxBody")
+            if not hrp then continue end
+            local dist = (hrp.Position - myRoot.Position).Magnitude
+            if dist < bestDist then bestDist = dist; best = p end
+        end
+        return best
+    end
+
+    local arLoopRunning = false
+    local arTargetLastAmmo = {}  -- [player] = {ammo, lastShootTime}
+
+    local function arIsTargetShooting(target)
+        if not getgenv().AutoRageAntiShoot then return false end
+        if not FighterCtrl_AR or not target then return false end
+        local tFighter = nil
+        pcall(function() tFighter = FighterCtrl_AR:GetFighter(target) end)
+        if not tFighter then return false end
+        local tItem = tFighter.EquippedItem
+        if not tItem or not tItem.Info or not tItem.Info.MaxAmmo then return false end
+        local curAmmo = 0
+        pcall(function() curAmmo = tItem:Get("Ammo") or 0 end)
+        local prev = arTargetLastAmmo[target]
+        arTargetLastAmmo[target] = { ammo = curAmmo, lastShootTime = prev and prev.lastShootTime or 0 }
+        if prev and curAmmo < prev.ammo then
+            -- 弾が減った → 射撃した
+            arTargetLastAmmo[target].lastShootTime = tick()
+        end
+        return tick() - (arTargetLastAmmo[target].lastShootTime) < 0.6
+    end
+
+    local function arFireLoop()
+        arLoopRunning = true
+        while getgenv().AutoRageEnabled do
+            task.wait()
+            if not FighterCtrl_AR then break end
+            local fighter = FighterCtrl_AR.LocalFighter
+            if not fighter then continue end
+            local alive = false
+            pcall(function() alive = fighter:IsAlive() end)
+            if not alive then continue end
+            local target = arFindTarget()
+            if not target then continue end
+            -- 相手が射撃中なら攻撃しない
+            if arIsTargetShooting(target) then continue end
+            local item = fighter.EquippedItem
+            if not item or not item.Info or not item.Info.MaxAmmo then continue end
+            local ammo = 0
+            pcall(function() ammo = item:Get("Ammo") or 0 end)
+            if ammo <= 0 then
+                pcall(function() fighter:Input("StartReloading") end)
+            else
+                pcall(function() fighter:Input("StartShooting") end)
+            end
+        end
+        arLoopRunning = false
+    end
+
+    getgenv().AutoRageToggle = function(state)
+        getgenv().AutoRageEnabled = state
+        if state and not arLoopRunning then
+            task.spawn(arFireLoop)
+        end
+    end
+end
+
 local WallBangSection = Tabs.Rage:AddLeftGroupbox("WallBang V1")
 WallBangSection:AddToggle("WallBangEnabled", {
     Text = "Enabled",
@@ -845,6 +981,15 @@ WallBangSection:AddToggle("WallBangTeamCheck", {
     end
 })
 
+getgenv().WBAntiKatana = false
+WallBangSection:AddToggle("WBAntiKatana", {
+    Text = "Anti Katana",
+    Default = false,
+    Callback = function(value)
+        getgenv().WBAntiKatana = value
+    end
+})
+
 WallBangSection:AddDropdown("WallBangTargetMode", {
     Values = {"Closest", "Farthest", "LowestHP", "HighestHP"},
     Default = 1,
@@ -855,6 +1000,24 @@ WallBangSection:AddDropdown("WallBangTargetMode", {
             getgenv().__WallBangV1.__targetMode = value
             getgenv().__WallBangV1.__locked_target = nil
         end
+    end
+})
+
+local AutoRageSection = Tabs.Rage:AddRightGroupbox("Auto Rage")
+AutoRageSection:AddToggle("AutoRageToggle", {
+    Text = "Enabled",
+    Default = false,
+    Callback = function(value)
+        if getgenv().AutoRageToggle then getgenv().AutoRageToggle(value) end
+    end
+})
+
+getgenv().AutoRageAntiShoot = false
+AutoRageSection:AddToggle("AutoRageAntiShoot", {
+    Text = "Anti-Shoot (敵が撃ってる間は止まる)",
+    Default = false,
+    Callback = function(value)
+        getgenv().AutoRageAntiShoot = value
     end
 })
 
