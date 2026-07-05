@@ -1234,111 +1234,124 @@ GunModsDep:SetupDependencies({ { GunModsToggle, true } })
 
 
 do
-local autoQueueEnabled = false
-local autoQueueName = nil
-local autoQueueDisplayToInternal = {}
-local MatchmakingController = nil
-local CONSTANTS_REF = nil
-local DEFAULT_DISPLAYS = { "1v1", "2v2", "3v3", "4v4", "5v5", "Ranked 1v1", "Ranked 2v2", "Ranked 3v3" }
-local tryQueueRef
-local AutoQueueBox = Tabs.Misc:AddLeftGroupbox("Auto Queue")
-AutoQueueBox:AddToggle("AutoQueueToggle", {
-Text = "Enabled",
-Default = false,
-Tooltip = "Automatically start matchmaking when not in-game or when match ends.\nWill re-queue if canceled.",
-Callback = function(Value)
-autoQueueEnabled = Value
-if Value and tryQueueRef then
-task.spawn(function() task.wait(0.2); pcall(tryQueueRef) end)
-end
-end,
-})
-AutoQueueBox:AddDropdown("AutoQueueDrop", {
-Values = DEFAULT_DISPLAYS,
-Default = 1,
-Multi = false,
-Text = "Queue Type",
-Callback = function(Value)
-autoQueueName = autoQueueDisplayToInternal[Value] or Value
-end,
-})
-task.spawn(function()
-local DuelLibrary
-local ok = pcall(function()
-DuelLibrary = require(ReplicatedStorage:WaitForChild("Modules", 15):WaitForChild("DuelLibrary", 15))
-end)
-if not ok or type(DuelLibrary) ~= "table" or type(DuelLibrary.MatchmakingQueues) ~= "table" then
-return
-end
-pcall(function()
-CONSTANTS_REF = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("CONSTANTS"))
-end)
-pcall(function()
-MatchmakingController = require(lp:WaitForChild("PlayerScripts"):WaitForChild("Controllers"):WaitForChild("MatchmakingController"))
-end)
-local entries = {}
-for queueName, queueInfo in pairs(DuelLibrary.MatchmakingQueues) do
-local display = queueName
-if type(queueInfo) == "table" then
-display = queueInfo.DisplayName or queueInfo.TitleName or queueName
-end
-table.insert(entries, { display = tostring(display), internal = queueName })
-end
-table.sort(entries, function(a, b) return a.display < b.display end)
-local labels = {}
-autoQueueDisplayToInternal = {}
-for _, e in ipairs(entries) do
-table.insert(labels, e.display)
-autoQueueDisplayToInternal[e.display] = e.internal
-end
-if Options and Options.AutoQueueDrop then
-pcall(function() Options.AutoQueueDrop:SetValues(labels) end)
-if labels[1] then
-autoQueueName = autoQueueDisplayToInternal[labels[1]] or labels[1]
-end
-end
-end)
-local function isInActiveDuel()
-local inMatchmakingServer = false
-if CONSTANTS_REF then inMatchmakingServer = CONSTANTS_REF.IS_MATCHMAKING_SERVER and true or false end
-if not inMatchmakingServer then return false end
-local gameOver = false
-if MatchmakingController and type(MatchmakingController.Get) == "function" then
-pcall(function() gameOver = MatchmakingController:Get("MatchmadeGameOver") end)
-end
-return not gameOver
-end
-local autoQueueInvoking = false
-local function tryQueue()
-if autoQueueInvoking then return end
-if not autoQueueEnabled then return end
-if not autoQueueName or autoQueueName == "" then return end
-if not MatchmakingController then return end
-if isInActiveDuel() then return end
-autoQueueInvoking = true
-pcall(function() MatchmakingController:QueueInto(autoQueueName) end)
-autoQueueInvoking = false
-end
-tryQueueRef = tryQueue
-task.spawn(function()
-while true do
-task.wait(3)
-if autoQueueEnabled then
-pcall(tryQueue)
-end
-end
-end)
-task.spawn(function()
-while not MatchmakingController do task.wait(0.5) end
-if MatchmakingController.MatchmadeDuelEnded then
-MatchmakingController.MatchmadeDuelEnded:Connect(function()
-if autoQueueEnabled then
-task.wait(0.5)
-pcall(tryQueue)
-end
-end)
-end
-end)
+    local autoQueueEnabled = false
+    local autoQueueName = nil
+    local autoQueueDisplayToInternal = {}
+    local MatchmakingController = nil
+    local CONSTANTS_REF = nil
+    local DEFAULT_DISPLAYS = { "1v1", "2v2", "3v3", "4v4", "5v5", "Ranked 1v1", "Ranked 2v2", "Ranked 3v3" }
+    local tryQueueRef
+    
+    local AutoQueueBox = Tabs.Misc:AddLeftGroupbox("Auto Queue")
+    
+    AutoQueueBox:AddToggle("AutoQueueToggle", {
+        Text = "Enabled",
+        Default = false,
+        Tooltip = "Automatically start matchmaking when not in-game or when match ends.\nWill re-queue if canceled.",
+        Callback = function(Value)
+            autoQueueEnabled = Value
+            if Value and tryQueueRef then
+                task.spawn(function() task.wait(0.2); pcall(tryQueueRef) end)
+            end
+        end,
+    })
+    
+    local AutoQueueDropObj = AutoQueueBox:AddDropdown("AutoQueueDrop", {
+        Values = DEFAULT_DISPLAYS,
+        Default = 1,
+        Multi = false,
+        Text = "Queue Type",
+        Callback = function(Value)
+            autoQueueName = autoQueueDisplayToInternal[Value] or Value
+        end,
+    })
+    
+    task.spawn(function()
+        local DuelLibrary
+        local ok = pcall(function()
+            DuelLibrary = require(ReplicatedStorage:WaitForChild("Modules", 15):WaitForChild("DuelLibrary", 15))
+        end)
+        if not ok or type(DuelLibrary) ~= "table" or type(DuelLibrary.MatchmakingQueues) ~= "table" then
+            return
+        end
+        pcall(function()
+            CONSTANTS_REF = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("CONSTANTS"))
+        end)
+        pcall(function()
+            MatchmakingController = require(lp:WaitForChild("PlayerScripts"):WaitForChild("Controllers"):WaitForChild("MatchmakingController"))
+        end)
+        
+        local entries = {}
+        for queueName, queueInfo in pairs(DuelLibrary.MatchmakingQueues) do
+            local display = queueName
+            if type(queueInfo) == "table" then
+                display = queueInfo.DisplayName or queueInfo.TitleName or queueName
+            end
+            table.insert(entries, { display = tostring(display), internal = queueName })
+        end
+        table.sort(entries, function(a, b) return a.display < b.display end)
+        
+        local labels = {}
+        autoQueueDisplayToInternal = {}
+        for _, e in ipairs(entries) do
+            table.insert(labels, e.display)
+            autoQueueDisplayToInternal[e.display] = e.internal
+        end
+        
+        if AutoQueueDropObj then
+            pcall(function() AutoQueueDropObj:SetValues(labels) end)
+            if labels[1] then
+                autoQueueName = autoQueueDisplayToInternal[labels[1]] or labels[1]
+            end
+        end
+    end)
+    
+    local function isInActiveDuel()
+        local inMatchmakingServer = false
+        if CONSTANTS_REF then inMatchmakingServer = CONSTANTS_REF.IS_MATCHMAKING_SERVER and true or false end
+        if not inMatchmakingServer then return false end
+        
+        local gameOver = false
+        if MatchmakingController and type(MatchmakingController.Get) == "function" then
+            pcall(function() gameOver = MatchmakingController:Get("MatchmadeGameOver") end)
+        end
+        return not gameOver
+    end
+    
+    local autoQueueInvoking = false
+    local function tryQueue()
+        if autoQueueInvoking then return end
+        if not autoQueueEnabled then return end
+        if not autoQueueName or autoQueueName == "" then return end
+        if not MatchmakingController then return end
+        if isInActiveDuel() then return end
+        
+        autoQueueInvoking = true
+        pcall(function() MatchmakingController:QueueInto(autoQueueName) end)
+        autoQueueInvoking = false
+    end
+    tryQueueRef = tryQueue
+    
+    task.spawn(function()
+        while true do
+            task.wait(3)
+            if autoQueueEnabled then
+                pcall(tryQueue)
+            end
+        end
+    end)
+    
+    task.spawn(function()
+        while not MatchmakingController do task.wait(0.5) end
+        if MatchmakingController.MatchmadeDuelEnded then
+            MatchmakingController.MatchmadeDuelEnded:Connect(function()
+                if autoQueueEnabled then
+                    task.wait(0.5)
+                    pcall(tryQueue)
+                end
+            end)
+        end
+    end)
 end
 
 -- ========== THEME MANAGER ==========
