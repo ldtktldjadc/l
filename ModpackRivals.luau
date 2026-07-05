@@ -986,6 +986,7 @@ do
             local char = p.Character; if not char then continue end
             local hum = char:FindFirstChildWhichIsA("Humanoid")
             if not hum or hum.Health <= 0 then continue end
+            if char:FindFirstChildOfClass("ForceField") then continue end
             local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("HitboxBody")
             if not hrp then continue end
             local dist = (hrp.Position - myRoot.Position).Magnitude
