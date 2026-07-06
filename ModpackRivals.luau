@@ -893,16 +893,21 @@ do
         local function hookModule(module, isMelee)
             local old
             old = hookfunction(module.StartShooting, newcclosure(function(item, ...)
-                -- AntiKatana: パリィ中の敵が画面に映っているなら射撃をブロック
-                if getgenv().WBAntiKatana and not isMelee then
+                -- AntiKatana: ターゲットがパリィ中なら射撃をブロック
+                if getgenv().WBAntiKatana and not isMelee and target and target.Character then
+                    local isTargetParrying = false
                     local now = tick()
-                    local _cam = workspace.CurrentCamera
                     for _p, endTime in pairs(DeflectingPlayers) do
-                        if now < endTime and _p ~= lp and _p.Character and _p.Character:FindFirstChild("HumanoidRootPart") then
-                            local _, onScr = _cam:WorldToViewportPoint(_p.Character.HumanoidRootPart.Position)
-                            if onScr then return old(item, ...) end
+                        if _p == target and now < endTime then
+                            isTargetParrying = true
+                            break
                         end
                     end
+                    if isTargetParrying then return old(item, ...) end
+                end
+                -- ForceField Check: ターゲットがForceFieldを持っているなら射撃しない
+                if target and target.Character and target.Character:FindFirstChildOfClass("ForceField") then
+                    return old(item, ...)
                 end
                 if not getgenv().RageEnabled or not self.__active then return old(item, ...) end
                 local isLocal = item.ClientFighter and item.ClientFighter.IsLocalPlayer
