@@ -794,8 +794,8 @@ do
         if self.__conn1 then self.__conn1:Disconnect() end
         if self.__conn2 then self.__conn2:Disconnect() end
         if self.__task1 then task.cancel(self.__task1) end
-        if self.__old_gun   then GunMod.StartShooting   = self.__old_gun   end
-        if self.__old_melee then MeleeMod.StartShooting = self.__old_melee end
+        if self.__old_gun   then hookfunction(GunMod.StartShooting, self.__old_gun) end
+        if self.__old_melee then hookfunction(MeleeMod.StartShooting, self.__old_melee) end
     end
 
     function wb:__desync_stop()
@@ -891,8 +891,8 @@ do
             if self.__active then self.__target = self:__find() end
         end)
         local function hookModule(module, isMelee)
-            local old = module.StartShooting
-            module.StartShooting = function(item, ...)
+            local old
+            old = hookfunction(module.StartShooting, newcclosure(function(item, ...)
                 -- AntiKatana: パリィ中の敵が画面に映っているなら射撃をブロック
                 if getgenv().WBAntiKatana and not isMelee then
                     local now = tick()
@@ -951,7 +951,7 @@ do
                 newCamData[utf8.char(2)] = head
                 newCamData[utf8.char(3)] = Utility:EncodeCFrame(localOffset)
                 return unpack(results)
-            end
+            end))
             return old
         end
         self.__old_gun   = hookModule(GunMod, false)
