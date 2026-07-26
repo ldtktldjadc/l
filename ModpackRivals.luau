@@ -165,19 +165,16 @@ local function setupSilentAim()
             end
             local originalFn = getgenv().OriginalRaycast
 
-            utility.Raycast = function(self, ...)
-                local args = table.pack(...)
-                -- args[1]=origin(Vector3), args[2]=endPos(Vector3), args[3]=maxDist(number)
+            utility.Raycast = function(self, origin, endPos, ...)
                 if silentAimEnabled and math.random(1, 100) <= hitChance then
                     local closest, selectedPartName = getClosestPlayerInFOV()
                     if closest and closest.Character and selectedPartName and closest.Character:FindFirstChild(selectedPartName) then
-                        if typeof(args[1]) == "Vector3" then
-                            -- endPos をターゲット座標に差し替え
-                            args[2] = closest.Character[selectedPartName].Position
+                        if typeof(origin) == "Vector3" then
+                            endPos = closest.Character[selectedPartName].Position
                         end
                     end
                 end
-                return originalFn(self, table.unpack(args, 1, args.n))
+                return originalFn(self, origin, endPos, ...)
             end
         end
     end
@@ -783,12 +780,14 @@ task.spawn(function()
                     self._isStatsHooked = true
                     if setreadonly then pcall(function() setreadonly(self.Info, false) end) end
                 end
-                pcall(function()
-                    self.Info.ShootRecoil = getgenv().RageSettings.NoRecoil and 0 or orig.Recoil
-                    self.Info.ShootSpread = getgenv().RageSettings.NoSpread and 0 or orig.Spread
-                    self.Info.ShootCooldown = getgenv().RageSettings.RapidFire and 0.001 or orig.CD
-                    self.Info.QuickShotCooldown = getgenv().RageSettings.RapidFire and 0.001 or orig.QCD
-                end)
+                local tgtRecoil = getgenv().RageSettings.NoRecoil and 0 or orig.Recoil
+                local tgtSpread = getgenv().RageSettings.NoSpread and 0 or orig.Spread
+                local tgtCD = getgenv().RageSettings.RapidFire and 0.001 or orig.CD
+                local tgtQCD = getgenv().RageSettings.RapidFire and 0.001 or orig.QCD
+                if self.Info.ShootRecoil ~= tgtRecoil then self.Info.ShootRecoil = tgtRecoil end
+                if self.Info.ShootSpread ~= tgtSpread then self.Info.ShootSpread = tgtSpread end
+                if self.Info.ShootCooldown ~= tgtCD then self.Info.ShootCooldown = tgtCD end
+                if self.Info.QuickShotCooldown ~= tgtQCD then self.Info.QuickShotCooldown = tgtQCD end
             end
             return inputFunc(self, ...)
         end
