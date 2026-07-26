@@ -409,11 +409,11 @@ local function updateBoneRefs(cache, char)
     }
 end
 
-local _espFrameSkip = 0
+local _espLastTime = 0
 RunService.Heartbeat:Connect(function()
-    _espFrameSkip = _espFrameSkip + 1
-    if _espFrameSkip < 3 then return end
-    _espFrameSkip = 0
+    local now = tick()
+    if now - _espLastTime < 0.03 then return end -- Max ~30fps for ESP
+    _espLastTime = now
 
     local cam = workspace.CurrentCamera
     if not cam then return end
@@ -463,9 +463,13 @@ RunService.Heartbeat:Connect(function()
             cache.WeaponBillboard.Adornee = rootPart
             cache.WeaponBillboard.Enabled = true
 
+            local fighter = nil
+            if FighterController and typeof(FighterController.GetFighter) == "function" then
+                fighter = FighterController:GetFighter(p)
+            end
+
             if espSettings.Weapon then
                 cache.WeaponText.TextColor3 = espSettings.WeaponColor
-                local fighter = FighterController and typeof(FighterController.GetFighter) == "function" and FighterController:GetFighter(p)
                 local weaponName = "None"
                 if fighter and fighter.EquippedItem then
                     weaponName = fighter.EquippedItem.Name
@@ -478,7 +482,6 @@ RunService.Heartbeat:Connect(function()
 
             if espSettings.Ammo then
                 cache.AmmoText.TextColor3 = espSettings.AmmoColor
-                local fighter = FighterController and typeof(FighterController.GetFighter) == "function" and FighterController:GetFighter(p)
                 local ammoStr = ""
                 if fighter and fighter.EquippedItem then
                     local ammo = fighter.EquippedItem:Get("Ammo")
