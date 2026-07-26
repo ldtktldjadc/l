@@ -1159,11 +1159,13 @@ _datCtrl.Get = function(self, key)
     return _val
 end
 
+local _wepDataCache = {}
 local _origGetWep = _datCtrl.GetWeaponData
 _datCtrl.GetWeaponData = function(self, wn)
     local _d = _origGetWep(self, wn)
     if not getgenv().UnlockAllEnabled then return _d end
     if not _d then return nil end
+    if _wepDataCache[wn] then return _wepDataCache[wn] end
     local _m = {}
     for k, v in pairs(_d) do _m[k] = v end
     _m.Name = wn
@@ -1172,6 +1174,7 @@ _datCtrl.GetWeaponData = function(self, wn)
             _m[ct] = cd
         end
     end
+    _wepDataCache[wn] = _m
     return _m
 end
 
@@ -1215,6 +1218,7 @@ if hookmetamethod then
                     })
                     if _cloned then _eq[_wn][_ct] = _cloned end
                 end
+                if _wepDataCache then table.clear(_wepDataCache) end
                 task.defer(function()
                     pcall(function() _datCtrl.CurrentData:Replicate("WeaponInventory") end)
                 end)
@@ -1278,18 +1282,21 @@ local _vmMod = _lp.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.C
 if _vmMod then
     local _CVM = require(_vmMod)
     local _origNew = _CVM.new
+    local _RC  = require(_rs.Modules.ReplicatedClass)
+    local _dk  = _RC:ToEnum("Data")
+    local _ekSkin = _RC:ToEnum("Skin")
+    local _ekCharm = _RC:ToEnum("Charm")
+    local _ekWrap = _RC:ToEnum("Wrap")
     _CVM.new = function(repData, cliItm)
         if not getgenv().UnlockAllEnabled then return _origNew(repData, cliItm) end
         local _wp  = cliItm.ClientFighter and cliItm.ClientFighter.Player
         local _wn  = _buildingWep or cliItm.Name
         if _wp == _lp and _eq[_wn] then
-            local _RC  = require(_rs.Modules.ReplicatedClass)
-            local _dk  = _RC:ToEnum("Data")
             repData[_dk] = repData[_dk] or {}
             local _cos = _eq[_wn]
-            if _cos.Skin  then repData[_dk][_RC:ToEnum("Skin")]  = _cos.Skin  end
-            if _cos.Charm then repData[_dk][_RC:ToEnum("Charm")] = _cos.Charm end
-            if _cos.Wrap  then repData[_dk][_RC:ToEnum("Wrap")]  = _cos.Wrap  end
+            if _cos.Skin  then repData[_dk][_ekSkin]  = _cos.Skin  end
+            if _cos.Charm then repData[_dk][_ekCharm] = _cos.Charm end
+            if _cos.Wrap  then repData[_dk][_ekWrap]  = _cos.Wrap  end
         end
         return _origNew(repData, cliItm)
     end
