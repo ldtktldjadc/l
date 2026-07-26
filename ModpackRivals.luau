@@ -627,6 +627,7 @@ local Window = Library:CreateWindow({
 local Tabs = {
     Combat  = Window:AddTab("Combat"),
     Visuals = Window:AddTab("Visuals"),
+    World   = Window:AddTab("World"),
     Rage    = Window:AddTab("Rage"),
     Misc    = Window:AddTab("Misc"),
     Config  = Window:AddTab("Config"),
@@ -720,8 +721,8 @@ ESPDep:SetupDependencies({ { ESPToggle, true } })
 
 
 
--- ===== ENVIRONMENT TAB (VISUALS) =====
-local EnvSection = Tabs.Visuals:AddRightGroupbox("Environment")
+-- ===== ENVIRONMENT TAB (WORLD) =====
+local EnvSection = Tabs.World:AddLeftGroupbox("Environment")
 
 local Lighting = game:GetService("Lighting")
 local origAmbient = Lighting.Ambient
