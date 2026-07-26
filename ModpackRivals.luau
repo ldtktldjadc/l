@@ -719,7 +719,158 @@ ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callba
 ESPDep:SetupDependencies({ { ESPToggle, true } })
 
 
+
+-- ===== ENVIRONMENT TAB (VISUALS) =====
+local EnvSection = Tabs.Visuals:AddRightGroupbox("Environment")
+
+local Lighting = game:GetService("Lighting")
+local origAmbient = Lighting.Ambient
+local origClockTime = Lighting.ClockTime
+
+local envSettings = {
+    WorldColorEnabled = false,
+    Ambient = Color3.fromRGB(120, 0, 200),
+    ClockTime = 2,
+    CCEnabled = false,
+    CCTint = Color3.fromRGB(160, 100, 255),
+    CCSaturation = 0.6,
+    CCContrast = 0.2,
+    SnowEnabled = false,
+    SnowColor = Color3.fromRGB(255, 255, 255),
+    SnowRate = 10000,
+    SnowSpeed = 30
+}
+
+local function updateWorldColor()
+    if envSettings.WorldColorEnabled then
+        Lighting.Ambient = envSettings.Ambient
+        Lighting.ClockTime = envSettings.ClockTime
+    else
+        Lighting.Ambient = origAmbient
+        Lighting.ClockTime = origClockTime
+    end
+end
+
+local function updateCC()
+    local cc = Lighting:FindFirstChild("ModpackCorrection")
+    if not cc then
+        cc = Instance.new("ColorCorrectionEffect")
+        cc.Name = "ModpackCorrection"
+        cc.Parent = Lighting
+    end
+    cc.Enabled = envSettings.CCEnabled
+    cc.TintColor = envSettings.CCTint
+    cc.Saturation = envSettings.CCSaturation
+    cc.Contrast = envSettings.CCContrast
+end
+
+local snowPart, snowEmitter, snowConn
+local function updateSnow()
+    if not snowPart then
+        snowPart = Instance.new("Part")
+        snowPart.Name = "ModpackSnowPart"
+        snowPart.Transparency = 1
+        snowPart.Anchored = true
+        snowPart.CanCollide = false
+        snowPart.Size = Vector3.new(60, 1, 60)
+        
+        snowEmitter = Instance.new("ParticleEmitter", snowPart)
+        snowEmitter.Acceleration = Vector3.new(0, 0, 0)
+        snowEmitter.Brightness = 50 
+        snowEmitter.Drag = 0
+        snowEmitter.EmissionDirection = Enum.NormalId.Bottom
+        snowEmitter.Lifetime = NumberRange.new(5, 10)
+        snowEmitter.LightEmission = 1 
+        snowEmitter.LightInfluence = 0
+        snowEmitter.RotSpeed = NumberRange.new(0, 0)
+        snowEmitter.Rotation = NumberRange.new(0, 0)
+        snowEmitter.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.33),
+            NumberSequenceKeypoint.new(0.55, 0.40),
+            NumberSequenceKeypoint.new(1, 0.33)
+        })
+        snowEmitter.SpreadAngle = Vector2.new(50, 50)
+        snowEmitter.Squash = NumberSequence.new(0)
+        snowEmitter.Texture = "rbxassetid://99851851"
+        snowEmitter.TimeScale = 1
+        snowEmitter.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0),
+            NumberSequenceKeypoint.new(0.98, 0.04),
+            NumberSequenceKeypoint.new(1, 1)
+        })
+        snowEmitter.ZOffset = 1 
+        snowPart.Parent = workspace
+        
+        snowConn = RunService.RenderStepped:Connect(function()
+            local cam = workspace.CurrentCamera
+            if cam and snowPart then
+                snowPart.CFrame = CFrame.new(cam.CFrame.Position + Vector3.new(0, 50, 0))
+            end
+        end)
+    end
+    
+    if envSettings.SnowEnabled then
+        snowEmitter.Enabled = true
+        snowEmitter.Color = ColorSequence.new(envSettings.SnowColor)
+        snowEmitter.Rate = envSettings.SnowRate
+        snowEmitter.Speed = NumberRange.new(envSettings.SnowSpeed, envSettings.SnowSpeed)
+    else
+        snowEmitter.Enabled = false
+    end
+end
+
+EnvSection:AddToggle("Env_WorldColor_Enabled", {
+    Text = "Enable Custom Lighting", Default = false,
+    Callback = function(v) envSettings.WorldColorEnabled = v; updateWorldColor() end
+}):AddColorPicker("Env_Ambient_Color", {
+    Default = envSettings.Ambient, Title = "Ambient Color",
+    Callback = function(v) envSettings.Ambient = v; updateWorldColor() end
+})
+
+EnvSection:AddSlider("Env_ClockTime", {
+    Text = "Time of Day", Default = 2, Min = 0, Max = 24, Rounding = 1,
+    Callback = function(v) envSettings.ClockTime = v; updateWorldColor() end
+})
+
+EnvSection:AddToggle("Env_CC_Enabled", {
+    Text = "Enable Color Correction", Default = false,
+    Callback = function(v) envSettings.CCEnabled = v; updateCC() end
+}):AddColorPicker("Env_CC_Tint", {
+    Default = envSettings.CCTint, Title = "Tint Color",
+    Callback = function(v) envSettings.CCTint = v; updateCC() end
+})
+
+EnvSection:AddSlider("Env_CC_Saturation", {
+    Text = "Saturation", Default = 0.6, Min = -1, Max = 1, Rounding = 1,
+    Callback = function(v) envSettings.CCSaturation = v; updateCC() end
+})
+
+EnvSection:AddSlider("Env_CC_Contrast", {
+    Text = "Contrast", Default = 0.2, Min = -1, Max = 1, Rounding = 1,
+    Callback = function(v) envSettings.CCContrast = v; updateCC() end
+})
+
+EnvSection:AddToggle("Env_Snow_Enabled", {
+    Text = "Enable Snow", Default = false,
+    Callback = function(v) envSettings.SnowEnabled = v; updateSnow() end
+}):AddColorPicker("Env_Snow_Color", {
+    Default = envSettings.SnowColor, Title = "Snow Color",
+    Callback = function(v) envSettings.SnowColor = v; updateSnow() end
+})
+
+EnvSection:AddSlider("Env_Snow_Rate", {
+    Text = "Snow Density", Default = 10000, Min = 100, Max = 50000, Rounding = 0,
+    Callback = function(v) envSettings.SnowRate = v; updateSnow() end
+})
+
+EnvSection:AddSlider("Env_Snow_Speed", {
+    Text = "Snow Speed", Default = 30, Min = 1, Max = 100, Rounding = 0,
+    Callback = function(v) envSettings.SnowSpeed = v; updateSnow() end
+})
+
+
 -- ===== RAGE TAB =====
+
 local GunModsSection = Tabs.Rage:AddLeftGroupbox("Gun Mods")
 
 getgenv().RageSettings = {
