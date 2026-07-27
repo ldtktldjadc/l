@@ -1460,6 +1460,41 @@ end
         end
     end
 })
+-- ========== DEVICE SPOOFER ==========
+local DeviceSpoofSection = Tabs.Misc:AddLeftGroupbox("Device Spoofer")
+
+local isDeviceSpoofEnabled = false
+local SelectedSpoofedDevice = "VR"
+
+local DeviceSpooferToggle = DeviceSpoofSection:AddToggle("DeviceSpoofToggle", {
+    Text = "Enable Device Spoofer",
+    Default = false,
+    Callback = function(value)
+        isDeviceSpoofEnabled = value
+        if value then
+            pcall(function()
+                ReplicatedStorage.Remotes.Replication.Fighter.SetControls:FireServer(SelectedSpoofedDevice)
+            end)
+        end
+    end
+})
+
+local DeviceSpoofDep = DeviceSpoofSection:AddDependencyBox()
+DeviceSpoofDep:AddDropdown("DeviceSpoofDropdown", {
+    Values = {"VR", "Touch", "Gamepad", "MouseKeyboard"},
+    Default = 1,
+    Multi = false,
+    Text = "Select Device",
+    Callback = function(value)
+        SelectedSpoofedDevice = value
+        if isDeviceSpoofEnabled then
+            pcall(function()
+                ReplicatedStorage.Remotes.Replication.Fighter.SetControls:FireServer(SelectedSpoofedDevice)
+            end)
+        end
+    end
+})
+DeviceSpoofDep:SetupDependencies({ { DeviceSpooferToggle, true } })
 
 -- ========== THEME MANAGER ==========
 ThemeManager:SetLibrary(Library)
