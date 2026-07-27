@@ -35,6 +35,41 @@ if getgenv().MyModpackESP then
     pcall(function() getgenv().MyModpackESP:Destroy() end)
 end
 
+--=============================================================================
+-- Emit/ClearフックによるKatanaパリー判定 (AntiKatana)
+--=============================================================================
+local DeflectingPlayers = {}
+getgenv().DeflectingPlayers = DeflectingPlayers
+local function isPlayerParrying(player)
+    if not player then return false end
+    local endTime = DeflectingPlayers[player]
+    return endTime and tick() < endTime
+end
+local function getPlayerFromObj(obj)
+    local char = obj:FindFirstAncestorOfClass("Model")
+    return char and Players:GetPlayerFromCharacter(char)
+end
+
+pcall(function()
+    local _tempPE = Instance.new("ParticleEmitter")
+    local oldEmit; oldEmit = hookfunction(_tempPE.Emit, function(self, count)
+        if self.Name == "bigstar" then
+            local p = getPlayerFromObj(self)
+            if p then DeflectingPlayers[p] = tick() + 1 end
+        end
+        return oldEmit(self, count)
+    end)
+
+    local oldClear; oldClear = hookfunction(_tempPE.Clear, function(self)
+        if self.Name == "bigstar" then
+            local p = getPlayerFromObj(self)
+            if p then DeflectingPlayers[p] = 0 end
+        end
+        return oldClear(self)
+    end)
+    _tempPE:Destroy()
+end)
+
 -- ========== SILENT AIM ==========
 local silentAimEnabled = false
 local targetPart = "HitboxHead"
@@ -878,7 +913,8 @@ getgenv().RageSettings = {
     Enabled = false,
     NoRecoil = false,
     NoSpread = false,
-    RapidFire = false
+    RapidFire = false,
+    AntiKatana = false
 }
 
 task.spawn(function()
@@ -905,6 +941,45 @@ task.spawn(function()
                         self.IsFullyAiming = function() return getgenv().RageSettings.Enabled and getgenv().RageSettings.NoSpread end
                     end
                 end
+
+                -- Anti-Katana: StartShootingをフック
+                local origSS = self.StartShooting
+                if type(origSS) == "function" and not self._isAntiKatanaSSHooked then
+                    self._isAntiKatanaSSHooked = true
+                    self.StartShooting = function(gunSelf, ...)
+                        if getgenv().RageSettings.Enabled and getgenv().RageSettings.AntiKatana then
+                            local now = tick()
+                            local cam = workspace.CurrentCamera
+                            for p, endTime in pairs(DeflectingPlayers) do
+                                if now < endTime and p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                    local _, onScreen = cam:WorldToScreenPoint(p.Character.HumanoidRootPart.Position)
+                                    if onScreen then return false end
+                                end
+                            end
+                        end
+                        return origSS(gunSelf, ...)
+                    end
+                end
+
+                -- Anti-Katana: Shot:Fire()をフック（予備）
+                if self.Shot and not self._isAntiKatanaShotHooked then
+                    self._isAntiKatanaShotHooked = true
+                    local origShotFire = self.Shot.Fire
+                    self.Shot.Fire = function(sig, ...)
+                        if getgenv().RageSettings.Enabled and getgenv().RageSettings.AntiKatana then
+                            local now = tick()
+                            local cam = workspace.CurrentCamera
+                            for p, endTime in pairs(DeflectingPlayers) do
+                                if now < endTime and p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                    local _, onScreen = cam:WorldToViewportPoint(p.Character.HumanoidRootPart.Position)
+                                    if onScreen then return end
+                                end
+                            end
+                        end
+                        return origShotFire(sig, ...)
+                    end
+                end
+
                 return originalEquip(self, ...)
             end
         end
@@ -978,6 +1053,14 @@ GunModsDep:AddToggle("GunMods_RapidFire", {
     Default = false,
     Callback = function(value)
         getgenv().RageSettings.RapidFire = value
+    end
+})
+
+GunModsDep:AddToggle("GunMods_AntiKatana", {
+    Text = "Anti Katana",
+    Default = false,
+    Callback = function(value)
+        getgenv().RageSettings.AntiKatana = value
     end
 })
 
