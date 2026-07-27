@@ -1465,30 +1465,27 @@ local DeviceSpoofSection = Tabs.Misc:AddLeftGroupbox("Device Spoofer")
 
 local DeviceSpooferToggle, DeviceSpoofDropdownObj
 
-local function UpdateDeviceSpoofer()
-    if DeviceSpooferToggle and DeviceSpooferToggle.Value and DeviceSpoofDropdownObj then
-        pcall(function()
-            ReplicatedStorage.Remotes.Replication.Fighter.SetControls:FireServer(DeviceSpoofDropdownObj.Value)
-        end)
-    end
-end
-
 DeviceSpooferToggle = DeviceSpoofSection:AddToggle("DeviceSpoofToggle", {
     Text = "Enable Device Spoofer",
     Default = false,
     Callback = function(value)
-        task.defer(UpdateDeviceSpoofer)
+        if value and DeviceSpoofDropdownObj then
+            task.defer(function()
+                pcall(function()
+                    ReplicatedStorage.Remotes.Replication.Fighter.SetControls:FireServer(DeviceSpoofDropdownObj.Value)
+                end)
+            end)
+        end
     end
 })
 
 local DeviceSpoofDep = DeviceSpoofSection:AddDependencyBox()
 DeviceSpoofDropdownObj = DeviceSpoofDep:AddDropdown("DeviceSpoofDropdown", {
-    Values = {"VR", "Touch", "Gamepad", "MouseKeyboard"},
-    Default = 1,
+    Values = {"Touch", "MouseKeyboard", "Gamepad", "VR"},
     Multi = false,
     Text = "Select Device",
     Callback = function(value)
-        task.defer(UpdateDeviceSpoofer)
+        -- 変更しただけでは走らないようにする（オンにした時のみ）
     end
 })
 DeviceSpoofDep:SetupDependencies({ { DeviceSpooferToggle, true } })
