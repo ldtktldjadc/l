@@ -1463,35 +1463,32 @@ end
 -- ========== DEVICE SPOOFER ==========
 local DeviceSpoofSection = Tabs.Misc:AddLeftGroupbox("Device Spoofer")
 
-local isDeviceSpoofEnabled = false
-local SelectedSpoofedDevice = "VR"
+local DeviceSpooferToggle, DeviceSpoofDropdownObj
 
-local DeviceSpooferToggle = DeviceSpoofSection:AddToggle("DeviceSpoofToggle", {
+local function UpdateDeviceSpoofer()
+    if DeviceSpooferToggle and DeviceSpooferToggle.Value and DeviceSpoofDropdownObj then
+        pcall(function()
+            ReplicatedStorage.Remotes.Replication.Fighter.SetControls:FireServer(DeviceSpoofDropdownObj.Value)
+        end)
+    end
+end
+
+DeviceSpooferToggle = DeviceSpoofSection:AddToggle("DeviceSpoofToggle", {
     Text = "Enable Device Spoofer",
     Default = false,
     Callback = function(value)
-        isDeviceSpoofEnabled = value
-        if value then
-            pcall(function()
-                ReplicatedStorage.Remotes.Replication.Fighter.SetControls:FireServer(SelectedSpoofedDevice)
-            end)
-        end
+        task.defer(UpdateDeviceSpoofer)
     end
 })
 
 local DeviceSpoofDep = DeviceSpoofSection:AddDependencyBox()
-DeviceSpoofDep:AddDropdown("DeviceSpoofDropdown", {
+DeviceSpoofDropdownObj = DeviceSpoofDep:AddDropdown("DeviceSpoofDropdown", {
     Values = {"VR", "Touch", "Gamepad", "MouseKeyboard"},
     Default = 1,
     Multi = false,
     Text = "Select Device",
     Callback = function(value)
-        SelectedSpoofedDevice = value
-        if isDeviceSpoofEnabled then
-            pcall(function()
-                ReplicatedStorage.Remotes.Replication.Fighter.SetControls:FireServer(SelectedSpoofedDevice)
-            end)
-        end
+        task.defer(UpdateDeviceSpoofer)
     end
 })
 DeviceSpoofDep:SetupDependencies({ { DeviceSpooferToggle, true } })
