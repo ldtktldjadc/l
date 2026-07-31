@@ -151,31 +151,59 @@ do
         self.__old_playanim_func = __old_playanim
         __cvm_module.PlayAnimation = function(__self, animName, ...)
             if type(animName) == "string" then
-                if string.find(string.lower(animName), "heavyattack") then
+                local animLower = string.lower(animName)
+                
+                -- ナイフのスタブ（重攻撃）
+                if string.find(animLower, "heavyattack") then
                     local ok, isLocal = pcall(function()
                         return __self.ClientItem.ClientFighter.IsLocalPlayer == true
                     end)
-                    if not ok or not isLocal then
-                        return __old_playanim(__self, animName, ...)
-                    end
-
-                    pcall(function()
-                        game:GetService("StarterGui"):SetCore("SendNotification", {
-                            Title = "Backstab",
-                            Text = "Target Locked!",
-                            Duration = 1
-                        })
-                    end)
-
-                    local target = self.__target
-                    if self.__active and target and target.Character then
-                        task.delay(0, function()
-                            if self.__active and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                                self:__desync_start_melee(target)
-                                task.wait(0.25)
-                                self:__desync_stop()
-                            end
+                    if ok and isLocal then
+                        pcall(function()
+                            game:GetService("StarterGui"):SetCore("SendNotification", {
+                                Title = "Backstab",
+                                Text = "Target Locked!",
+                                Duration = 1
+                            })
                         end)
+
+                        local target = self.__target
+                        if self.__active and target and target.Character then
+                            task.delay(0, function()
+                                if self.__active and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                                    self:__desync_start_melee(target)
+                                    task.wait(0.25)
+                                    self:__desync_stop()
+                                end
+                            end)
+                        end
+                    end
+                -- 通常の近接攻撃
+                elseif string.find(animLower, "attack") then
+                    local ok, isLocal = pcall(function()
+                        return __self.ClientItem.ClientFighter.IsLocalPlayer == true
+                    end)
+                    if ok and isLocal then
+                        -- 通知は邪魔にならないように短くする
+                        pcall(function()
+                            game:GetService("StarterGui"):SetCore("SendNotification", {
+                                Title = "Melee Lock",
+                                Text = "Auto Tracking...",
+                                Duration = 0.3
+                            })
+                        end)
+
+                        local target = self.__target
+                        if self.__active and target and target.Character then
+                            task.delay(0, function()
+                                if self.__active and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                                    -- 通常攻撃用の追従も同じTP関数を使う
+                                    self:__desync_start_melee(target)
+                                    task.wait(0.25)
+                                    self:__desync_stop()
+                                end
+                            end)
+                        end
                     end
                 end
             end
