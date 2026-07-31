@@ -118,7 +118,7 @@ do
 
             if not self.__desync or self.__curr ~= __x6y7z8 then
                 self:__desync_start(__x6y7z8)
-                task.wait(0.2)
+                task.wait(0.15)
             end
 
             if self.__task1 then
