@@ -996,10 +996,17 @@ task.spawn(function()
                 local gunName = self.Name or tostring(self)
                 if not OriginalStats[gunName] then
                     OriginalStats[gunName] = {
-                        Recoil = self.Info.ShootRecoil,
-                        Spread = self.Info.ShootSpread,
-                        CD = self.Info.ShootCooldown,
-                        QCD = self.Info.QuickShotCooldown
+                        ShootRecoil = self.Info.ShootRecoil,
+                        ShootSpread = self.Info.ShootSpread,
+                        ShootCooldown = self.Info.ShootCooldown,
+                        QuickShotCooldown = self.Info.QuickShotCooldown,
+                        ShootBurstCooldown = self.Info.ShootBurstCooldown,
+                        AttackCooldown = self.Info.AttackCooldown,
+                        SwingCooldown = self.Info.SwingCooldown,
+                        MeleeCooldown = self.Info.MeleeCooldown,
+                        Cooldown = self.Info.Cooldown,
+                        RecoveryTime = self.Info.RecoveryTime,
+                        ResetTime = self.Info.ResetTime
                     }
                 end
                 local orig = OriginalStats[gunName]
@@ -1007,14 +1014,29 @@ task.spawn(function()
                     self._isStatsHooked = true
                     if setreadonly then pcall(function() setreadonly(self.Info, false) end) end
                 end
-                local tgtRecoil = getgenv().RageSettings.NoRecoil and 0 or orig.Recoil
-                local tgtSpread = getgenv().RageSettings.NoSpread and 0 or orig.Spread
-                local tgtCD = getgenv().RageSettings.RapidFire and 0.001 or orig.CD
-                local tgtQCD = getgenv().RageSettings.RapidFire and 0.001 or orig.QCD
-                if self.Info.ShootRecoil ~= tgtRecoil then self.Info.ShootRecoil = tgtRecoil end
-                if self.Info.ShootSpread ~= tgtSpread then self.Info.ShootSpread = tgtSpread end
-                if self.Info.ShootCooldown ~= tgtCD then self.Info.ShootCooldown = tgtCD end
-                if self.Info.QuickShotCooldown ~= tgtQCD then self.Info.QuickShotCooldown = tgtQCD end
+
+                local rapid = getgenv().RageSettings.RapidFire and 0.001 or nil
+
+                local overrides = {
+                    ShootRecoil = getgenv().RageSettings.NoRecoil and 0 or orig.ShootRecoil,
+                    ShootSpread = getgenv().RageSettings.NoSpread and 0 or orig.ShootSpread,
+                    ShootCooldown = rapid or orig.ShootCooldown,
+                    QuickShotCooldown = rapid or orig.QuickShotCooldown,
+                    ShootBurstCooldown = rapid or orig.ShootBurstCooldown,
+                    AttackCooldown = rapid or orig.AttackCooldown,
+                    SwingCooldown = rapid or orig.SwingCooldown,
+                    MeleeCooldown = rapid or orig.MeleeCooldown,
+                    Cooldown = rapid or orig.Cooldown,
+                    RecoveryTime = rapid or orig.RecoveryTime,
+                    ResetTime = rapid or orig.ResetTime
+                }
+
+                for prop, tgtValue in pairs(overrides) do
+                    -- もともとその武器にプロパティが存在する場合のみ上書きする
+                    if orig[prop] ~= nil and self.Info[prop] ~= tgtValue then
+                        self.Info[prop] = tgtValue
+                    end
+                end
             end
             return inputFunc(self, ...)
         end
