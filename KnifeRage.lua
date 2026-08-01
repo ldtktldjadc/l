@@ -425,8 +425,8 @@ do
             local predictedOffset = tVel * predictTime
             
             if self.__magnetMelee then
-                -- MAGNET MELEE: ターゲットの目の前に張り付く（速度影響なしで強制固定）
-                __f6g7h8.CFrame = __i9j0k1.CFrame * CFrame.new(0, 0, -2)
+                -- MAGNET MELEE: ターゲットの目の前（-2）だと壁に埋まるので、相手に完全にめり込ませる（0,0,0）
+                __f6g7h8.CFrame = __i9j0k1.CFrame
             else
                 __f6g7h8.CFrame = __i9j0k1.CFrame + predictedOffset
             end
