@@ -257,7 +257,8 @@ do
             if self.__voidSpam then
                 btnVoid.TextColor3 = Color3.fromRGB(0, 255, 0)
                 if not self.__voidSpamConn then
-                    self.__voidSpamConn = __y5z6a7.RenderStepped:Connect(function()
+                    -- Heartbeat に変更して正しいDESYNCのタイミングにする
+                    self.__voidSpamConn = __y5z6a7.Heartbeat:Connect(function()
                         -- メレーや銃の発射時のDESYNC中は干渉しないようにスキップする
                         if self.__desync or self.__active == false then return end
                         
@@ -276,7 +277,7 @@ do
 
                         local targetPos = cam.CFrame.Position + (randomDir * 7000000000000)
                         
-                        -- 他のDESYNC処理と同じように、元の位置を保存してRenderStepで戻す
+                        -- Heartbeatでサーバー向けに位置をずらし、描画前(RenderStep)に戻す
                         local savedCF = root.CFrame
                         root.CFrame = CFrame.new(targetPos)
 
@@ -321,8 +322,11 @@ do
             local hum = char:FindFirstChildWhichIsA("Humanoid")
             
             if not (root and head and hum and hum.Health > 0) then continue end
+            local cam = __e1f2g3.CurrentCamera
+            if not cam then continue end
            
-            local dist = (myRoot.Position - root.Position).Magnitude
+            -- クライアントのカメラ位置からの距離を計算する
+            local dist = (cam.CFrame.Position - root.Position).Magnitude
             
             if dist > MAX_DISTANCE then continue end
             
