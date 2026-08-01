@@ -99,24 +99,8 @@ do
         local __l4m5n6 = __t6u7v8.StartShooting
         self.__oldfunc = __l4m5n6
         __t6u7v8.StartShooting = function(__o7p8q9, ...)
-            local isLocal = __o7p8q9.ClientFighter and __o7p8q9.ClientFighter.IsLocalPlayer
-
-            -- ローカルプレイヤーで、ターゲットがいて、まだTPしていない場合は先にTPして待つ
-            if isLocal and self.__active then
-                local __x6y7z8 = self.__target
-                if __x6y7z8 and __x6y7z8.Character then
-                    if not self.__desync or self.__curr ~= __x6y7z8 then
-                        self:__desync_start(__x6y7z8)
-                        -- TPがサーバーに反映されるまで待つ
-                        task.wait(0.15)
-                    end
-                end
-            end
-
-            -- TP後にオリジナルのStartShootingを呼ぶことで、1発目の弾道も正しく計算される
             local __r0s1t2 = {__l4m5n6(__o7p8q9, ...)}
-            
-            if not isLocal then
+            if not __o7p8q9.ClientFighter or not __o7p8q9.ClientFighter.IsLocalPlayer then
                 return unpack(__r0s1t2)
             end
 
@@ -132,6 +116,11 @@ do
                 return unpack(__r0s1t2)
             end
 
+            if not self.__desync or self.__curr ~= __x6y7z8 then
+                self:__desync_start(__x6y7z8)
+                task.wait(0.15)
+            end
+
             if self.__task1 then
                 task.cancel(self.__task1)
                 self.__task1 = nil
@@ -142,8 +131,7 @@ do
 
             local __d2e3f4 = __a9b0c1.Position
             local __g5h6i7 = __a9b0c1.CFrame
-            -- 銃口の偽装位置（今は下を向いているので上空からのデータを作る）
-            local __j8k9l0 = __d2e3f4 + Vector3.new(0, 7.5, 0)
+            local __j8k9l0 = __d2e3f4 - Vector3.new(0, 5, 0)
             local __m1n2o3 = CFrame.lookAt(__j8k9l0, __d2e3f4)
             local __p4q5r6 = __g5h6i7:ToObjectSpace(CFrame.new(__d2e3f4 + Vector3.new(math.random(), math.random(), math.random())))
 
@@ -310,12 +298,8 @@ do
             local __l2m3n4 = __f6g7h8.CFrame
 
             -- 銃（__desync_start）のTP位置を変更
-            -- ターゲットの頭（HitboxHead）を取得、なければHRPにフォールバック
-            local __tHead = __c3d4e5.Character:FindFirstChild("HitboxHead") or __i9j0k1
-            
-            -- 頭の7.5スタッド上にTPし、体をうつ伏せ（真下を向く）にする
-            -- CFrame.AnglesのX軸を-90度（-math.rad(90)）にして真下を向かせる
-            __f6g7h8.CFrame = CFrame.new(__tHead.Position + Vector3.new(0, 7.5, 0)) * CFrame.Angles(-math.rad(90), 0, 0)
+            -- 手動変更に合わせて、-5スタッド下（Y=-5）にTPする
+            __f6g7h8.CFrame = __i9j0k1.CFrame * CFrame.new(0, -5, 0)
 
             __y5z6a7:BindToRenderStep("__restore", 101, function()
                 __f6g7h8.CFrame = __l2m3n4
