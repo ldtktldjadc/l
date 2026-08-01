@@ -89,6 +89,7 @@ do
         self.__meleeMode = "Sweep"
         self.__voidSpam = false
         self.__voidSpamConn = nil
+        self.__magnetMelee = false
         self:__setup()
     end
 
@@ -250,6 +251,26 @@ do
         btnVoid.Text = "VOIDSPAM: OFF"
         btnVoid.Parent = sg
 
+        local btnMagnet = Instance.new("TextButton")
+        btnMagnet.Size = UDim2.new(0, 150, 0, 40)
+        btnMagnet.Position = UDim2.new(0, 20, 0, 120)
+        btnMagnet.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        btnMagnet.TextColor3 = Color3.fromRGB(255, 0, 0)
+        btnMagnet.TextSize = 18
+        btnMagnet.Font = Enum.Font.SourceSansBold
+        btnMagnet.Text = "MAGNET: OFF"
+        btnMagnet.Parent = sg
+
+        btnMagnet.MouseButton1Click:Connect(function()
+            self.__magnetMelee = not self.__magnetMelee
+            btnMagnet.Text = "MAGNET: " .. (self.__magnetMelee and "ON" or "OFF")
+            if self.__magnetMelee then
+                btnMagnet.TextColor3 = Color3.fromRGB(0, 255, 0)
+            else
+                btnMagnet.TextColor3 = Color3.fromRGB(255, 0, 0)
+            end
+        end)
+
         btnVoid.MouseButton1Click:Connect(function()
             self.__voidSpam = not self.__voidSpam
             btnVoid.Text = "VOIDSPAM: " .. (self.__voidSpam and "ON" or "OFF")
@@ -389,9 +410,26 @@ do
             local __savedVel = __f6g7h8.Velocity
             local __savedRotVel = __f6g7h8.RotVelocity
 
-            -- Mode: Direct (No Prediction)
-            -- 先読み（予測）を完全に廃止し、相手の現在位置に直接TPする
-            __f6g7h8.CFrame = __i9j0k1.CFrame
+            -- Mode: Direct (Dynamic Ping)
+            -- 実際のPing値を取得して予測時間を動的に算出する
+            -- ping取得に失敗した場合は80msにフォールバック
+            local pingSeconds = 0.08
+            pcall(function()
+                local stat = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]
+                pingSeconds = math.clamp(stat:GetValue() / 1000, 0.02, 0.3)
+            end)
+            -- サーバー処理遅延分（約40ms）を加算
+            local predictTime = pingSeconds + 0.04
+
+            local tVel = __i9j0k1.Velocity
+            local predictedOffset = tVel * predictTime
+            
+            if self.__magnetMelee then
+                -- MAGNET MELEE: ターゲットの目の前に張り付く（速度影響なしで強制固定）
+                __f6g7h8.CFrame = __i9j0k1.CFrame * CFrame.new(0, 0, -2)
+            else
+                __f6g7h8.CFrame = __i9j0k1.CFrame + predictedOffset
+            end
 
             local _, yaw, _ = __i9j0k1.CFrame:ToOrientation()
             self.__spoofYaw = yaw
