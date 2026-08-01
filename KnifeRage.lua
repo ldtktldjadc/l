@@ -174,7 +174,7 @@ do
                             task.delay(0, function()
                                 if self.__active and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
                                     self:__desync_start_melee(target)
-                                    task.wait(0.25)
+                                    task.wait(0.1)
                                     self:__desync_stop()
                                 end
                             end)
