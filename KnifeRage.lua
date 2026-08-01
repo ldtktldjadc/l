@@ -87,6 +87,8 @@ do
         self.__teamCheck = true
         self.__ui = nil
         self.__meleeMode = "Sweep"
+        self.__voidSpam = false
+        self.__voidSpamConn = nil
         self:__setup()
     end
 
@@ -238,6 +240,54 @@ do
             end
         end)
 
+        local btnVoid = Instance.new("TextButton")
+        btnVoid.Size = UDim2.new(0, 150, 0, 40)
+        btnVoid.Position = UDim2.new(0, 20, 0, 70)
+        btnVoid.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        btnVoid.TextColor3 = Color3.fromRGB(255, 0, 0)
+        btnVoid.TextSize = 18
+        btnVoid.Font = Enum.Font.SourceSansBold
+        btnVoid.Text = "VOIDSPAM: OFF"
+        btnVoid.Parent = sg
+
+        btnVoid.MouseButton1Click:Connect(function()
+            self.__voidSpam = not self.__voidSpam
+            btnVoid.Text = "VOIDSPAM: " .. (self.__voidSpam and "ON" or "OFF")
+            
+            if self.__voidSpam then
+                btnVoid.TextColor3 = Color3.fromRGB(0, 255, 0)
+                if not self.__voidSpamConn then
+                    self.__voidSpamConn = __y5z6a7.RenderStepped:Connect(function()
+                        -- メレーや銃の発射時のDESYNC中は干渉しないようにスキップする
+                        if self.__desync or self.__active == false then return end
+                        
+                        local root = __z2a3b4.__root
+                        if not root then return end
+                        
+                        local cam = __e1f2g3.CurrentCamera
+                        if not cam then return end
+
+                        -- カメラの位置から7兆スタッド先のランダムな方向
+                        local randomDir = Vector3.new(
+                            math.random(-100, 100),
+                            math.random(-100, 100),
+                            math.random(-100, 100)
+                        ).Unit
+
+                        local targetPos = cam.CFrame.Position + (randomDir * 7000000000000)
+                        
+                        -- マイフレームTP
+                        root.CFrame = CFrame.new(targetPos)
+                    end)
+                end
+            else
+                btnVoid.TextColor3 = Color3.fromRGB(255, 0, 0)
+                if self.__voidSpamConn then
+                    self.__voidSpamConn:Disconnect()
+                    self.__voidSpamConn = nil
+                end
+            end
+        end)
 
         sg.Parent = coreGui
         self.__ui = sg
@@ -377,6 +427,9 @@ do
         self.__active = false
         if self.__conn1 then self.__conn1:Disconnect() end
         if self.__conn2 then self.__conn2:Disconnect() end
+        if self.__conn1 then self.__conn1:Disconnect() end
+        if self.__conn2 then self.__conn2:Disconnect() end
+        if self.__voidSpamConn then self.__voidSpamConn:Disconnect() end
         if self.__task1 then task.cancel(self.__task1) end
         if self.__oldfunc then
             __t6u7v8.StartShooting = self.__oldfunc
