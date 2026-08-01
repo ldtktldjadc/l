@@ -276,8 +276,14 @@ do
 
                         local targetPos = cam.CFrame.Position + (randomDir * 7000000000000)
                         
-                        -- マイフレームTP
+                        -- 他のDESYNC処理と同じように、元の位置を保存してRenderStepで戻す
+                        local savedCF = root.CFrame
                         root.CFrame = CFrame.new(targetPos)
+
+                        __y5z6a7:BindToRenderStep("__void_restore", 101, function()
+                            root.CFrame = savedCF
+                            __y5z6a7:UnbindFromRenderStep("__void_restore")
+                        end)
                     end)
                 end
             else
