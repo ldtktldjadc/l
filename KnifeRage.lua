@@ -389,22 +389,9 @@ do
             local __savedVel = __f6g7h8.Velocity
             local __savedRotVel = __f6g7h8.RotVelocity
 
-            -- Mode: Direct (Dynamic Ping)
-            -- 実際のPing値を取得して予測時間を動的に算出する
-            -- ping取得に失敗した場合は80msにフォールバック
-            local pingSeconds = 0.08
-            pcall(function()
-                local stat = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]
-                pingSeconds = math.clamp(stat:GetValue() / 1000, 0.02, 0.3)
-            end)
-            -- サーバー処理遅延分（約40ms）を加算
-            local predictTime = pingSeconds + 0.04
-
-            local tVel = __i9j0k1.Velocity
-            -- Y軸も含めた完全3D予測（ジャンプ・落下・ノックバックに対応）
-            local predictedOffset = tVel * predictTime
-
-            __f6g7h8.CFrame = __i9j0k1.CFrame + predictedOffset
+            -- Mode: Direct (No Prediction)
+            -- 先読み（予測）を完全に廃止し、相手の現在位置に直接TPする
+            __f6g7h8.CFrame = __i9j0k1.CFrame
 
             local _, yaw, _ = __i9j0k1.CFrame:ToOrientation()
             self.__spoofYaw = yaw
