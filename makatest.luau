@@ -121,7 +121,7 @@ do
        
         local closest = nil
         local closestDist = math.huge
-        local MAX_DISTANCE = 200
+        local MAX_DISTANCE = 8888
 
         for _, player in next, __v2w3x4:GetPlayers() do
             if player == __k7l8m9 then continue end
