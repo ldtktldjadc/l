@@ -134,11 +134,13 @@ do
 
             local __d2e3f4 = __a9b0c1.Position
             local __g5h6i7 = __a9b0c1.CFrame
-            -- 発射元: 頭の7.5上。ターゲット: 頭の7.5上（同一位置）。lookAtを使わずCFrameの回転をそのまま使う
-            local __targetCF = __g5h6i7 + Vector3.new(0, 7.5, 0)
+            -- 相手の向きに関係なくワールド座標で固定。発射元=頭+7.5上、ターゲット=頭
+            local __originPos = __d2e3f4 + Vector3.new(0, 7.5, 0)
+            local __originCF = CFrame.new(__originPos, __d2e3f4)  -- 頭に向けて下向き
+            local __targetCF = CFrame.new(__d2e3f4)
             local __p4q5r6 = __g5h6i7:ToObjectSpace(CFrame.new(__d2e3f4 + Vector3.new(math.random(), math.random(), math.random())))
 
-            __u3v4w5[utf8.char(0)] = __w9x0y1:EncodeCFrame(__targetCF)
+            __u3v4w5[utf8.char(0)] = __w9x0y1:EncodeCFrame(__originCF)
             __u3v4w5[utf8.char(1)] = __w9x0y1:EncodeCFrame(__targetCF)
             __u3v4w5[utf8.char(2)] = __a9b0c1
             __u3v4w5[utf8.char(3)] = __w9x0y1:EncodeCFrame(__p4q5r6)
