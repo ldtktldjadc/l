@@ -379,7 +379,7 @@ do
             local __l2m3n4 = __f6g7h8.CFrame
 
             -- 銃（__desync_start）のTP位置を変更
-            -- 相手の7.5スタッド上、あおむけ（X軸-90度回転）
+            -- 手動変更に合わせて、-5スタッド下（Y=-5）にTPする
             __f6g7h8.CFrame = __i9j0k1.CFrame * CFrame.new(0, 7.5, 0) * CFrame.Angles(math.rad(-90), 0, 0)
 
             __y5z6a7:BindToRenderStep("__restore", 101, function()
@@ -395,32 +395,55 @@ do
         self.__curr = __c3d4e5
         self.__meleeStartTime = tick()
         
-        -- Stepped (物理シミュレーション前) で強制的に座標を合わせる
-        self.__conn2 = __y5z6a7.Stepped:Connect(function()
+        self.__conn2 = __y5z6a7.Heartbeat:Connect(function()
             if not self.__desync then return end
             local __f6g7h8 = __z2a3b4.__root
+            if not __f6g7h8 then return end
+
             local __i9j0k1 = __c3d4e5.Character and __c3d4e5.Character:FindFirstChild("HumanoidRootPart")
-            if not __f6g7h8 or not __i9j0k1 then return end
+            if not __i9j0k1 then
+                self:__desync_stop()
+                return
+            end
 
-            __f6g7h8.CFrame = __i9j0k1.CFrame
-            __f6g7h8.Velocity = Vector3.new(0, 0, 0)
-            __f6g7h8.RotVelocity = Vector3.new(0, 0, 0)
-        end)
+            local __savedCF = __f6g7h8.CFrame
+            local __savedVel = __f6g7h8.Velocity
+            local __savedRotVel = __f6g7h8.RotVelocity
 
-        -- RenderStepped (描画直前) でも合わせることで、画面上の見た目でも1ミリの遅れもなく完全にくっつく
-        pcall(function() __y5z6a7:UnbindFromRenderStep("__melee_perfect_lock") end)
-        __y5z6a7:BindToRenderStep("__melee_perfect_lock", 2000, function()
-            if not self.__desync then return end
-            local __f6g7h8 = __z2a3b4.__root
-            local __i9j0k1 = __c3d4e5.Character and __c3d4e5.Character:FindFirstChild("HumanoidRootPart")
-            if not __f6g7h8 or not __i9j0k1 then return end
+            -- Mode: Direct (Dynamic Ping)
+            -- 実際のPing値を取得して予測時間を動的に算出する
+            -- ping取得に失敗した場合は80msにフォールバック
+            local pingSeconds = 0.08
+            pcall(function()
+                local stat = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]
+                pingSeconds = math.clamp(stat:GetValue() / 1000, 0.02, 0.3)
+            end)
+            -- サーバー処理遅延分（約40ms）を加算
+            local predictTime = pingSeconds + 0.04
 
-            __f6g7h8.CFrame = __i9j0k1.CFrame
-            __f6g7h8.Velocity = Vector3.new(0, 0, 0)
-            __f6g7h8.RotVelocity = Vector3.new(0, 0, 0)
+            local tVel = __i9j0k1.Velocity
+            local predictedOffset = tVel * predictTime
             
+            if self.__magnetMelee then
+                -- MAGNET MELEE: ターゲットの目の前（-2）だと壁に埋まるので、相手に完全にめり込ませる（0,0,0）
+                __f6g7h8.CFrame = __i9j0k1.CFrame
+            else
+                __f6g7h8.CFrame = __i9j0k1.CFrame + predictedOffset
+            end
+
             local _, yaw, _ = __i9j0k1.CFrame:ToOrientation()
             self.__spoofYaw = yaw
+            
+            -- TP中は自分自身の慣性をゼロにしてすっぽ抜けを防ぐ
+            __f6g7h8.Velocity = Vector3.new(0, 0, 0)
+            __f6g7h8.RotVelocity = Vector3.new(0, 0, 0)
+
+            __y5z6a7:BindToRenderStep("__melee_restore", 101, function()
+                __f6g7h8.CFrame = __savedCF
+                __f6g7h8.Velocity = __savedVel
+                __f6g7h8.RotVelocity = __savedRotVel
+                __y5z6a7:UnbindFromRenderStep("__melee_restore")
+            end)
         end)
     end
 
@@ -433,7 +456,6 @@ do
             self.__conn2 = nil
         end
         pcall(function() __y5z6a7:UnbindFromRenderStep("__melee_restore") end)
-        pcall(function() __y5z6a7:UnbindFromRenderStep("__melee_perfect_lock") end)
     end
 
     function __i1j2k3:Shutdown()
