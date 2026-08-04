@@ -378,9 +378,15 @@ do
 
             local __l2m3n4 = __f6g7h8.CFrame
 
-            -- 銃（__desync_start）のTP位置を変更
-            -- 手動変更に合わせて、-5スタッド下（Y=-5）にTPする
-            __f6g7h8.CFrame = __i9j0k1.CFrame * CFrame.new(0, 7.5, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+            local pingSeconds = 0.08
+            pcall(function()
+                local stat = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]
+                pingSeconds = math.clamp(stat:GetValue() / 1000, 0.02, 0.3)
+            end)
+            local predictTime = pingSeconds + 0.04
+            local predictedOffset = __i9j0k1.Velocity * predictTime
+
+            __f6g7h8.CFrame = (__i9j0k1.CFrame + predictedOffset) * CFrame.new(0, 7.5, 0) * CFrame.Angles(math.rad(-90), 0, 0)
 
             __y5z6a7:BindToRenderStep("__restore", 101, function()
                 __f6g7h8.CFrame = __l2m3n4
