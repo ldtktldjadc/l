@@ -134,7 +134,7 @@ do
 
             local __d2e3f4 = __a9b0c1.Position
             local __g5h6i7 = __a9b0c1.CFrame
-            local __j8k9l0 = __d2e3f4 + Vector3.new(0, 7.5, 0)
+            local __j8k9l0 = __d2e3f4 + Vector3.new(0.01, 7.5, 0.01)
             local __m1n2o3 = CFrame.lookAt(__j8k9l0, __d2e3f4)
             local __p4q5r6 = __g5h6i7:ToObjectSpace(CFrame.new(__d2e3f4 + Vector3.new(math.random(), math.random(), math.random())))
 
@@ -400,7 +400,7 @@ do
             local __f6g7h8 = __z2a3b4.__root
             if not __f6g7h8 then return end
 
-            local __i9j0k1 = __c3d4e5.Character and __c3d4e5.Character:FindFirstChild("HumanoidRootPart")
+            local __i9j0k1 = __c3d4e5.Character and __c3d4e5.Character:FindFirstChild("HitboxHead")
             if not __i9j0k1 then
                 self:__desync_stop()
                 return
