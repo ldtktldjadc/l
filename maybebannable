@@ -136,7 +136,7 @@ do
             local __g5h6i7 = __a9b0c1.CFrame
             local __j8k9l0 = __d2e3f4 + Vector3.new(0, 7.5, 0)
             local __m1n2o3 = CFrame.lookAt(__j8k9l0, __d2e3f4)
-            local __p4q5r6 = __g5h6i7:ToObjectSpace(CFrame.new(__d2e3f4 + Vector3.new(math.random(), math.random(), math.random())))
+            local __p4q5r6 = __g5h6i7:ToObjectSpace(CFrame.new(__d2e3f4))
 
             __u3v4w5[utf8.char(0)] = __w9x0y1:EncodeCFrame(CFrame.new(__j8k9l0, __d2e3f4) * CFrame.Angles(__m1n2o3:ToOrientation()))
             __u3v4w5[utf8.char(1)] = __w9x0y1:EncodeCFrame(CFrame.new(__d2e3f4) * CFrame.Angles(__m1n2o3:ToOrientation()))
