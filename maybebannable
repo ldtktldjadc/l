@@ -137,10 +137,13 @@ do
             -- ジンバルロック対策としてX, Zに微小なズレを追加
             local __j8k9l0 = __d2e3f4 + Vector3.new(0.01, 7.5, 0.01)
             local __m1n2o3 = CFrame.lookAt(__j8k9l0, __d2e3f4)
-            -- ランダムヒットオフセットを4スタッド幅（-2 ～ +2）に変更
-            local __rx = (math.random() - 0.5) * 0.1
-            local __ry = (math.random() - 0.5) * 0.1
-            local __rz = (math.random() - 0.5) * 0.1
+            -- 相手の速度に応じてオフセットをスケーリング（止まってるときは極小、動いてるときはフル）
+            local __targetRoot = __x6y7z8.Character and __x6y7z8.Character:FindFirstChild("HumanoidRootPart")
+            local __targetSpeed = __targetRoot and __targetRoot.Velocity.Magnitude or 0
+            local __spreadScale = math.clamp(__targetSpeed / 8, 0.02, 1.0)
+            local __rx = (math.random() - 0.5) * 1.5 * __spreadScale
+            local __ry = (math.random() - 0.5) * 1.5 * __spreadScale
+            local __rz = (math.random() - 0.5) * 1.5 * __spreadScale
             local __p4q5r6 = __g5h6i7:ToObjectSpace(CFrame.new(__d2e3f4 + Vector3.new(__rx, __ry, __rz)))
 
             __u3v4w5[utf8.char(0)] = __w9x0y1:EncodeCFrame(CFrame.new(__j8k9l0, __d2e3f4) * CFrame.Angles(__m1n2o3:ToOrientation()))
