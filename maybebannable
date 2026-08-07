@@ -137,20 +137,11 @@ do
             -- ジンバルロック対策としてX, Zに微小なズレを追加
             local __j8k9l0 = __d2e3f4 + Vector3.new(0.01, 7.5, 0.01)
             local __m1n2o3 = CFrame.lookAt(__j8k9l0, __d2e3f4)
-            -- 止まってる(speed<1)はヒットボックス中心、動いてるときだけランダムオフセット
-            local __targetRoot = __x6y7z8.Character and __x6y7z8.Character:FindFirstChild("HumanoidRootPart")
-            local __targetSpeed = __targetRoot and __targetRoot.Velocity.Magnitude or 0
-            local __p4q5r6
-            if __targetSpeed < 1 then
-                -- 完全中心（オフセットなし）
-                __p4q5r6 = __g5h6i7:ToObjectSpace(CFrame.new(__d2e3f4))
-            else
-                local __spreadScale = math.clamp(__targetSpeed / 8, 0.0, 1.0)
-                local __rx = (math.random() - 0.5) * 1.5 * __spreadScale
-                local __ry = (math.random() - 0.5) * 1.5 * __spreadScale
-                local __rz = (math.random() - 0.5) * 1.5 * __spreadScale
-                __p4q5r6 = __g5h6i7:ToObjectSpace(CFrame.new(__d2e3f4 + Vector3.new(__rx, __ry, __rz)))
-            end
+            -- ランダムヒットオフセットを4スタッド幅（-2 ～ +2）に変更
+            local __rx = (math.random() - 0.5) * 1.5
+            local __ry = (math.random() - 0.5) * 1.5
+            local __rz = (math.random() - 0.5) * 1.5
+            local __p4q5r6 = __g5h6i7:ToObjectSpace(CFrame.new(__d2e3f4 + Vector3.new(__rx, __ry, __rz)))
 
             __u3v4w5[utf8.char(0)] = __w9x0y1:EncodeCFrame(CFrame.new(__j8k9l0, __d2e3f4) * CFrame.Angles(__m1n2o3:ToOrientation()))
             __u3v4w5[utf8.char(1)] = __w9x0y1:EncodeCFrame(CFrame.new(__d2e3f4) * CFrame.Angles(__m1n2o3:ToOrientation()))
@@ -343,7 +334,7 @@ do
        
         local closest = nil
         local closestDist = math.huge
-        local MAX_DISTANCE = 99999999999
+        local MAX_DISTANCE = 200
 
         for _, player in next, __v2w3x4:GetPlayers() do
             if player == __k7l8m9 then continue end
