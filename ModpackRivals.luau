@@ -292,15 +292,16 @@ local espCache = {}
 local espSettings = {
     MasterEnabled = false,
     Box = false, BoxColor = Color3.fromRGB(255, 255, 255),
-    BoxFill = false, BoxFillColor = Color3.fromRGB(255, 0, 0),
+    BoxFill = false, BoxFillColor = Color3.fromRGB(255, 255, 255),
     Distance = false, DistanceColor = Color3.fromRGB(255, 255, 255),
-    Weapon = false, WeaponColor = Color3.fromRGB(255, 200, 0),
-    Ammo = false, AmmoColor = Color3.fromRGB(0, 255, 127),
-    Katana = false, KatanaColor = Color3.fromRGB(255, 0, 0),
+    Weapon = false, WeaponColor = Color3.fromRGB(255, 255, 255),
+    Ammo = false, AmmoColor = Color3.fromRGB(255, 255, 255),
+    Katana = false, KatanaColor = Color3.fromRGB(255, 255, 255),
     Bone = false, BoneColor = Color3.fromRGB(255, 255, 255),
     Tracer = false, TracerColor = Color3.fromRGB(255, 255, 255),
     Name = false, NameColor = Color3.fromRGB(255, 255, 255),
     HP = false, HPColor = Color3.fromRGB(50, 255, 50),
+    TextStrokeColor = Color3.fromRGB(0, 0, 0),
 }
 getgenv().ESPSettings_TeamCheck = false
 
@@ -340,8 +341,8 @@ local function createPlayerEsp(p)
     ammoText.Position = UDim2.new(0, 0, 0, 0)
     ammoText.BackgroundTransparency = 1
     ammoText.TextStrokeTransparency = 0
-    ammoText.TextSize = 12
-    ammoText.Font = Enum.Font.GothamBold
+    ammoText.TextSize = 13
+    ammoText.Font = Enum.Font.UI
     ammoText.RichText = true
     ammoText.Visible = false
     ammoText.Parent = billboard
@@ -351,8 +352,8 @@ local function createPlayerEsp(p)
     weaponText.Position = UDim2.new(0, 0, 0.5, 0)
     weaponText.BackgroundTransparency = 1
     weaponText.TextStrokeTransparency = 0
-    weaponText.TextSize = 14
-    weaponText.Font = Enum.Font.GothamBold
+    weaponText.TextSize = 13
+    weaponText.Font = Enum.Font.UI
     weaponText.RichText = true
     weaponText.Visible = false
     weaponText.Parent = billboard
@@ -390,11 +391,11 @@ local function createPlayerEsp(p)
     }
 
     local c = espCache[p]
-    c.NameTag.BackgroundTransparency = 1; c.NameTag.Font = Enum.Font.GothamBold; c.NameTag.TextSize = 14; c.NameTag.TextStrokeTransparency = 0; c.NameTag.Visible = false; c.NameTag.Size = UDim2.new(0, 200, 0, 20); c.NameTag.Parent = espContainer
-    c.DistanceTag.BackgroundTransparency = 1; c.DistanceTag.Font = Enum.Font.GothamBold; c.DistanceTag.TextSize = 12; c.DistanceTag.TextStrokeTransparency = 0; c.DistanceTag.Visible = false; c.DistanceTag.Size = UDim2.new(0, 100, 0, 16); c.DistanceTag.Parent = espContainer
+    c.NameTag.BackgroundTransparency = 1; c.NameTag.Font = Enum.Font.UI; c.NameTag.TextSize = 13; c.NameTag.TextStrokeTransparency = 0; c.NameTag.Visible = false; c.NameTag.Size = UDim2.new(0, 200, 0, 20); c.NameTag.AnchorPoint = Vector2.new(0.5, 1); c.NameTag.Parent = espContainer
+    c.DistanceTag.BackgroundTransparency = 1; c.DistanceTag.Font = Enum.Font.UI; c.DistanceTag.TextSize = 13; c.DistanceTag.TextStrokeTransparency = 0; c.DistanceTag.Visible = false; c.DistanceTag.Size = UDim2.new(0, 200, 0, 16); c.DistanceTag.AnchorPoint = Vector2.new(0.5, 0); c.DistanceTag.Parent = espContainer
     
     c.Box.BackgroundTransparency = 1; c.Box.BorderSizePixel = 0; c.Box.Visible = false; c.Box.Parent = espContainer
-    c.BoxStroke.Thickness = 1.5; c.BoxStroke.Parent = c.Box
+    c.BoxStroke.Thickness = 1; c.BoxStroke.Parent = c.Box
 end
 
 local function clearPlayerEsp(p)
@@ -536,12 +537,12 @@ RunService.Heartbeat:Connect(function()
         end
 
         if onScreen then
-            local headPosV3 = cam:WorldToViewportPoint(head.Position + Vector3.new(0, 1.5, 0))
-            local topPosV3, topVis = cam:WorldToViewportPoint(rootPart.Position + Vector3.new(0, 3, 0))
-            local botPosV3, botVis = cam:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3.5, 0))
-            local headPos = Vector2.new(headPosV3.X, headPosV3.Y)
-            local topPos = Vector2.new(topPosV3.X, topPosV3.Y)
-            local botPos = Vector2.new(botPosV3.X, botPosV3.Y)
+            local height = (cam.ViewportSize.Y / rootPos.Z) * 4.5
+            local width = height / 1.5
+            local topPos = Vector2.new(rootPos.X, rootPos.Y - (height / 2))
+            local botPos = Vector2.new(rootPos.X, rootPos.Y + (height / 2))
+            local topVis = true
+            local botVis = true
 
             if espSettings.Name then
                 local text = p.Name
@@ -552,16 +553,14 @@ RunService.Heartbeat:Connect(function()
                 end
                 cache.NameTag.Text = text
                 cache.NameTag.TextColor3 = color
-                cache.NameTag.Position = UDim2.new(0, headPos.X, 0, headPos.Y - 20)
+                cache.NameTag.TextStrokeColor3 = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
+                cache.NameTag.Position = UDim2.new(0, topPos.X, 0, topPos.Y - 5)
                 cache.NameTag.Visible = true
             else
                 cache.NameTag.Visible = false
             end
 
             if topVis and botVis then
-                local height = botPos.Y - topPos.Y
-                local width = height / 2
-
                 if espSettings.Box then
                     cache.BoxStroke.Color = espSettings.BoxColor
                     cache.Box.Size = UDim2.new(0, width, 0, height)
@@ -578,10 +577,27 @@ RunService.Heartbeat:Connect(function()
                     cache.Box.Visible = false
                 end
                 
+                if espSettings.HP and cache.HPBarBg then
+                    local hpW = 2 -- Fixed thin width to 2px
+                    cache.HPBarBg.Size = UDim2.new(0, hpW, 0, height)
+                    cache.HPBarBg.Position = UDim2.new(0, topPos.X - (width / 2) - hpW - 4, 0, topPos.Y)
+                    local hpPct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+                    cache.HPBarFill.Size = UDim2.new(1, 0, hpPct, 0)
+                    cache.HPBarFill.Position = UDim2.new(0, 0, 1 - hpPct, 0)
+                    cache.HPBarFill.BackgroundColor3 = espSettings.HPColor
+                    cache.HPBarBg.BorderColor3 = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
+                    cache.HPBarBg.Visible = true
+                    cache.HPBarFill.Visible = true
+                elseif cache.HPBarBg then
+                    cache.HPBarBg.Visible = false
+                end
+
                 if espSettings.Distance then
-                    cache.DistanceTag.Text = tostring(distance) .. "m"
+                    local hpPctInt = math.floor((hum.Health / hum.MaxHealth) * 100)
+                    cache.DistanceTag.Text = string.format("[ %dm ] [ %d%% ]", distance, hpPctInt)
                     cache.DistanceTag.TextColor3 = espSettings.DistanceColor
-                    cache.DistanceTag.Position = UDim2.new(0, botPos.X, 0, botPos.Y + 5)
+                    cache.DistanceTag.TextStrokeColor3 = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
+                    cache.DistanceTag.Position = UDim2.new(0, topPos.X, 0, botPos.Y + 2)
                     cache.DistanceTag.Visible = true
                 else
                     cache.DistanceTag.Visible = false
@@ -592,20 +608,6 @@ RunService.Heartbeat:Connect(function()
                     drawLine(cache.Tracer, center, botPos, espSettings.TracerColor)
                 else
                     cache.Tracer.Visible = false
-                end
-
-                if espSettings.HP and cache.HPBarBg then
-                    local hpW = math.clamp(height / 8, 2, 6)
-                    cache.HPBarBg.Size = UDim2.new(0, hpW, 0, height)
-                    cache.HPBarBg.Position = UDim2.new(0, topPos.X - (width / 2) - hpW - 5, 0, topPos.Y)
-                    local hpPct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
-                    cache.HPBarFill.Size = UDim2.new(1, 0, hpPct, 0)
-                    cache.HPBarFill.Position = UDim2.new(0, 0, 1 - hpPct, 0)
-                    cache.HPBarFill.BackgroundColor3 = espSettings.HPColor
-                    cache.HPBarBg.Visible = true
-                    cache.HPBarFill.Visible = true
-                elseif cache.HPBarBg then
-                    cache.HPBarBg.Visible = false
                 end
             else
                 cache.Box.Visible = false
@@ -749,6 +751,8 @@ ESPDep:AddToggle("ESP_Name", { Text = "NameESP", Default = false, Callback = fun
 
 ESPDep:AddToggle("ESP_HP", { Text = "HP Bar", Default = false, Callback = function(v) espSettings.HP = v end })
     :AddColorPicker("ESP_HP_Color", { Default = espSettings.HPColor, Callback = function(v) espSettings.HPColor = v end })
+
+ESPDep:AddColorPicker("ESP_TextStroke_Color", { Title = "Text Stroke Color", Default = espSettings.TextStrokeColor, Callback = function(v) espSettings.TextStrokeColor = v end })
 
 ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callback = function(v) getgenv().ESPSettings_TeamCheck = v end })
 
