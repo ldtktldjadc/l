@@ -340,23 +340,27 @@ local function createPlayerEsp(p)
     ammoText.Size = UDim2.new(1, 0, 0.5, 0)
     ammoText.Position = UDim2.new(0, 0, 0, 0)
     ammoText.BackgroundTransparency = 1
-    ammoText.TextStrokeTransparency = 0
+    ammoText.TextStrokeTransparency = 1
     ammoText.TextSize = 13
     ammoText.Font = Drawing.Fonts.UI
     ammoText.RichText = true
     ammoText.Visible = false
     ammoText.Parent = billboard
+    local ammoStroke = Instance.new("UIStroke")
+    ammoStroke.Parent = ammoText
 
     local weaponText = Instance.new("TextLabel")
     weaponText.Size = UDim2.new(1, 0, 0.5, 0)
     weaponText.Position = UDim2.new(0, 0, 0.5, 0)
     weaponText.BackgroundTransparency = 1
-    weaponText.TextStrokeTransparency = 0
+    weaponText.TextStrokeTransparency = 1
     weaponText.TextSize = 13
     weaponText.Font = Drawing.Fonts.UI
     weaponText.RichText = true
     weaponText.Visible = false
     weaponText.Parent = billboard
+    local weaponStroke = Instance.new("UIStroke")
+    weaponStroke.Parent = weaponText
 
     local hpBarBg = Instance.new("Frame")
     hpBarBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
@@ -391,8 +395,10 @@ local function createPlayerEsp(p)
     }
 
     local c = espCache[p]
-    c.NameTag.BackgroundTransparency = 1; c.NameTag.Font = Drawing.Fonts.UI; c.NameTag.TextSize = 13; c.NameTag.TextStrokeTransparency = 0; c.NameTag.Visible = false; c.NameTag.Size = UDim2.new(0, 200, 0, 20); c.NameTag.AnchorPoint = Vector2.new(0.5, 1); c.NameTag.Parent = espContainer
-    c.DistanceTag.BackgroundTransparency = 1; c.DistanceTag.Font = Drawing.Fonts.UI; c.DistanceTag.TextSize = 13; c.DistanceTag.TextStrokeTransparency = 0; c.DistanceTag.Visible = false; c.DistanceTag.Size = UDim2.new(0, 200, 0, 16); c.DistanceTag.AnchorPoint = Vector2.new(0.5, 0); c.DistanceTag.Parent = espContainer
+    c.NameTag.BackgroundTransparency = 1; c.NameTag.Font = Drawing.Fonts.UI; c.NameTag.TextSize = 13; c.NameTag.TextStrokeTransparency = 1; c.NameTag.Visible = false; c.NameTag.Size = UDim2.new(0, 200, 0, 20); c.NameTag.AnchorPoint = Vector2.new(0.5, 1); c.NameTag.Parent = espContainer
+    local nameStroke = Instance.new("UIStroke"); nameStroke.Parent = c.NameTag
+    c.DistanceTag.BackgroundTransparency = 1; c.DistanceTag.Font = Drawing.Fonts.UI; c.DistanceTag.TextSize = 13; c.DistanceTag.TextStrokeTransparency = 1; c.DistanceTag.Visible = false; c.DistanceTag.Size = UDim2.new(0, 200, 0, 16); c.DistanceTag.AnchorPoint = Vector2.new(0.5, 0); c.DistanceTag.Parent = espContainer
+    local distStroke = Instance.new("UIStroke"); distStroke.Parent = c.DistanceTag
     
     c.Box.BackgroundTransparency = 1; c.Box.BorderSizePixel = 0; c.Box.Visible = false; c.Box.Parent = espContainer
     c.BoxStroke.Thickness = 1; c.BoxStroke.Parent = c.Box
@@ -503,6 +509,7 @@ RunService.Heartbeat:Connect(function()
 
             if espSettings.Weapon then
                 cache.WeaponText.TextColor3 = espSettings.WeaponColor
+                cache.WeaponText.UIStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
                 local weaponName = "None"
                 if fighter and fighter.EquippedItem then
                     weaponName = fighter.EquippedItem.Name
@@ -515,6 +522,7 @@ RunService.Heartbeat:Connect(function()
 
             if espSettings.Ammo then
                 cache.AmmoText.TextColor3 = espSettings.AmmoColor
+                cache.AmmoText.UIStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
                 local ammoStr = ""
                 if fighter and fighter.EquippedItem then
                     local ammo = fighter.EquippedItem:Get("Ammo")
@@ -537,8 +545,8 @@ RunService.Heartbeat:Connect(function()
         end
 
         if onScreen then
-            local height = (cam.ViewportSize.Y / rootPos.Z) * 4.5
-            local width = height / 1.5
+            local height = (cam.ViewportSize.Y / rootPos.Z) * 4.0
+            local width = height / 1.7
             local topPos = Vector2.new(rootPos.X, rootPos.Y - (height / 2))
             local botPos = Vector2.new(rootPos.X, rootPos.Y + (height / 2))
             local topVis = true
@@ -553,7 +561,7 @@ RunService.Heartbeat:Connect(function()
                 end
                 cache.NameTag.Text = text
                 cache.NameTag.TextColor3 = color
-                cache.NameTag.TextStrokeColor3 = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
+                cache.NameTag.UIStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
                 cache.NameTag.Position = UDim2.new(0, topPos.X, 0, topPos.Y - 5)
                 cache.NameTag.Visible = true
             else
@@ -596,9 +604,13 @@ RunService.Heartbeat:Connect(function()
                     local hpPctInt = math.floor((hum.Health / hum.MaxHealth) * 100)
                     cache.DistanceTag.Text = string.format("[ %dm ] [ %d%% ]", distance, hpPctInt)
                     cache.DistanceTag.TextColor3 = espSettings.DistanceColor
-                    cache.DistanceTag.TextStrokeColor3 = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
+                    cache.DistanceTag.UIStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
                     cache.DistanceTag.Position = UDim2.new(0, topPos.X, 0, botPos.Y + 2)
                     cache.DistanceTag.Visible = true
+                    
+                    if cache.WeaponBillboard.Enabled then
+                        cache.WeaponBillboard.StudsOffset = Vector3.new(0, -3.5 - ((botPos.Y - topPos.Y) / 100), 0) -- Move Billboard further down dynamically to prevent overlap
+                    end
                 else
                     cache.DistanceTag.Visible = false
                 end
