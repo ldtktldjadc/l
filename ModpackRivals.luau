@@ -405,7 +405,7 @@ local function createPlayerEsp(p)
     c.DistanceTag.BackgroundTransparency = 1; c.DistanceTag.Font = Drawing.Fonts.UI; c.DistanceTag.TextSize = 8; c.DistanceTag.TextStrokeTransparency = 1; c.DistanceTag.Visible = false; c.DistanceTag.Size = UDim2.new(0, 200, 0, 16); c.DistanceTag.AnchorPoint = Vector2.new(0.5, 0); c.DistanceTag.Parent = espContainer
     local distStroke = Instance.new("UIStroke"); distStroke.Parent = c.DistanceTag
     
-    c.Box.BackgroundTransparency = 1; c.Box.BorderSizePixel = 0; c.Box.Visible = false; c.Box.Parent = espContainer
+    c.Box.BackgroundTransparency = 1; c.Box.BorderSizePixel = 1; c.Box.Visible = false; c.Box.Parent = espContainer
     c.BoxStroke.Thickness = 1
     c.BoxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     c.BoxStroke.LineJoinMode = Enum.LineJoinMode.Miter
