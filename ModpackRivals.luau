@@ -312,6 +312,11 @@ local function createLine()
     line.ZIndex = 0
     line.Visible = false
     line.Parent = espContainer
+    local stroke = Instance.new("UIStroke")
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Color = Color3.new(0, 0, 0)
+    stroke.Thickness = 1
+    stroke.Parent = line
     return line 
 end
 
@@ -330,7 +335,7 @@ local function createPlayerEsp(p)
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "WeaponInfo"
     billboard.Size = UDim2.new(0, 200, 0, 60)
-    billboard.StudsOffset = Vector3.new(0, -3.5, 0)
+    billboard.StudsOffset = Vector3.new(0, -4.5, 0)
     billboard.AlwaysOnTop = true
     billboard.MaxDistance = 5000
     billboard.Enabled = false
@@ -378,7 +383,6 @@ local function createPlayerEsp(p)
         Box = Instance.new("Frame"),
         BoxStroke = Instance.new("UIStroke"),
         Tracer = createLine(),
-        TracerStroke = Instance.new("UIStroke"),
         WeaponBillboard = billboard,
         WeaponText = weaponText,
         AmmoText = ammoText,
@@ -401,9 +405,8 @@ local function createPlayerEsp(p)
     c.DistanceTag.BackgroundTransparency = 1; c.DistanceTag.Font = Drawing.Fonts.UI; c.DistanceTag.TextSize = 8; c.DistanceTag.TextStrokeTransparency = 1; c.DistanceTag.Visible = false; c.DistanceTag.Size = UDim2.new(0, 200, 0, 16); c.DistanceTag.AnchorPoint = Vector2.new(0.5, 0); c.DistanceTag.Parent = espContainer
     local distStroke = Instance.new("UIStroke"); distStroke.Parent = c.DistanceTag
     
-    c.Box.BackgroundTransparency = 1; c.Box.BorderSizePixel = 0; c.Box.Visible = false; c.Box.Parent = espContainer
-    c.BoxStroke.Thickness = 1; c.BoxStroke.Parent = c.Box
-    c.TracerStroke.Thickness = 1; c.TracerStroke.Parent = c.Tracer
+    c.Box.BackgroundTransparency = 1; c.Box.BorderSizePixel = 1; c.Box.Visible = false; c.Box.Parent = espContainer
+    c.BoxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; c.BoxStroke.Thickness = 1; c.BoxStroke.Parent = c.Box
 end
 
 local function clearPlayerEsp(p)
@@ -413,6 +416,7 @@ local function clearPlayerEsp(p)
         pcall(function() espCache[p].Box:Destroy() end)
         pcall(function() espCache[p].Tracer:Destroy() end)
         pcall(function() if espCache[p].WeaponBillboard then espCache[p].WeaponBillboard:Destroy() end end)
+        pcall(function() if espCache[p].AmmoText then espCache[p].AmmoText:Destroy() end end)
         pcall(function() if espCache[p].HPBarBg then espCache[p].HPBarBg:Destroy() end end)
         for _, b in pairs(espCache[p].Bones) do pcall(function() b:Destroy() end) end
         espCache[p] = nil
@@ -577,7 +581,8 @@ RunService.Heartbeat:Connect(function()
 
             if topVis and botVis then
                 if espSettings.Box then
-                    cache.BoxStroke.Color = espSettings.BoxColor
+                    cache.Box.BorderColor3 = espSettings.BoxColor
+                    cache.BoxStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
                     cache.Box.Size = UDim2.new(0, width, 0, height)
                     cache.Box.Position = UDim2.new(0, topPos.X - (width/2), 0, topPos.Y)
                     cache.Box.Visible = true
@@ -616,7 +621,7 @@ RunService.Heartbeat:Connect(function()
                     cache.DistanceTag.Visible = true
                     
                     if cache.WeaponBillboard.Enabled then
-                        cache.WeaponBillboard.StudsOffset = Vector3.new(0, -3.5 - ((botPos.Y - topPos.Y) / 100), 0) -- Move Billboard further down dynamically to prevent overlap
+                        cache.WeaponBillboard.StudsOffset = Vector3.new(0, -4.5 - ((botPos.Y - topPos.Y) / 100), 0) -- Move Billboard further down dynamically to prevent overlap
                     end
                 else
                     cache.DistanceTag.Visible = false
@@ -625,7 +630,6 @@ RunService.Heartbeat:Connect(function()
                 if espSettings.Tracer then
                     local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
                     drawLine(cache.Tracer, center, botPos, espSettings.TracerColor)
-                    cache.TracerStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
                 else
                     cache.Tracer.Visible = false
                 end
