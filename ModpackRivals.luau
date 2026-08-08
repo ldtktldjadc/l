@@ -405,8 +405,8 @@ local function createPlayerEsp(p)
     c.DistanceTag.BackgroundTransparency = 1; c.DistanceTag.Font = Drawing.Fonts.UI; c.DistanceTag.TextSize = 8; c.DistanceTag.TextStrokeTransparency = 1; c.DistanceTag.Visible = false; c.DistanceTag.Size = UDim2.new(0, 200, 0, 16); c.DistanceTag.AnchorPoint = Vector2.new(0.5, 0); c.DistanceTag.Parent = espContainer
     local distStroke = Instance.new("UIStroke"); distStroke.Parent = c.DistanceTag
     
-    c.Box.BackgroundTransparency = 1; c.Box.BorderSizePixel = 1; c.Box.Visible = false; c.Box.Parent = espContainer
-    c.BoxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; c.BoxStroke.Thickness = 1; c.BoxStroke.Parent = c.Box
+    c.Box.BackgroundTransparency = 1; c.Box.BorderSizePixel = 0; c.Box.Visible = false; c.Box.Parent = espContainer
+    c.BoxStroke.Thickness = 1; c.BoxStroke.Parent = c.Box
 end
 
 local function clearPlayerEsp(p)
@@ -492,6 +492,7 @@ RunService.Heartbeat:Connect(function()
                 c.Box.Visible = false
                 c.Tracer.Visible = false
                 c.WeaponBillboard.Enabled = false
+                if c.AmmoText then c.AmmoText.Visible = false end
                 if c.HPBarBg then c.HPBarBg.Visible = false end
                 for _, b in pairs(c.Bones) do b.Visible = false end
             end
@@ -581,8 +582,7 @@ RunService.Heartbeat:Connect(function()
 
             if topVis and botVis then
                 if espSettings.Box then
-                    cache.Box.BorderColor3 = espSettings.BoxColor
-                    cache.BoxStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
+                    cache.BoxStroke.Color = espSettings.BoxColor
                     cache.Box.Size = UDim2.new(0, width, 0, height)
                     cache.Box.Position = UDim2.new(0, topPos.X - (width/2), 0, topPos.Y)
                     cache.Box.Visible = true
