@@ -585,7 +585,9 @@ RunService.Heartbeat:Connect(function()
 
             if topVis and botVis then
                 if espSettings.Box then
-                    cache.BoxStroke.Color = espSettings.BoxColor
+                    cache.Box.BorderSizePixel = 1
+                    cache.Box.BorderColor3 = espSettings.BoxColor
+                    cache.BoxStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
                     cache.Box.Size = UDim2.new(0, width, 0, height)
                     cache.Box.Position = UDim2.new(0, topPos.X - (width/2), 0, topPos.Y)
                     cache.Box.Visible = true
