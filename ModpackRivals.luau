@@ -337,15 +337,15 @@ local function createPlayerEsp(p)
     billboard.Parent = screenGui
 
     local ammoText = Instance.new("TextLabel")
-    ammoText.Size = UDim2.new(1, 0, 0.5, 0)
-    ammoText.Position = UDim2.new(0, 0, 0, 0)
+    ammoText.Size = UDim2.new(0, 200, 0, 16)
+    ammoText.AnchorPoint = Vector2.new(0.5, 1)
     ammoText.BackgroundTransparency = 1
     ammoText.TextStrokeTransparency = 1
-    ammoText.TextSize = 13
+    ammoText.TextSize = 8
     ammoText.Font = Drawing.Fonts.UI
     ammoText.RichText = true
     ammoText.Visible = false
-    ammoText.Parent = billboard
+    ammoText.Parent = espContainer
     local ammoStroke = Instance.new("UIStroke")
     ammoStroke.Parent = ammoText
 
@@ -354,7 +354,7 @@ local function createPlayerEsp(p)
     weaponText.Position = UDim2.new(0, 0, 0.5, 0)
     weaponText.BackgroundTransparency = 1
     weaponText.TextStrokeTransparency = 1
-    weaponText.TextSize = 13
+    weaponText.TextSize = 8
     weaponText.Font = Drawing.Fonts.UI
     weaponText.RichText = true
     weaponText.Visible = false
@@ -378,6 +378,7 @@ local function createPlayerEsp(p)
         Box = Instance.new("Frame"),
         BoxStroke = Instance.new("UIStroke"),
         Tracer = createLine(),
+        TracerStroke = Instance.new("UIStroke"),
         WeaponBillboard = billboard,
         WeaponText = weaponText,
         AmmoText = ammoText,
@@ -395,13 +396,14 @@ local function createPlayerEsp(p)
     }
 
     local c = espCache[p]
-    c.NameTag.BackgroundTransparency = 1; c.NameTag.Font = Drawing.Fonts.UI; c.NameTag.TextSize = 13; c.NameTag.TextStrokeTransparency = 1; c.NameTag.Visible = false; c.NameTag.Size = UDim2.new(0, 200, 0, 20); c.NameTag.AnchorPoint = Vector2.new(0.5, 1); c.NameTag.Parent = espContainer
+    c.NameTag.BackgroundTransparency = 1; c.NameTag.Font = Drawing.Fonts.UI; c.NameTag.TextSize = 8; c.NameTag.TextStrokeTransparency = 1; c.NameTag.Visible = false; c.NameTag.Size = UDim2.new(0, 200, 0, 16); c.NameTag.AnchorPoint = Vector2.new(0.5, 1); c.NameTag.Parent = espContainer
     local nameStroke = Instance.new("UIStroke"); nameStroke.Parent = c.NameTag
-    c.DistanceTag.BackgroundTransparency = 1; c.DistanceTag.Font = Drawing.Fonts.UI; c.DistanceTag.TextSize = 13; c.DistanceTag.TextStrokeTransparency = 1; c.DistanceTag.Visible = false; c.DistanceTag.Size = UDim2.new(0, 200, 0, 16); c.DistanceTag.AnchorPoint = Vector2.new(0.5, 0); c.DistanceTag.Parent = espContainer
+    c.DistanceTag.BackgroundTransparency = 1; c.DistanceTag.Font = Drawing.Fonts.UI; c.DistanceTag.TextSize = 8; c.DistanceTag.TextStrokeTransparency = 1; c.DistanceTag.Visible = false; c.DistanceTag.Size = UDim2.new(0, 200, 0, 16); c.DistanceTag.AnchorPoint = Vector2.new(0.5, 0); c.DistanceTag.Parent = espContainer
     local distStroke = Instance.new("UIStroke"); distStroke.Parent = c.DistanceTag
     
     c.Box.BackgroundTransparency = 1; c.Box.BorderSizePixel = 0; c.Box.Visible = false; c.Box.Parent = espContainer
     c.BoxStroke.Thickness = 1; c.BoxStroke.Parent = c.Box
+    c.TracerStroke.Thickness = 1; c.TracerStroke.Parent = c.Tracer
 end
 
 local function clearPlayerEsp(p)
@@ -542,15 +544,20 @@ RunService.Heartbeat:Connect(function()
             end
         else
             cache.WeaponBillboard.Enabled = false
+            cache.AmmoText.Visible = false
         end
 
         if onScreen then
-            local height = (cam.ViewportSize.Y / rootPos.Z) * 4.0
+            local height = (cam.ViewportSize.Y / rootPos.Z) * 3.4
             local width = height / 1.7
             local topPos = Vector2.new(rootPos.X, rootPos.Y - (height / 2))
             local botPos = Vector2.new(rootPos.X, rootPos.Y + (height / 2))
             local topVis = true
             local botVis = true
+            
+            if cache.AmmoText.Visible then
+                cache.AmmoText.Position = UDim2.new(0, topPos.X, 0, topPos.Y - (espSettings.Name and 14 or 4))
+            end
 
             if espSettings.Name then
                 local text = p.Name
@@ -618,6 +625,7 @@ RunService.Heartbeat:Connect(function()
                 if espSettings.Tracer then
                     local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
                     drawLine(cache.Tracer, center, botPos, espSettings.TracerColor)
+                    cache.TracerStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
                 else
                     cache.Tracer.Visible = false
                 end
@@ -625,6 +633,7 @@ RunService.Heartbeat:Connect(function()
                 cache.Box.Visible = false
                 cache.DistanceTag.Visible = false
                 cache.Tracer.Visible = false
+                cache.AmmoText.Visible = false
                 if cache.HPBarBg then cache.HPBarBg.Visible = false end
             end
 
