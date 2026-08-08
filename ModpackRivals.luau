@@ -406,7 +406,10 @@ local function createPlayerEsp(p)
     local distStroke = Instance.new("UIStroke"); distStroke.Parent = c.DistanceTag
     
     c.Box.BackgroundTransparency = 1; c.Box.BorderSizePixel = 0; c.Box.Visible = false; c.Box.Parent = espContainer
-    c.BoxStroke.Thickness = 1; c.BoxStroke.Parent = c.Box
+    c.BoxStroke.Thickness = 1
+    c.BoxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    c.BoxStroke.LineJoinMode = Enum.LineJoinMode.Miter
+    c.BoxStroke.Parent = c.Box
 end
 
 local function clearPlayerEsp(p)
