@@ -380,8 +380,13 @@ local function createPlayerEsp(p)
     espCache[p] = {
         NameTag = Instance.new("TextLabel"),
         DistanceTag = Instance.new("TextLabel"),
-        Box = Instance.new("Frame"),
-        BoxStroke = Instance.new("UIStroke"),
+        BoxLines = {
+            Top = createLine(),
+            Bottom = createLine(),
+            Left = createLine(),
+            Right = createLine()
+        },
+        BoxFill = Instance.new("Frame"),
         Tracer = createLine(),
         WeaponBillboard = billboard,
         WeaponText = weaponText,
@@ -405,18 +410,15 @@ local function createPlayerEsp(p)
     c.DistanceTag.BackgroundTransparency = 1; c.DistanceTag.Font = Drawing.Fonts.UI; c.DistanceTag.TextSize = 8; c.DistanceTag.TextStrokeTransparency = 1; c.DistanceTag.Visible = false; c.DistanceTag.Size = UDim2.new(0, 200, 0, 16); c.DistanceTag.AnchorPoint = Vector2.new(0.5, 0); c.DistanceTag.Parent = espContainer
     local distStroke = Instance.new("UIStroke"); distStroke.Parent = c.DistanceTag
     
-    c.Box.BackgroundTransparency = 1; c.Box.BorderSizePixel = 1; c.Box.Visible = false; c.Box.Parent = espContainer
-    c.BoxStroke.Thickness = 1
-    c.BoxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    c.BoxStroke.LineJoinMode = Enum.LineJoinMode.Miter
-    c.BoxStroke.Parent = c.Box
+    c.BoxFill.BackgroundTransparency = 0.5; c.BoxFill.BorderSizePixel = 0; c.BoxFill.Visible = false; c.BoxFill.Parent = espContainer
 end
 
 local function clearPlayerEsp(p)
     if espCache[p] then
         pcall(function() espCache[p].NameTag:Destroy() end)
         pcall(function() espCache[p].DistanceTag:Destroy() end)
-        pcall(function() espCache[p].Box:Destroy() end)
+        pcall(function() if espCache[p].BoxFill then espCache[p].BoxFill:Destroy() end end)
+        for _, l in pairs(espCache[p].BoxLines or {}) do pcall(function() l:Destroy() end) end
         pcall(function() espCache[p].Tracer:Destroy() end)
         pcall(function() if espCache[p].WeaponBillboard then espCache[p].WeaponBillboard:Destroy() end end)
         pcall(function() if espCache[p].AmmoText then espCache[p].AmmoText:Destroy() end end)
@@ -470,7 +472,8 @@ RunService.Heartbeat:Connect(function()
         for _, c in pairs(espCache) do
             c.NameTag.Visible = false
             c.DistanceTag.Visible = false
-            c.Box.Visible = false
+            if c.BoxFill then c.BoxFill.Visible = false end
+            for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
             c.Tracer.Visible = false
             c.WeaponBillboard.Enabled = false
             if c.HPBarBg then c.HPBarBg.Visible = false end
@@ -492,7 +495,8 @@ RunService.Heartbeat:Connect(function()
                 local c = espCache[p]
                 c.NameTag.Visible = false
                 c.DistanceTag.Visible = false
-                c.Box.Visible = false
+                if c.BoxFill then c.BoxFill.Visible = false end
+                for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
                 c.Tracer.Visible = false
                 c.WeaponBillboard.Enabled = false
                 if c.AmmoText then c.AmmoText.Visible = false end
@@ -585,21 +589,33 @@ RunService.Heartbeat:Connect(function()
 
             if topVis and botVis then
                 if espSettings.Box then
-                    cache.Box.BorderSizePixel = 1
-                    cache.Box.BorderColor3 = espSettings.BoxColor
-                    cache.BoxStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
-                    cache.Box.Size = UDim2.new(0, width, 0, height)
-                    cache.Box.Position = UDim2.new(0, topPos.X - (width/2), 0, topPos.Y)
-                    cache.Box.Visible = true
+                    local tl = Vector2.new(topPos.X - (width/2), topPos.Y)
+                    local tr = Vector2.new(topPos.X + (width/2), topPos.Y)
+                    local bl = Vector2.new(topPos.X - (width/2), botPos.Y)
+                    local br = Vector2.new(topPos.X + (width/2), botPos.Y)
+
+                    drawLine(cache.BoxLines.Top, tl, tr, espSettings.BoxColor)
+                    drawLine(cache.BoxLines.Bottom, bl, br, espSettings.BoxColor)
+                    drawLine(cache.BoxLines.Left, tl, bl, espSettings.BoxColor)
+                    drawLine(cache.BoxLines.Right, tr, br, espSettings.BoxColor)
+                    
+                    local strokeColor = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
+                    for _, l in pairs(cache.BoxLines) do
+                        local st = l:FindFirstChildOfClass("UIStroke")
+                        if st then st.Color = strokeColor end
+                    end
 
                     if espSettings.BoxFill then
-                        cache.Box.BackgroundColor3 = espSettings.BoxFillColor
-                        cache.Box.BackgroundTransparency = 0.5
+                        cache.BoxFill.BackgroundColor3 = espSettings.BoxFillColor
+                        cache.BoxFill.Size = UDim2.new(0, width, 0, height)
+                        cache.BoxFill.Position = UDim2.new(0, topPos.X - (width/2), 0, topPos.Y)
+                        cache.BoxFill.Visible = true
                     else
-                        cache.Box.BackgroundTransparency = 1
+                        cache.BoxFill.Visible = false
                     end
                 else
-                    cache.Box.Visible = false
+                    for _, line in pairs(cache.BoxLines) do line.Visible = false end
+                    if cache.BoxFill then cache.BoxFill.Visible = false end
                 end
                 
                 if espSettings.HP and cache.HPBarBg then
@@ -639,7 +655,8 @@ RunService.Heartbeat:Connect(function()
                     cache.Tracer.Visible = false
                 end
             else
-                cache.Box.Visible = false
+                if cache.BoxFill then cache.BoxFill.Visible = false end
+                for _, l in pairs(cache.BoxLines or {}) do l.Visible = false end
                 cache.DistanceTag.Visible = false
                 cache.Tracer.Visible = false
                 cache.AmmoText.Visible = false
