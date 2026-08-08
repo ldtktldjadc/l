@@ -1595,6 +1595,108 @@ DeviceSpoofDropdownObj = DeviceSpoofDep:AddDropdown("DeviceSpoofDropdown", {
 })
 DeviceSpoofDep:SetupDependencies({ { DeviceSpooferToggle, true } })
 
+-- ========== ANTI BAN ==========
+local AntiBanSection = Tabs.Misc:AddRightGroupbox("Anti Ban")
+
+local StaffDetectorEnabled = false
+local StaffDetectorAction = "Notify"
+local ArchNemesisEnabled = false
+
+local STAFF_GROUP_ID = 3461453
+local StaffRoles = {
+    ["Community Staff"] = true,
+    Tester = true,
+    Builder = true,
+    Developer = true,
+    Scripter = true
+}
+
+local function HandleStaffDetection(player, role)
+    local msg = "⚠️ STAFF DETECTED ⚠️\nName: " .. player.Name .. "\nRole: " .. role
+    if StaffDetectorAction == "Kick" then
+        lp:Kick(msg)
+    else
+        Library:Notify(msg, 5)
+    end
+end
+
+local function CheckPlayerAntiBan(player)
+    if not StaffDetectorEnabled and not ArchNemesisEnabled then return end
+    if player == lp then return end
+
+    task.spawn(function()
+        if StaffDetectorEnabled then
+            local success, role = pcall(function() return player:GetRoleInGroup(STAFF_GROUP_ID) end)
+            if success and StaffRoles[role] then
+                HandleStaffDetection(player, role)
+                return
+            end
+        end
+
+        if ArchNemesisEnabled then
+            local success, seasonLib = pcall(function()
+                return require(ReplicatedStorage:WaitForChild("Modules", 5):WaitForChild("SeasonLibrary", 5))
+            end)
+            if success and seasonLib then
+                local stats = player:WaitForChild("CustomLeaderstats", 5)
+                if stats then
+                    local eloVal = stats:WaitForChild("Current ELO", 5)
+                    if eloVal then
+                        local function checkRank()
+                            if not ArchNemesisEnabled then return end
+                            local elo = tonumber(eloVal.Value) or 0
+                            local rankName = seasonLib:GetRank(elo, player.UserId)
+                            if type(rankName) == "string" and rankName == "Archnemesis" then
+                                HandleStaffDetection(player, "Archnemesis Rank")
+                            end
+                        end
+                        checkRank()
+                        eloVal.Changed:Connect(checkRank)
+                    end
+                end
+            end
+        end
+    end)
+end
+
+AntiBanSection:AddToggle("StaffDetectorToggle", {
+    Text = "Staff Detector",
+    Default = false,
+    Callback = function(value)
+        StaffDetectorEnabled = value
+        if value then
+            for _, p in pairs(Players:GetPlayers()) do
+                CheckPlayerAntiBan(p)
+            end
+        end
+    end
+})
+
+AntiBanSection:AddDropdown("StaffDetectorAction", {
+    Values = {"Notify", "Kick"},
+    Default = 1,
+    Multi = false,
+    Text = "Action",
+    Callback = function(value) StaffDetectorAction = value end
+})
+
+AntiBanSection:AddToggle("ArchNemesisToggle", {
+    Text = "ArchNemesis Checker",
+    Default = false,
+    Callback = function(value)
+        ArchNemesisEnabled = value
+        if value then
+            for _, p in pairs(Players:GetPlayers()) do
+                CheckPlayerAntiBan(p)
+            end
+        end
+    end
+})
+
+Players.PlayerAdded:Connect(function(player)
+    CheckPlayerAntiBan(player)
+end)
+
 -- ========== THEME MANAGER ==========
 ThemeManager:SetLibrary(Library)
 ThemeManager:SetFolder("NewModpackRivals")
