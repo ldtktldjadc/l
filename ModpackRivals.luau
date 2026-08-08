@@ -342,7 +342,7 @@ local function createPlayerEsp(p)
     ammoText.BackgroundTransparency = 1
     ammoText.TextStrokeTransparency = 0
     ammoText.TextSize = 13
-    ammoText.Font = Enum.Font.UI
+    ammoText.Font = Drawing.Fonts.UI
     ammoText.RichText = true
     ammoText.Visible = false
     ammoText.Parent = billboard
@@ -353,7 +353,7 @@ local function createPlayerEsp(p)
     weaponText.BackgroundTransparency = 1
     weaponText.TextStrokeTransparency = 0
     weaponText.TextSize = 13
-    weaponText.Font = Enum.Font.UI
+    weaponText.Font = Drawing.Fonts.UI
     weaponText.RichText = true
     weaponText.Visible = false
     weaponText.Parent = billboard
@@ -391,8 +391,8 @@ local function createPlayerEsp(p)
     }
 
     local c = espCache[p]
-    c.NameTag.BackgroundTransparency = 1; c.NameTag.Font = Enum.Font.UI; c.NameTag.TextSize = 13; c.NameTag.TextStrokeTransparency = 0; c.NameTag.Visible = false; c.NameTag.Size = UDim2.new(0, 200, 0, 20); c.NameTag.AnchorPoint = Vector2.new(0.5, 1); c.NameTag.Parent = espContainer
-    c.DistanceTag.BackgroundTransparency = 1; c.DistanceTag.Font = Enum.Font.UI; c.DistanceTag.TextSize = 13; c.DistanceTag.TextStrokeTransparency = 0; c.DistanceTag.Visible = false; c.DistanceTag.Size = UDim2.new(0, 200, 0, 16); c.DistanceTag.AnchorPoint = Vector2.new(0.5, 0); c.DistanceTag.Parent = espContainer
+    c.NameTag.BackgroundTransparency = 1; c.NameTag.Font = Drawing.Fonts.UI; c.NameTag.TextSize = 13; c.NameTag.TextStrokeTransparency = 0; c.NameTag.Visible = false; c.NameTag.Size = UDim2.new(0, 200, 0, 20); c.NameTag.AnchorPoint = Vector2.new(0.5, 1); c.NameTag.Parent = espContainer
+    c.DistanceTag.BackgroundTransparency = 1; c.DistanceTag.Font = Drawing.Fonts.UI; c.DistanceTag.TextSize = 13; c.DistanceTag.TextStrokeTransparency = 0; c.DistanceTag.Visible = false; c.DistanceTag.Size = UDim2.new(0, 200, 0, 16); c.DistanceTag.AnchorPoint = Vector2.new(0.5, 0); c.DistanceTag.Parent = espContainer
     
     c.Box.BackgroundTransparency = 1; c.Box.BorderSizePixel = 0; c.Box.Visible = false; c.Box.Parent = espContainer
     c.BoxStroke.Thickness = 1; c.BoxStroke.Parent = c.Box
