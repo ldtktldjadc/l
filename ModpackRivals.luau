@@ -752,7 +752,7 @@ ESPDep:AddToggle("ESP_Name", { Text = "NameESP", Default = false, Callback = fun
 ESPDep:AddToggle("ESP_HP", { Text = "HP Bar", Default = false, Callback = function(v) espSettings.HP = v end })
     :AddColorPicker("ESP_HP_Color", { Default = espSettings.HPColor, Callback = function(v) espSettings.HPColor = v end })
 
-ESPDep:AddColorPicker("ESP_TextStroke_Color", { Title = "Text Stroke Color", Default = espSettings.TextStrokeColor, Callback = function(v) espSettings.TextStrokeColor = v end })
+ESPDep:AddLabel("Text Stroke Color"):AddColorPicker("ESP_TextStroke_Color", { Default = espSettings.TextStrokeColor, Title = "Text Stroke Color", Callback = function(v) espSettings.TextStrokeColor = v end })
 
 ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callback = function(v) getgenv().ESPSettings_TeamCheck = v end })
 
