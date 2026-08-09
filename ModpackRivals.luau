@@ -267,6 +267,13 @@ task.spawn(function()
     end)
 end)
 
+local SeasonLibrary = nil
+task.spawn(function()
+    pcall(function()
+        SeasonLibrary = require(ReplicatedStorage.Modules:WaitForChild("SeasonLibrary", 5))
+    end)
+end)
+
 local function getESPContainerParent()
     local success, hui = pcall(function() return gethui() end)
     if success and hui then return hui end
@@ -297,6 +304,7 @@ local espSettings = {
     Distance = false, DistanceColor = Color3.fromRGB(255, 255, 255),
     Weapon = false, WeaponColor = Color3.fromRGB(255, 255, 255),
     Ammo = false, AmmoColor = Color3.fromRGB(255, 255, 255),
+    Rank = false,
     Katana = false, KatanaColor = Color3.fromRGB(255, 255, 255),
     Bone = false, BoneColor = Color3.fromRGB(255, 255, 255),
     Tracer = false, TracerColor = Color3.fromRGB(255, 255, 255),
@@ -355,6 +363,13 @@ local function createPlayerEsp(p)
     local ammoStroke = Instance.new("UIStroke")
     ammoStroke.Parent = ammoText
 
+    local rankIcon = Instance.new("ImageLabel")
+    rankIcon.BackgroundTransparency = 1
+    rankIcon.Size = UDim2.new(0, 30, 0, 30)
+    rankIcon.AnchorPoint = Vector2.new(0.5, 1)
+    rankIcon.Visible = false
+    rankIcon.Parent = espContainer
+
     local weaponText = Instance.new("TextLabel")
     weaponText.Size = UDim2.new(1, 0, 0.5, 0)
     weaponText.Position = UDim2.new(0, 0, 0.5, 0)
@@ -392,6 +407,7 @@ local function createPlayerEsp(p)
         WeaponBillboard = billboard,
         WeaponText = weaponText,
         AmmoText = ammoText,
+        RankIcon = rankIcon,
         HPBarBg = hpBarBg,
         HPBarFill = hpBarFill,
         lastChar = nil,
@@ -423,6 +439,7 @@ local function clearPlayerEsp(p)
         pcall(function() espCache[p].Tracer:Destroy() end)
         pcall(function() if espCache[p].WeaponBillboard then espCache[p].WeaponBillboard:Destroy() end end)
         pcall(function() if espCache[p].AmmoText then espCache[p].AmmoText:Destroy() end end)
+        pcall(function() if espCache[p].RankIcon then espCache[p].RankIcon:Destroy() end end)
         pcall(function() if espCache[p].HPBarBg then espCache[p].HPBarBg:Destroy() end end)
         for _, b in pairs(espCache[p].Bones) do pcall(function() b:Destroy() end) end
         espCache[p] = nil
@@ -477,6 +494,8 @@ RunService.Heartbeat:Connect(function()
             for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
             c.Tracer.Visible = false
             c.WeaponBillboard.Enabled = false
+            if c.AmmoText then c.AmmoText.Visible = false end
+            if c.RankIcon then c.RankIcon.Visible = false end
             if c.HPBarBg then c.HPBarBg.Visible = false end
             for _, b in pairs(c.Bones) do b.Visible = false end
         end
@@ -501,6 +520,7 @@ RunService.Heartbeat:Connect(function()
                 c.Tracer.Visible = false
                 c.WeaponBillboard.Enabled = false
                 if c.AmmoText then c.AmmoText.Visible = false end
+                if c.RankIcon then c.RankIcon.Visible = false end
                 if c.HPBarBg then c.HPBarBg.Visible = false end
                 for _, b in pairs(c.Bones) do b.Visible = false end
             end
@@ -568,9 +588,7 @@ RunService.Heartbeat:Connect(function()
             local topVis = true
             local botVis = true
             
-            if cache.AmmoText.Visible then
-                cache.AmmoText.Position = UDim2.new(0, topPos.X, 0, topPos.Y - (espSettings.Name and 14 or 4))
-            end
+            local currentTopY = topPos.Y - 5
 
             if espSettings.Name then
                 local text = p.Name
@@ -582,10 +600,39 @@ RunService.Heartbeat:Connect(function()
                 cache.NameTag.Text = text
                 cache.NameTag.TextColor3 = color
                 cache.NameTag.UIStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
-                cache.NameTag.Position = UDim2.new(0, topPos.X, 0, topPos.Y - 5)
+                cache.NameTag.Position = UDim2.new(0, topPos.X, 0, currentTopY)
                 cache.NameTag.Visible = true
+                currentTopY = currentTopY - 10
             else
                 cache.NameTag.Visible = false
+            end
+
+            if cache.AmmoText.Visible then
+                cache.AmmoText.Position = UDim2.new(0, topPos.X, 0, currentTopY)
+                currentTopY = currentTopY - 10
+            end
+
+            if espSettings.Rank and SeasonLibrary then
+                local eloStat = p:FindFirstChild("CustomLeaderstats") and p.CustomLeaderstats:FindFirstChild("Current ELO")
+                if eloStat and eloStat.Value then
+                    local elo = eloStat.Value
+                    local lbRank = nil
+                    pcall(function() lbRank = SeasonLibrary:GetHighestELOLeaderboardRanking(elo, p.UserId) end)
+                    local rankName = nil
+                    pcall(function() rankName = SeasonLibrary:GetRank(elo, p.UserId, lbRank) end)
+                    local rankInfo = rankName and SeasonLibrary.CurrentSeason.RankProfile.Ranks[rankName]
+                    if rankInfo and rankInfo.Image then
+                        cache.RankIcon.Image = rankInfo.Image
+                        cache.RankIcon.Position = UDim2.new(0, topPos.X, 0, currentTopY)
+                        cache.RankIcon.Visible = true
+                    else
+                        cache.RankIcon.Visible = false
+                    end
+                else
+                    cache.RankIcon.Visible = false
+                end
+            else
+                cache.RankIcon.Visible = false
             end
 
             if topVis and botVis then
@@ -661,6 +708,7 @@ RunService.Heartbeat:Connect(function()
                 cache.DistanceTag.Visible = false
                 cache.Tracer.Visible = false
                 cache.AmmoText.Visible = false
+                cache.RankIcon.Visible = false
                 if cache.HPBarBg then cache.HPBarBg.Visible = false end
             end
 
@@ -785,6 +833,8 @@ ESPDep:AddToggle("ESP_Weapon", { Text = "WeaponESP", Default = false, Callback =
 
 ESPDep:AddToggle("ESP_Ammo", { Text = "AmmoESP", Default = false, Callback = function(v) espSettings.Ammo = v end })
     :AddColorPicker("ESP_Ammo_Color", { Default = espSettings.AmmoColor, Callback = function(v) espSettings.AmmoColor = v end })
+
+ESPDep:AddToggle("ESP_Rank", { Text = "RankESP", Default = false, Callback = function(v) espSettings.Rank = v end })
 
 ESPDep:AddToggle("ESP_Katana", { Text = "KatanaESP", Default = false, Callback = function(v) espSettings.Katana = v end })
     :AddColorPicker("ESP_Katana_Color", { Default = espSettings.KatanaColor, Callback = function(v) espSettings.KatanaColor = v end })
