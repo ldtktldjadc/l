@@ -129,6 +129,11 @@ local function getClosestPlayerInFOV()
     local bestPartName = nil
 
     local maxDist = (FOV == 100) and math.huge or (FOV * 5)
+    
+    local myHRP = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+    raycastParams.FilterDescendantsInstances = {lp.Character}
 
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= lp and isPlayerAliveSA(plr) and checkTeam(plr, false) and plr.Character then
@@ -150,14 +155,10 @@ local function getClosestPlayerInFOV()
                 local screenPos, onScreen = cam:WorldToViewportPoint(part.Position)
     
                 if onScreen or aim360 then
-                    local raycastParams = RaycastParams.new()
-                    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-                    raycastParams.FilterDescendantsInstances = {lp.Character}
                     local ray = workspace:Raycast(cam.CFrame.Position, (part.Position - cam.CFrame.Position), raycastParams)
                     local visible = not ray or ray.Instance:IsDescendantOf(plr.Character)
     
                     if visible then
-                        local myHRP = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
                         local dist = (aim360 and myHRP) and (part.Position - myHRP.Position).Magnitude or (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
                         if dist <= maxDist and dist < bestDist then
                             bestDist = dist
