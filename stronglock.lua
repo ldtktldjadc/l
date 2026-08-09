@@ -227,7 +227,7 @@ task.spawn(function()
 					local targetPos = target.Position + ((target.Parent and target.Parent:FindFirstChild("HumanoidRootPart")) and target.Parent.HumanoidRootPart.AssemblyLinearVelocity * dt * 2.2 or Vector3.zero)
 					local camOrigin = camera.CFrame.Position + ((LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")) and LocalPlayer.Character.HumanoidRootPart.AssemblyLinearVelocity * dt * 2.2 or Vector3.zero)
 
-					-- BLATANTモード: ヒットボックス外に出たらクランプ
+					-- BLATANTモード: ヒットボックス外に出たらクランプ（pre-clamp）
 					if Settings.Mode == "BLATANT" and targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
 						local char = targetFighter.Entity.Model
 						local clamped = clampToHitboxes(char, targetPos)
@@ -241,15 +241,31 @@ task.spawn(function()
 					local current = self.Rotation
 					local diffYaw = (targetRot.Y - current.Y + math.pi) % (2 * math.pi) - math.pi
 					local targetRotAdj = Vector2.new(targetRot.X, current.Y + diffYaw)
-					local alpha
-					if Settings.Mode == "STRONG" then
-						alpha = 1
-					elseif Settings.Mode == "BLATANT" then
-						alpha = math.clamp((1 - Settings.Smoothness) * 0.5, 0.01, 1)
-					else
-						alpha = math.clamp((1 - Settings.Smoothness) * 0.5, 0.01, 1)
-					end
+					local alpha = (Settings.Mode == "STRONG") and 1 or math.clamp((1 - Settings.Smoothness) * 0.5, 0.01, 1)
 					self.Rotation = self.Rotation:Lerp(targetRotAdj, alpha)
+
+					-- BLATANTモード: lerp後にpost-clamp（補間中も絶対に外れない）
+					if Settings.Mode == "BLATANT" and targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
+						local char = targetFighter.Entity.Model
+						local rot = self.Rotation
+						local postPitch, postYaw = rot.X, rot.Y
+						local postDir = Vector3.new(
+							-math.sin(postYaw) * math.cos(postPitch),
+							math.sin(postPitch),
+							-math.cos(postYaw) * math.cos(postPitch)
+						)
+						-- 現在の向きが指しているワールド点（targetから距離を測って近似）
+						local dist = (targetPos - camOrigin).Magnitude
+						local aimPoint = camOrigin + postDir * dist
+						local reclamped = clampToHitboxes(char, aimPoint)
+						if reclamped then
+							local rdir = (reclamped - camOrigin).Unit
+							self.Rotation = Vector2.new(
+								math.asin(math.clamp(rdir.Y, -1, 1)),
+								math.atan2(-rdir.X, -rdir.Z)
+							)
+						end
+					end
 				end
 			end
 		end
