@@ -41,15 +41,7 @@ local function isEnemy(fighter)
 	return localTeam ~= targetTeam
 end
 
--- カメラのRotationからワールド方向を取得
-local function rotationToDir(rot)
-	local pitch, yaw = rot.X, rot.Y
-	return Vector3.new(
-		-math.sin(yaw) * math.cos(pitch),
-		math.sin(pitch),
-		-math.cos(yaw) * math.cos(pitch)
-	)
-end
+
 
 -- ヒットボックスのAABBにクランプした最近傍点を返す
 local function clampToHitboxes(char, worldPos)
@@ -95,14 +87,17 @@ local function getTarget()
 
 	if LockedTarget then
 		local fighter = BlatantLockedFighter
-		if not fighter and FighterController and FighterController.Objects then
+		if not fighter and FighterController and type(FighterController.Objects) == "table" then
 			for _, f in pairs(FighterController.Objects) do
-				if f.Entity and f.Entity.Model and (f.Entity.Model:IsAncestorOf(LockedTarget) or f.Entity.Model == LockedTarget.Parent) then
+				if f and f.Entity and f.Entity.Model and (f.Entity.Model:IsAncestorOf(LockedTarget) or f.Entity.Model == LockedTarget.Parent) then
 					fighter = f; break
 				end
 			end
 		end
-		if not fighter or not fighter.Player or getHealth(fighter.Entity) <= 0 or isBehindWall(LockedTarget, fighter.Entity.Model) then
+		local ok = fighter and fighter.Player and fighter.Entity and getHealth(fighter.Entity) > 0
+		if not ok or not pcall(function() return not isBehindWall(LockedTarget, fighter.Entity.Model) end) then
+			LockedTarget = nil; BlatantLockedFighter = nil
+		elseif isBehindWall(LockedTarget, fighter.Entity.Model) then
 			LockedTarget = nil; BlatantLockedFighter = nil
 		elseif LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and fighter.Entity.Model:FindFirstChild("HumanoidRootPart") then
 			if (fighter.Entity.Model.HumanoidRootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude > 500 then
@@ -113,8 +108,8 @@ local function getTarget()
 
 	if not LockedTarget then
 		local nearest, minDist, nearestFighter = nil, Settings.FOV, nil
-		if not FighterController or not FighterController.Objects then return nil, nil end
-		for _, fighter in pairs(FighterController.Objects) do
+		if not FighterController or type(FighterController.Objects) ~= "table" then return nil, nil end
+		for _, fighter in pairs(FighterController.Objects or {}) do
 			if fighter ~= FighterController.LocalFighter and fighter.Entity and getHealth(fighter.Entity) > 0 and isEnemy(fighter) then
 				local char = fighter.Entity.Model
 				local hrp = char:FindFirstChild("HumanoidRootPart")
