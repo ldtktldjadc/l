@@ -4,12 +4,16 @@ local LocalPlayer = Players.LocalPlayer
 local FighterController = nil
 local CameraController = nil
 local LockedTarget = nil
+local BlatantLockedFighter = nil -- BLATANT用のfighterキャッシュ
 
 local Settings = {
-	Mode = "OFF", -- "OFF" | "STRONG" | "SMOOTH"
+	Mode = "OFF", -- "OFF" | "STRONG" | "SMOOTH" | "BLATANT"
 	Smoothness = 0.65,
 	FOV = 150,
 }
+
+-- BLATANTモードのヒットボックス優先順位（この範囲から出ない）
+local BLATANT_HITBOXES = {"HitboxHead", "HitboxHeadSmall", "HitboxBody", "HitboxBodySmall"}
 
 local function findModule(name)
 	for _, v in pairs(LocalPlayer:WaitForChild("PlayerScripts"):GetDescendants()) do
@@ -37,8 +41,45 @@ local function isEnemy(fighter)
 	return localTeam ~= targetTeam
 end
 
+-- カメラのRotationからワールド方向を取得
+local function rotationToDir(rot)
+	local pitch, yaw = rot.X, rot.Y
+	return Vector3.new(
+		-math.sin(yaw) * math.cos(pitch),
+		math.sin(pitch),
+		-math.cos(yaw) * math.cos(pitch)
+	)
+end
+
+-- ヒットボックスのAABBにクランプした最近傍点を返す
+local function clampToHitboxes(char, worldPos)
+	local best = nil
+	local bestDist = math.huge
+	for _, name in ipairs(BLATANT_HITBOXES) do
+		local hb = char:FindFirstChild(name)
+		if hb and hb:IsA("BasePart") then
+			-- AABBの中心からサイズ/2でクランプ
+			local cf = hb.CFrame
+			local size = hb.Size
+			local localP = cf:PointToObjectSpace(worldPos)
+			local clamped = Vector3.new(
+				math.clamp(localP.X, -size.X/2, size.X/2),
+				math.clamp(localP.Y, -size.Y/2, size.Y/2),
+				math.clamp(localP.Z, -size.Z/2, size.Z/2)
+			)
+			local worldClamped = cf:PointToWorldSpace(clamped)
+			local d = (worldClamped - worldPos).Magnitude
+			if d < bestDist then
+				bestDist = d
+				best = worldClamped
+			end
+		end
+	end
+	return best
+end
+
 local function getTarget()
-	if Settings.Mode == "OFF" then return nil end
+	if Settings.Mode == "OFF" then return nil, nil end
 	local camera = workspace.CurrentCamera
 	local screenCenter = camera.ViewportSize / 2
 
@@ -53,8 +94,8 @@ local function getTarget()
 	end
 
 	if LockedTarget then
-		local fighter = nil
-		if FighterController and FighterController.Objects then
+		local fighter = BlatantLockedFighter
+		if not fighter and FighterController and FighterController.Objects then
 			for _, f in pairs(FighterController.Objects) do
 				if f.Entity and f.Entity.Model and (f.Entity.Model:IsAncestorOf(LockedTarget) or f.Entity.Model == LockedTarget.Parent) then
 					fighter = f; break
@@ -62,17 +103,17 @@ local function getTarget()
 			end
 		end
 		if not fighter or not fighter.Player or getHealth(fighter.Entity) <= 0 or isBehindWall(LockedTarget, fighter.Entity.Model) then
-			LockedTarget = nil
+			LockedTarget = nil; BlatantLockedFighter = nil
 		elseif LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and fighter.Entity.Model:FindFirstChild("HumanoidRootPart") then
 			if (fighter.Entity.Model.HumanoidRootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude > 500 then
-				LockedTarget = nil
+				LockedTarget = nil; BlatantLockedFighter = nil
 			end
 		end
 	end
 
 	if not LockedTarget then
-		local nearest, minDist = nil, Settings.FOV
-		if not FighterController or not FighterController.Objects then return nil end
+		local nearest, minDist, nearestFighter = nil, Settings.FOV, nil
+		if not FighterController or not FighterController.Objects then return nil, nil end
 		for _, fighter in pairs(FighterController.Objects) do
 			if fighter ~= FighterController.LocalFighter and fighter.Entity and getHealth(fighter.Entity) > 0 and isEnemy(fighter) then
 				local char = fighter.Entity.Model
@@ -85,7 +126,7 @@ local function getTarget()
 							if onScreen then
 								local dist = (Vector2.new(sp.X, sp.Y) - screenCenter).Magnitude
 								if dist < minDist and not isBehindWall(part, char) then
-									minDist = dist; nearest = part
+									minDist = dist; nearest = part; nearestFighter = fighter
 								end
 							end
 						end
@@ -94,8 +135,9 @@ local function getTarget()
 			end
 		end
 		LockedTarget = nearest
+		BlatantLockedFighter = nearestFighter
 	end
-	return LockedTarget
+	return LockedTarget, BlatantLockedFighter
 end
 
 -- UI
@@ -107,7 +149,7 @@ local function buildUI()
 	sg.Name = "AimUI"; sg.ResetOnSpawn = false
 
 	local frame = Instance.new("Frame", sg)
-	frame.Size = UDim2.new(0, 180, 0, 55)
+	frame.Size = UDim2.new(0, 250, 0, 55)
 	frame.Position = UDim2.new(0.05, 0, 0.42, 0)
 	frame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
 	frame.BorderSizePixel = 0
@@ -122,17 +164,20 @@ local function buildUI()
 	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	Instance.new("UIPadding", frame).PaddingLeft = UDim.new(0, 6)
 
-	local modes = {"OFF", "STRONG", "SMOOTH"}
+	local modes = {"OFF", "STRONG", "SMOOTH", "BLATANT"}
 	local colors = {
-		OFF    = Color3.fromRGB(70, 70, 70),
-		STRONG = Color3.fromRGB(200, 0, 80),
-		SMOOTH = Color3.fromRGB(80, 0, 200),
+		OFF     = Color3.fromRGB(70, 70, 70),
+		STRONG  = Color3.fromRGB(200, 0, 80),
+		SMOOTH  = Color3.fromRGB(80, 0, 200),
+		BLATANT = Color3.fromRGB(180, 80, 0),
 	}
 	local activeColors = {
-		OFF    = Color3.fromRGB(110, 110, 110),
-		STRONG = Color3.fromRGB(255, 30, 100),
-		SMOOTH = Color3.fromRGB(130, 0, 255),
+		OFF     = Color3.fromRGB(110, 110, 110),
+		STRONG  = Color3.fromRGB(255, 30, 100),
+		SMOOTH  = Color3.fromRGB(130, 0, 255),
+		BLATANT = Color3.fromRGB(255, 140, 0),
 	}
+	local btnWidths = {OFF=45, STRONG=50, SMOOTH=52, BLATANT=60}
 
 	local buttons = {}
 
@@ -145,11 +190,11 @@ local function buildUI()
 
 	for _, mode in ipairs(modes) do
 		local btn = Instance.new("TextButton", frame)
-		btn.Size = UDim2.new(0, 50, 0, 34)
+		btn.Size = UDim2.new(0, btnWidths[mode], 0, 34)
 		btn.BackgroundColor3 = colors[mode]
 		btn.TextColor3 = Color3.fromRGB(160, 160, 160)
 		btn.Font = Enum.Font.GothamBold
-		btn.TextSize = 11
+		btn.TextSize = 10
 		btn.Text = mode
 		btn.BorderSizePixel = 0
 		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
@@ -157,7 +202,7 @@ local function buildUI()
 
 		btn.MouseButton1Click:Connect(function()
 			Settings.Mode = mode
-			if mode == "OFF" then LockedTarget = nil end
+			if mode == "OFF" then LockedTarget = nil; BlatantLockedFighter = nil end
 			refresh()
 		end)
 	end
@@ -181,19 +226,34 @@ task.spawn(function()
 			local oldUpdate = CameraController.Update
 			CameraController.Update = function(self, dt)
 				oldUpdate(self, dt)
-				local target = getTarget()
+				local target, targetFighter = getTarget()
 				if target then
 					local camera = workspace.CurrentCamera
 					local targetPos = target.Position + ((target.Parent and target.Parent:FindFirstChild("HumanoidRootPart")) and target.Parent.HumanoidRootPart.AssemblyLinearVelocity * dt * 2.2 or Vector3.zero)
 					local camOrigin = camera.CFrame.Position + ((LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")) and LocalPlayer.Character.HumanoidRootPart.AssemblyLinearVelocity * dt * 2.2 or Vector3.zero)
+
+					-- BLATANTモード: ヒットボックス外に出たらクランプ
+					if Settings.Mode == "BLATANT" and targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
+						local char = targetFighter.Entity.Model
+						local clamped = clampToHitboxes(char, targetPos)
+						if clamped then targetPos = clamped end
+					end
+
 					local dir = (targetPos - camOrigin).Unit
 					local yaw = math.atan2(-dir.X, -dir.Z)
-					local pitch = math.asin(dir.Y)
+					local pitch = math.asin(math.clamp(dir.Y, -1, 1))
 					local targetRot = Vector2.new(pitch, yaw)
 					local current = self.Rotation
 					local diffYaw = (targetRot.Y - current.Y + math.pi) % (2 * math.pi) - math.pi
 					local targetRotAdj = Vector2.new(targetRot.X, current.Y + diffYaw)
-					local alpha = (Settings.Mode == "STRONG") and 1 or math.clamp((1 - Settings.Smoothness) * 0.5, 0.01, 1)
+					local alpha
+					if Settings.Mode == "STRONG" then
+						alpha = 1
+					elseif Settings.Mode == "BLATANT" then
+						alpha = math.clamp((1 - Settings.Smoothness) * 0.5, 0.01, 1)
+					else
+						alpha = math.clamp((1 - Settings.Smoothness) * 0.5, 0.01, 1)
+					end
 					self.Rotation = self.Rotation:Lerp(targetRotAdj, alpha)
 				end
 			end
