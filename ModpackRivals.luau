@@ -684,7 +684,8 @@ RunService.Heartbeat:Connect(function()
         else
             cache.NameTag.Visible = false
             cache.DistanceTag.Visible = false
-            cache.Box.Visible = false
+            if cache.BoxFill then cache.BoxFill.Visible = false end
+            for _, l in pairs(cache.BoxLines or {}) do l.Visible = false end
             cache.Tracer.Visible = false
             if cache.HPBarBg then cache.HPBarBg.Visible = false end
             for _, b in pairs(cache.Bones) do b.Visible = false end
