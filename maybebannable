@@ -478,6 +478,15 @@ do
         local __l4m5n6 = __t6u7v8.StartShooting
         self.__oldfunc = __l4m5n6
         __t6u7v8.StartShooting = function(__o7p8q9, ...)
+            local __x6y7z8 = self.__target
+
+            if self.__active and __x6y7z8 and __x6y7z8.Character then
+                if not self.__desync or self.__curr ~= __x6y7z8 then
+                    self:__desync_start(__x6y7z8)
+                    task.wait(__k7l8m9:GetNetworkPing())
+                end
+            end
+
             local __r0s1t2 = {__l4m5n6(__o7p8q9, ...)}
             if not __o7p8q9.ClientFighter or not __o7p8q9.ClientFighter.IsLocalPlayer then
                 return unpack(__r0s1t2)
@@ -489,15 +498,9 @@ do
             end
 
             __r0s1t2[4] = true
-            local __x6y7z8 = self.__target
 
             if not self.__active or not __x6y7z8 or not __x6y7z8.Character then
                 return unpack(__r0s1t2)
-            end
-
-            if not self.__desync or self.__curr ~= __x6y7z8 then
-                self:__desync_start(__x6y7z8)
-              task.wait(__k7l8m9:GetNetworkPing())
             end
 
             if self.__task1 then
