@@ -1,6 +1,16 @@
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
+
+
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
+local PlayerGui = lp:WaitForChild("PlayerGui")
+
+if PlayerGui:FindFirstChild("LoadingScreen") then
+    repeat task.wait(0.5) until not PlayerGui:FindFirstChild("LoadingScreen")
+    task.wait(1)
+end
 pcall(function()
     local bypassed = false
 
@@ -377,15 +387,6 @@ pcall(function()
     task.wait(1)
 end)
 
-local Players = game:GetService("Players")
-local lp = Players.LocalPlayer
-local PlayerGui = lp:WaitForChild("PlayerGui")
-
-if PlayerGui:FindFirstChild("LoadingScreen") then
-    repeat task.wait(0.5) until not PlayerGui:FindFirstChild("LoadingScreen")
-    task.wait(1)
-end
-
 local __a1b2c3 = setmetatable({}, {
     __index = function(__d4e5f6, __g7h8i9)
         local __j0k1l2, __m3n4o5 = pcall(function()
@@ -496,7 +497,7 @@ do
 
             if not self.__desync or self.__curr ~= __x6y7z8 then
                 self:__desync_start(__x6y7z8)
-                task.wait(0.15)
+              task.wait(__k7l8m9:GetNetworkPing())
             end
 
             if self.__task1 then
@@ -555,7 +556,7 @@ do
                             task.delay(0, function()
                                 if self.__active and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
                                     self:__desync_start_melee(target)
-                                    task.wait(0.25)
+                                   task.wait(__k7l8m9:GetNetworkPing())
                                     self:__desync_stop()
                                 end
                             end)
@@ -582,7 +583,7 @@ do
                                 if self.__active and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
                                     -- 通常攻撃用の追従も同じTP関数を使う
                                     self:__desync_start_melee(target)
-                                    task.wait(0.25)
+                                    task.wait(__k7l8m9:GetNetworkPing())
                                     self:__desync_stop()
                                 end
                             end)
