@@ -2182,6 +2182,8 @@ end)
 
 -- ========== SOUND CHANGER ==========
 local SoundChangerSection = Tabs.Misc:AddRightGroupbox("Sound Changer")
+
+-- HitSoundChanger
 local soundChangerEnabled = false
 local soundtochange = "rbxassetid://4764109000" --Rust Sound
 local soundChangerConnection = nil
@@ -2209,7 +2211,7 @@ local function updateSoundChanger()
 end
 
 local SoundChangerToggle = SoundChangerSection:AddToggle("SoundChangerToggle", {
-    Text = "Enable",
+    Text = "HitSoundChanger",
     Default = false,
     Callback = function(value)
         soundChangerEnabled = value
@@ -2232,6 +2234,66 @@ SoundChangerDep:AddInput("SoundChangerID", {
     end
 })
 SoundChangerDep:SetupDependencies({ { SoundChangerToggle, true } })
+
+-- KillSoundChanger
+local killSoundEnabled = false
+local killSoundId = "rbxassetid://137918234220296"
+local SoundService = game:GetService("SoundService")
+local deathSound = Instance.new("Sound")
+deathSound.SoundId = killSoundId
+deathSound.Volume = 1
+deathSound.Parent = SoundService
+
+local function playKillSound()
+    if killSoundEnabled then
+        deathSound.SoundId = killSoundId
+        deathSound:Play()
+    end
+end
+
+local function onCharacterAdded(character)
+    local humanoid = character:WaitForChild("Humanoid", 10)
+    if humanoid then
+        humanoid.Died:Connect(playKillSound)
+    end
+end
+
+local function onPlayerAdded(player)
+    if player.Character then
+        onCharacterAdded(player.Character)
+    end
+    player.CharacterAdded:Connect(onCharacterAdded)
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+    task.spawn(onPlayerAdded, player)
+end
+Players.PlayerAdded:Connect(onPlayerAdded)
+
+local KillSoundToggle = SoundChangerSection:AddToggle("KillSoundToggle", {
+    Text = "KillSoundChanger",
+    Default = false,
+    Callback = function(value)
+        killSoundEnabled = value
+    end
+})
+
+local KillSoundDep = SoundChangerSection:AddDependencyBox()
+KillSoundDep:AddInput("KillSoundID", {
+    Default = "137918234220296",
+    Numeric = true,
+    Finished = false,
+    Text = "Kill Sound ID",
+    Placeholder = "Enter Sound ID",
+    Callback = function(value)
+        local id = string.match(tostring(value), "%d+")
+        if id then
+            killSoundId = "rbxassetid://" .. id
+            deathSound.SoundId = killSoundId
+        end
+    end
+})
+KillSoundDep:SetupDependencies({ { KillSoundToggle, true } })
 
 -- ========== THEME MANAGER ==========
 ThemeManager:SetLibrary(Library)
