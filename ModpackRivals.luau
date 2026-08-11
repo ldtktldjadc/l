@@ -1189,6 +1189,217 @@ AimDep:AddToggle("TeamCheck", {
 
 AimDep:SetupDependencies({ { SilentToggle, true } })
 
+-- ===== AIM LOCK =====
+local AimLockSection = Tabs.Combat:AddRightGroupbox("AimLock")
+
+local AimLockSettings = {
+    Enabled = false,
+    TeamCheck = false,
+    FOV = 150,
+    Smoothness = 0.65,
+    AlwaysLockSmooth = false,
+    WallCheck = false,
+}
+
+local AL_LockedTarget = nil
+local AL_BlatantLockedFighter = nil
+local AL_BLATANT_HITBOXES = {"HitboxHead", "HitboxHeadSmall", "HitboxBody", "HitboxBodySmall"}
+
+local function AL_getHealth(entity)
+	local h = 0
+	pcall(function()
+		if entity.GetHealth then h = entity:GetHealth()
+		elseif entity.Health then h = entity.Health
+		elseif entity.Humanoid then h = entity.Humanoid.Health end
+	end)
+	return h
+end
+
+local function AL_isEnemy(fighter)
+    if not AimLockSettings.TeamCheck then return true end
+	local localTeam = lp:GetAttribute("TeamID") or (FighterController and FighterController.LocalFighter and FighterController.LocalFighter:Get("TeamID"))
+	local targetTeam = fighter.Player:GetAttribute("TeamID") or (fighter.Get and fighter:Get("TeamID"))
+	if localTeam == nil or targetTeam == nil then return true end
+	return localTeam ~= targetTeam
+end
+
+local function AL_clampToHitboxes(char, worldPos)
+	local best = nil
+	local bestDist = math.huge
+	for _, name in ipairs(AL_BLATANT_HITBOXES) do
+		local hb = char:FindFirstChild(name)
+		if hb and hb:IsA("BasePart") then
+			local cf = hb.CFrame
+			local size = hb.Size
+			local localP = cf:PointToObjectSpace(worldPos)
+			local clamped = Vector3.new(
+				math.clamp(localP.X, -size.X/2, size.X/2),
+				math.clamp(localP.Y, -size.Y/2, size.Y/2),
+				math.clamp(localP.Z, -size.Z/2, size.Z/2)
+			)
+			local worldClamped = cf:PointToWorldSpace(clamped)
+			local d = (worldClamped - worldPos).Magnitude
+			if d < bestDist then
+				bestDist = d
+				best = worldClamped
+			end
+		end
+	end
+	return best
+end
+
+local function AL_getTarget()
+	if not AimLockSettings.Enabled then return nil, nil end
+	local camera = workspace.CurrentCamera
+	local screenCenter = camera.ViewportSize / 2
+
+	local function isBehindWall(part, char)
+        if not AimLockSettings.WallCheck then return false end
+		local origin = camera.CFrame.Position
+		local dir = (part.Position - origin).Unit * (part.Position - origin).Magnitude
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = {lp.Character, char, camera}
+		local ray = workspace:Raycast(origin, dir, params)
+		return ray and ray.Instance and ray.Instance.Transparency < 0.8
+	end
+
+	if AL_LockedTarget then
+		local fighter = AL_BlatantLockedFighter
+		if not fighter and FighterController and type(FighterController.Objects) == "table" then
+			for _, f in pairs(FighterController.Objects) do
+				if f and f.Entity and f.Entity.Model and (f.Entity.Model:IsAncestorOf(AL_LockedTarget) or f.Entity.Model == AL_LockedTarget.Parent) then
+					fighter = f; break
+				end
+			end
+		end
+		local ok = fighter and fighter.Player and fighter.Entity and AL_getHealth(fighter.Entity) > 0
+		if not ok or not pcall(function() return not isBehindWall(AL_LockedTarget, fighter.Entity.Model) end) then
+			AL_LockedTarget = nil; AL_BlatantLockedFighter = nil
+		elseif isBehindWall(AL_LockedTarget, fighter.Entity.Model) then
+			AL_LockedTarget = nil; AL_BlatantLockedFighter = nil
+		elseif lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and fighter.Entity.Model:FindFirstChild("HumanoidRootPart") then
+			if (fighter.Entity.Model.HumanoidRootPart.Position - lp.Character.HumanoidRootPart.Position).Magnitude > 500 then
+				AL_LockedTarget = nil; AL_BlatantLockedFighter = nil
+			end
+		end
+	end
+
+	if not AL_LockedTarget then
+		local nearest, minDist, nearestFighter = nil, AimLockSettings.FOV, nil
+		if not FighterController or type(FighterController.Objects) ~= "table" then return nil, nil end
+		for _, fighter in pairs(FighterController.Objects or {}) do
+			if fighter ~= FighterController.LocalFighter and fighter.Entity and AL_getHealth(fighter.Entity) > 0 and AL_isEnemy(fighter) then
+				local char = fighter.Entity.Model
+				local hrp = char:FindFirstChild("HumanoidRootPart")
+				if hrp and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
+					if (hrp.Position - lp.Character.HumanoidRootPart.Position).Magnitude < 500 then
+						local part = char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head")
+						if part then
+							local sp, onScreen = camera:WorldToViewportPoint(part.Position)
+							if onScreen then
+								local dist = (Vector2.new(sp.X, sp.Y) - screenCenter).Magnitude
+								if dist < minDist and not isBehindWall(part, char) then
+									minDist = dist; nearest = part; nearestFighter = fighter
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+		AL_LockedTarget = nearest
+		AL_BlatantLockedFighter = nearestFighter
+	end
+	return AL_LockedTarget, AL_BlatantLockedFighter
+end
+
+task.spawn(function()
+    local CameraController = nil
+    pcall(function()
+        local playerScripts = lp:WaitForChild("PlayerScripts", 5)
+        if playerScripts then
+            local controllers = playerScripts:WaitForChild("Controllers", 5)
+            if controllers then
+                local cc = controllers:WaitForChild("CameraController", 5)
+                if cc then CameraController = require(cc) end
+            end
+        end
+    end)
+    
+    if CameraController and type(CameraController.Update) == "function" and not getgenv()._AimLockHooked then
+        getgenv()._AimLockHooked = true
+        local oldUpdate = CameraController.Update
+        CameraController.Update = function(self, dt)
+            oldUpdate(self, dt)
+            if not AimLockSettings.Enabled then return end
+            
+            local target, targetFighter = AL_getTarget()
+            if target then
+                local camera = workspace.CurrentCamera
+                local targetPos = target.Position + ((target.Parent and target.Parent:FindFirstChild("HumanoidRootPart")) and target.Parent.HumanoidRootPart.AssemblyLinearVelocity * dt * 2.2 or Vector3.zero)
+                local camOrigin = camera.CFrame.Position + ((lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) and lp.Character.HumanoidRootPart.AssemblyLinearVelocity * dt * 2.2 or Vector3.zero)
+
+                if AimLockSettings.AlwaysLockSmooth and targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
+                    local char = targetFighter.Entity.Model
+                    local clamped = AL_clampToHitboxes(char, targetPos)
+                    if clamped then targetPos = clamped end
+                end
+
+                local dir = (targetPos - camOrigin).Unit
+                local yaw = math.atan2(-dir.X, -dir.Z)
+                local pitch = math.asin(math.clamp(dir.Y, -1, 1))
+                local targetRot = Vector2.new(pitch, yaw)
+                local current = self.Rotation
+                local diffYaw = (targetRot.Y - current.Y + math.pi) % (2 * math.pi) - math.pi
+                local targetRotAdj = Vector2.new(targetRot.X, current.Y + diffYaw)
+                local alpha = math.clamp((1 - AimLockSettings.Smoothness) * 0.5, 0.01, 1)
+                self.Rotation = self.Rotation:Lerp(targetRotAdj, alpha)
+
+                if AimLockSettings.AlwaysLockSmooth and targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
+                    local char = targetFighter.Entity.Model
+                    local rot = self.Rotation
+                    local postPitch, postYaw = rot.X, rot.Y
+                    local postDir = Vector3.new(
+                        -math.sin(postYaw) * math.cos(postPitch),
+                        math.sin(postPitch),
+                        -math.cos(postYaw) * math.cos(postPitch)
+                    )
+                    local dist = (targetPos - camOrigin).Magnitude
+                    local aimPoint = camOrigin + postDir * dist
+                    local reclamped = AL_clampToHitboxes(char, aimPoint)
+                    if reclamped then
+                        local rdir = (reclamped - camOrigin).Unit
+                        self.Rotation = Vector2.new(
+                            math.asin(math.clamp(rdir.Y, -1, 1)),
+                            math.atan2(-rdir.X, -rdir.Z)
+                        )
+                    end
+                end
+            end
+        end
+    end
+end)
+
+local AimLockToggle = AimLockSection:AddToggle("AimLockEnabled", {
+    Text = "Enabled",
+    Default = false,
+    Callback = function(value)
+        AimLockSettings.Enabled = value
+        if not value then
+            AL_LockedTarget = nil
+            AL_BlatantLockedFighter = nil
+        end
+    end
+})
+
+local AimLockDep = AimLockSection:AddDependencyBox()
+AimLockDep:AddToggle("AimLockTeamCheck", { Text = "TeamCheck", Default = false, Callback = function(v) AimLockSettings.TeamCheck = v end })
+AimLockDep:AddSlider("AimLockFOV", { Text = "Fov", Default = 150, Min = 1, Max = 800, Rounding = 0, Callback = function(v) AimLockSettings.FOV = v end })
+AimLockDep:AddSlider("AimLockSmoothness", { Text = "SmoothNess", Default = 0.65, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.Smoothness = v end })
+AimLockDep:AddToggle("AimLockAlwaysLockSmooth", { Text = "AlwaysLockSmooth", Default = false, Callback = function(v) AimLockSettings.AlwaysLockSmooth = v end })
+AimLockDep:AddToggle("AimLockWallCheck", { Text = "WallCheck", Default = false, Callback = function(v) AimLockSettings.WallCheck = v end })
+AimLockDep:SetupDependencies({ { AimLockToggle, true } })
 
 -- ===== VISUALS TAB =====
 local ESPSection = Tabs.Visuals:AddLeftGroupbox("ESP")
