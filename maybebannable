@@ -1,16 +1,6 @@
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
-
-
-local Players = game:GetService("Players")
-local lp = Players.LocalPlayer
-local PlayerGui = lp:WaitForChild("PlayerGui")
-
-if PlayerGui:FindFirstChild("LoadingScreen") then
-    repeat task.wait(0.5) until not PlayerGui:FindFirstChild("LoadingScreen")
-    task.wait(1)
-end
 pcall(function()
     local bypassed = false
 
@@ -387,6 +377,15 @@ pcall(function()
     task.wait(1)
 end)
 
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
+local PlayerGui = lp:WaitForChild("PlayerGui")
+
+if PlayerGui:FindFirstChild("LoadingScreen") then
+    repeat task.wait(0.5) until not PlayerGui:FindFirstChild("LoadingScreen")
+    task.wait(1)
+end
+
 local __a1b2c3 = setmetatable({}, {
     __index = function(__d4e5f6, __g7h8i9)
         local __j0k1l2, __m3n4o5 = pcall(function()
@@ -513,10 +512,10 @@ do
             -- ジンバルロック対策としてX, Zに微小なズレを追加
             local __j8k9l0 = __d2e3f4 + Vector3.new(0.01, 7.5, 0.01)
             local __m1n2o3 = CFrame.lookAt(__j8k9l0, __d2e3f4)
-            -- ランダムヒットオフセットを削除し、直接頭を狙う
-            local __rx = 0
-            local __ry = 0
-            local __rz = 0
+            -- ランダムヒットオフセットを4スタッド幅（-2 ～ +2）に変更
+            local __rx = (math.random() - 0.5) * 4
+            local __ry = (math.random() - 0.5) * 4
+            local __rz = (math.random() - 0.5) * 4
             local __p4q5r6 = __g5h6i7:ToObjectSpace(CFrame.new(__d2e3f4 + Vector3.new(__rx, __ry, __rz)))
 
             __u3v4w5[utf8.char(0)] = __w9x0y1:EncodeCFrame(CFrame.new(__j8k9l0, __d2e3f4) * CFrame.Angles(__m1n2o3:ToOrientation()))
