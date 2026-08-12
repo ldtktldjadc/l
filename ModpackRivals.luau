@@ -2524,20 +2524,13 @@ local currentAnim = nil
 local currentTrack = nil
 local currentStoppedConn = nil
 local charAddedConn = nil
+local animatorConn = nil
 
 local function stopAnimation()
-    if currentStoppedConn then
-        currentStoppedConn:Disconnect()
-        currentStoppedConn = nil
-    end
-    if currentTrack then
-        currentTrack:Stop()
-        currentTrack = nil
-    end
-    if charAddedConn then
-        charAddedConn:Disconnect()
-        charAddedConn = nil
-    end
+    if currentStoppedConn then pcall(function() currentStoppedConn:Disconnect() end) currentStoppedConn = nil end
+    if animatorConn then pcall(function() animatorConn:Disconnect() end) animatorConn = nil end
+    if currentTrack then pcall(function() currentTrack:Stop() end) currentTrack = nil end
+    if charAddedConn then pcall(function() charAddedConn:Disconnect() end) charAddedConn = nil end
     currentAnim = nil
 end
 
@@ -2548,15 +2541,31 @@ local function playAnimation(char)
     local animator = humanoid and humanoid:WaitForChild("Animator", 5)
     
     if animator then
-        currentTrack = animator:LoadAnimation(currentAnim)
-        currentTrack.Priority = Enum.AnimationPriority.Action4
-        currentTrack.Looped = true
-        currentTrack:Play()
+        if currentTrack then
+            local t = currentTrack
+            currentTrack = nil
+            pcall(function() t:Stop() end)
+        end
+        if animatorConn then
+            pcall(function() animatorConn:Disconnect() end)
+            animatorConn = nil
+        end
+        
+        pcall(function()
+            currentTrack = animator:LoadAnimation(currentAnim)
+            currentTrack.Priority = Enum.AnimationPriority.Action4
+            currentTrack.Looped = true
+            currentTrack:Play()
 
-        currentStoppedConn = currentTrack.Stopped:Connect(function()
-            if animPlayerEnabled and char.Parent and humanoid.Health > 0 then
-                currentTrack:Play()
+            for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
+                if t ~= currentTrack then pcall(function() t:Stop() end) end
             end
+
+            animatorConn = animator.AnimationPlayed:Connect(function(t)
+                if currentTrack and t ~= currentTrack then
+                    pcall(function() t:Stop() end)
+                end
+            end)
         end)
     end
 end
@@ -2565,11 +2574,26 @@ local function updateAnimationPlayer()
     stopAnimation()
 
     if animPlayerEnabled then
-        currentAnim = Instance.new("Animation")
-        currentAnim.AnimationId = animPlayerId
-        
-        if lp.Character then task.spawn(playAnimation, lp.Character) end
-        charAddedConn = lp.CharacterAdded:Connect(playAnimation)
+        local success, objects = pcall(function()
+            return game:GetObjects(animPlayerId)
+        end)
+
+        if success and objects then
+            for _, obj in ipairs(objects) do
+                local anim = obj:IsA("Animation") and obj or obj:FindFirstChildWhichIsA("Animation", true)
+                if anim then
+                    currentAnim = anim
+                    break
+                end
+            end
+        end
+
+        if currentAnim then
+            if lp.Character then task.spawn(playAnimation, lp.Character) end
+            charAddedConn = lp.CharacterAdded:Connect(playAnimation)
+        else
+            warn("GetObjects failed or no Animation found.")
+        end
     end
 end
 
