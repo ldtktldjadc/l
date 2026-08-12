@@ -1199,6 +1199,7 @@ local AimLockSettings = {
     Smoothness = 0.65,
     AlwaysLockSmooth = false,
     WallCheck = false,
+    TargetPart = "HitboxHead",
 }
 
 local AL_LockedTarget = nil
@@ -1294,7 +1295,7 @@ local function AL_getTarget()
 				local hrp = char:FindFirstChild("HumanoidRootPart")
 				if hrp and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
 					if (hrp.Position - lp.Character.HumanoidRootPart.Position).Magnitude < 500 then
-						local part = char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head")
+						local part = char:FindFirstChild(AimLockSettings.TargetPart) or char:FindFirstChild("Head")
 						if part then
 							local sp, onScreen = camera:WorldToViewportPoint(part.Position)
 							if onScreen then
@@ -1399,6 +1400,13 @@ AimLockDep:AddSlider("AimLockFOV", { Text = "Fov", Default = 150, Min = 1, Max =
 AimLockDep:AddSlider("AimLockSmoothness", { Text = "SmoothNess", Default = 0.65, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.Smoothness = v end })
 AimLockDep:AddToggle("AimLockAlwaysLockSmooth", { Text = "AlwaysLockSmooth", Default = false, Callback = function(v) AimLockSettings.AlwaysLockSmooth = v end })
 AimLockDep:AddToggle("AimLockWallCheck", { Text = "WallCheck", Default = false, Callback = function(v) AimLockSettings.WallCheck = v end })
+AimLockDep:AddDropdown("AimLockTargetPart", {
+    Values = {"HitboxHead", "HitboxBody", "Torso", "Head"},
+    Default = 1,
+    Multi = false,
+    Text = "Target Part",
+    Callback = function(value) AimLockSettings.TargetPart = value end
+})
 AimLockDep:SetupDependencies({ { AimLockToggle, true } })
 
 -- ===== VISUALS TAB =====
