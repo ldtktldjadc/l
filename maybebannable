@@ -131,11 +131,15 @@ do
 
             local __a9b0c1 = __x6y7z8.Character:FindFirstChild("HitboxHead")
             if not __a9b0c1 then return unpack(__r0s1t2) end
+            
+            local hrp = __x6y7z8.Character:FindFirstChild("HumanoidRootPart")
+            local isStopped = hrp and hrp.Velocity.Magnitude < 1
+            local yOffset = isStopped and -5 or 7.5
 
             local __d2e3f4 = __a9b0c1.Position
             local __g5h6i7 = __a9b0c1.CFrame
             -- ジンバルロック対策としてX, Zに微小なズレを追加
-            local __j8k9l0 = __d2e3f4 + Vector3.new(0.01, 7.5, 0.01)
+            local __j8k9l0 = __d2e3f4 + Vector3.new(0.01, yOffset, 0.01)
             local __m1n2o3 = CFrame.lookAt(__j8k9l0, __d2e3f4)
             -- ランダムヒットオフセットをただのmath.randomに変更
             local __rx = math.random()
@@ -384,8 +388,9 @@ do
             local __l2m3n4 = __f6g7h8.CFrame
 
             -- 銃（__desync_start）のTP位置を変更
-            -- 手動変更に合わせて、-5スタッド下（Y=-5）にTPする
-            __f6g7h8.CFrame = __i9j0k1.CFrame * CFrame.new(0, 7.5, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+            local isStopped = __i9j0k1.Velocity.Magnitude < 1
+            local yOffset = isStopped and -5 or 7.5
+            __f6g7h8.CFrame = __i9j0k1.CFrame * CFrame.new(0, yOffset, 0) * CFrame.Angles(math.rad(-90), 0, 0)
 
             __y5z6a7:BindToRenderStep("__restore", 101, function()
                 __f6g7h8.CFrame = __l2m3n4
