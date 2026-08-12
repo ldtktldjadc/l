@@ -2519,6 +2519,7 @@ local AnimationPlayerSection = Tabs.Misc:AddLeftGroupbox("Animation Player")
 
 local animPlayerEnabled = false
 local animPlayerId = "rbxassetid://97893809425239"
+local animPlayerSpeed = 1
 
 local currentAnim = nil
 local currentTrack = nil
@@ -2556,6 +2557,7 @@ local function playAnimation(char)
             currentTrack.Priority = Enum.AnimationPriority.Action4
             currentTrack.Looped = true
             currentTrack:Play()
+            currentTrack:AdjustSpeed(animPlayerSpeed)
 
             for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
                 if t ~= currentTrack then pcall(function() t:Stop() end) end
@@ -2623,6 +2625,21 @@ AnimationPlayerDep:AddInput("AnimationPlayerID", {
         end
     end
 })
+
+AnimationPlayerDep:AddSlider("AnimationPlayerSpeed", {
+    Text = "Speed",
+    Default = 1,
+    Min = 0.1,
+    Max = 30,
+    Rounding = 1,
+    Callback = function(value)
+        animPlayerSpeed = value
+        if currentTrack then
+            pcall(function() currentTrack:AdjustSpeed(animPlayerSpeed) end)
+        end
+    end
+})
+
 AnimationPlayerDep:SetupDependencies({ { AnimationPlayerToggle, true } })
 
 -- ========== THEME MANAGER ==========
