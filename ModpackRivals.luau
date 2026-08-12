@@ -2565,23 +2565,11 @@ local function updateAnimationPlayer()
     stopAnimation()
 
     if animPlayerEnabled then
-        local success, objects = pcall(function()
-            return game:GetObjects(animPlayerId)
-        end)
-
-        if success and objects and objects[1] then
-            local obj = objects[1]
-            currentAnim = obj:IsA("Animation") and obj or obj:FindFirstChildOfClass("Animation", true)
-            
-            if currentAnim then
-                if lp.Character then task.spawn(playAnimation, lp.Character) end
-                charAddedConn = lp.CharacterAdded:Connect(playAnimation)
-            else
-                warn("Animation object not found.")
-            end
-        else
-            warn("GetObjects failed.")
-        end
+        currentAnim = Instance.new("Animation")
+        currentAnim.AnimationId = animPlayerId
+        
+        if lp.Character then task.spawn(playAnimation, lp.Character) end
+        charAddedConn = lp.CharacterAdded:Connect(playAnimation)
     end
 end
 
