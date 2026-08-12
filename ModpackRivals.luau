@@ -2514,6 +2514,105 @@ KillSoundDep:AddInput("KillSoundID", {
 })
 KillSoundDep:SetupDependencies({ { KillSoundToggle, true } })
 
+-- ========== ANIMATION PLAYER ==========
+local AnimationPlayerSection = Tabs.Misc:AddLeftGroupbox("Animation Player")
+
+local animPlayerEnabled = false
+local animPlayerId = "rbxassetid://97893809425239"
+
+local currentAnim = nil
+local currentTrack = nil
+local currentStoppedConn = nil
+local charAddedConn = nil
+
+local function stopAnimation()
+    if currentStoppedConn then
+        currentStoppedConn:Disconnect()
+        currentStoppedConn = nil
+    end
+    if currentTrack then
+        currentTrack:Stop()
+        currentTrack = nil
+    end
+    if charAddedConn then
+        charAddedConn:Disconnect()
+        charAddedConn = nil
+    end
+    currentAnim = nil
+end
+
+local function playAnimation(char)
+    if not animPlayerEnabled or not currentAnim then return end
+    
+    local humanoid = char:WaitForChild("Humanoid", 5)
+    local animator = humanoid and humanoid:WaitForChild("Animator", 5)
+    
+    if animator then
+        currentTrack = animator:LoadAnimation(currentAnim)
+        currentTrack.Priority = Enum.AnimationPriority.Action4
+        currentTrack.Looped = true
+        currentTrack:Play()
+
+        currentStoppedConn = currentTrack.Stopped:Connect(function()
+            if animPlayerEnabled and char.Parent and humanoid.Health > 0 then
+                currentTrack:Play()
+            end
+        end)
+    end
+end
+
+local function updateAnimationPlayer()
+    stopAnimation()
+
+    if animPlayerEnabled then
+        local success, objects = pcall(function()
+            return game:GetObjects(animPlayerId)
+        end)
+
+        if success and objects and objects[1] then
+            local obj = objects[1]
+            currentAnim = obj:IsA("Animation") and obj or obj:FindFirstChildOfClass("Animation", true)
+            
+            if currentAnim then
+                if lp.Character then task.spawn(playAnimation, lp.Character) end
+                charAddedConn = lp.CharacterAdded:Connect(playAnimation)
+            else
+                warn("Animation object not found.")
+            end
+        else
+            warn("GetObjects failed.")
+        end
+    end
+end
+
+local AnimationPlayerToggle = AnimationPlayerSection:AddToggle("AnimationPlayerToggle", {
+    Text = "Enabled",
+    Default = false,
+    Callback = function(value)
+        animPlayerEnabled = value
+        updateAnimationPlayer()
+    end
+})
+
+local AnimationPlayerDep = AnimationPlayerSection:AddDependencyBox()
+AnimationPlayerDep:AddInput("AnimationPlayerID", {
+    Default = "97893809425239",
+    Numeric = true,
+    Finished = false,
+    Text = "Animation ID",
+    Placeholder = "Enter Animation ID",
+    Callback = function(value)
+        local id = string.match(tostring(value), "%d+")
+        if id then
+            animPlayerId = "rbxassetid://" .. id
+            if animPlayerEnabled then
+                updateAnimationPlayer()
+            end
+        end
+    end
+})
+AnimationPlayerDep:SetupDependencies({ { AnimationPlayerToggle, true } })
+
 -- ========== THEME MANAGER ==========
 ThemeManager:SetLibrary(Library)
 ThemeManager:SetFolder("NewModpackRivals")
