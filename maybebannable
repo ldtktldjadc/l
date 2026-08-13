@@ -352,7 +352,7 @@ do
         statusLabel.AnchorPoint = Vector2.new(0.5, 0.5)
         statusLabel.BackgroundTransparency = 1
         statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        statusLabel.TextScaled = true
+        statusLabel.TextScaled = false
         statusLabel.Font = Drawing.Fonts.UI
         statusLabel.TextXAlignment = Enum.TextXAlignment.Center
         statusLabel.Text = ""
