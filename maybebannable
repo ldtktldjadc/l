@@ -450,6 +450,16 @@ do
             -- 相手にForceFieldが付いている場合は無視
             if char:FindFirstChildWhichIsA("ForceField") then continue end
 
+            local isInvincible = false
+            pcall(function()
+                local fc = require(__q3r4s5.Controllers.FighterController)
+                local fighter = fc and fc:GetFighter(player)
+                if fighter and fighter.Entity then
+                    isInvincible = fighter.Entity:Get("IsInvincible")
+                end
+            end)
+            if isInvincible then continue end
+
             local cam = __e1f2g3.CurrentCamera
             if not cam then continue end
            
@@ -475,7 +485,17 @@ do
             local __f6g7h8 = __z2a3b4.__root
             if not __f6g7h8 then return end
 
-            local __i9j0k1 = __c3d4e5.Character and __c3d4e5.Character:FindFirstChild("HumanoidRootPart")
+            local __i9j0k1 = nil
+            pcall(function()
+                local fc = require(__q3r4s5.Controllers.FighterController)
+                local fighter = fc and fc:GetFighter(__c3d4e5)
+                if fighter and fighter.Entity and fighter.Entity.RootPart then
+                    __i9j0k1 = fighter.Entity.RootPart
+                end
+            end)
+            if not __i9j0k1 then
+                __i9j0k1 = __c3d4e5.Character and (__c3d4e5.Character:FindFirstChild("HitboxBody") or __c3d4e5.Character:FindFirstChild("HitboxBodySmall") or __c3d4e5.Character:FindFirstChild("HumanoidRootPart"))
+            end
             if not __i9j0k1 then
                 self:__desync_stop()
                 return
@@ -506,7 +526,17 @@ do
             local __f6g7h8 = __z2a3b4.__root
             if not __f6g7h8 then return end
 
-            local __i9j0k1 = __c3d4e5.Character and __c3d4e5.Character:FindFirstChild("HumanoidRootPart")
+            local __i9j0k1 = nil
+            pcall(function()
+                local fc = require(__q3r4s5.Controllers.FighterController)
+                local fighter = fc and fc:GetFighter(__c3d4e5)
+                if fighter and fighter.Entity and fighter.Entity.RootPart then
+                    __i9j0k1 = fighter.Entity.RootPart
+                end
+            end)
+            if not __i9j0k1 then
+                __i9j0k1 = __c3d4e5.Character and (__c3d4e5.Character:FindFirstChild("HitboxBody") or __c3d4e5.Character:FindFirstChild("HitboxBodySmall") or __c3d4e5.Character:FindFirstChild("HumanoidRootPart"))
+            end
             if not __i9j0k1 then
                 self:__desync_stop()
                 return
