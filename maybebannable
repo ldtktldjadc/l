@@ -369,47 +369,8 @@ do
                 task.wait()
                 local target = self.__target
 
-                -- ターゲットなし / VoidSpam中
                 if not target or not target.Character then
                     setStatus("Ragebot: Void spaming..")
-                    continue
-                end
-
-                -- Ammo/リロードチェック
-                local equippedItem = nil
-                local ammoVal = nil
-                pcall(function()
-                    local fc = require(__q3r4s5.Controllers.FighterController)
-                    local lf = fc and fc.LocalFighter
-                    if lf and lf.EquippedItem then
-                        equippedItem = lf.EquippedItem
-                        ammoVal = equippedItem:Get("Ammo")
-                    end
-                end)
-
-                if ammoVal ~= nil and ammoVal <= 0 then
-                    self.__isReloading = true
-                    setStatus("Ragebot: Reloading......")
-                    repeat
-                        task.wait(0.1)
-                        if not self.__autoshot then break end
-                        pcall(function()
-                            local fc = require(__q3r4s5.Controllers.FighterController)
-                            local lf = fc and fc.LocalFighter
-                            if lf and lf.EquippedItem then
-                                ammoVal = lf.EquippedItem:Get("Ammo")
-                                if ammoVal <= 0 and lf.EquippedItem.StartReloading then
-                                    pcall(function() lf.EquippedItem:StartReloading() end)
-                                end
-                            end
-                        end)
-                    until (ammoVal ~= nil and ammoVal > 0) or not self.__autoshot
-                    self.__isReloading = false
-                    continue
-                end
-
-                if self.__isReloading then
-                    setStatus("Ragebot: Reloading......")
                     continue
                 end
 
@@ -418,22 +379,25 @@ do
                     continue
                 end
 
-                if self.__voidSpam then
-                    setStatus("Ragebot: Void spaming..")
-                end
-
+                -- ammo確認して発射 or リロード
                 local targetName = target.Name or "???"
-                setStatus("Ragebot: Killing " .. targetName .. "....")
-
-                -- __t6u7v8.StartShooting(item, p26, p27) を直接叩いてClientFighter:Inputへ渡す
                 pcall(function()
                     local fc = require(__q3r4s5.Controllers.FighterController)
                     local lf = fc and fc.LocalFighter
                     if not (lf and lf.EquippedItem) then return end
                     local item = lf.EquippedItem
-                    local r1, r2, r3, r4, r5 = __t6u7v8.StartShooting(item, nil, nil)
-                    if r1 == true then
-                        item.ClientFighter:Input(r2, r3, r4, r5)
+                    local info = item.Info
+                    if not (info and info.MaxAmmo) then return end
+                    local ammo = 0
+                    pcall(function() ammo = item:Get("Ammo") or 0 end)
+                    local isReloading = false
+                    pcall(function() isReloading = item:Get("IsReloading") or lf:Get("IsReloading") end)
+                    if ammo <= 0 or isReloading then
+                        setStatus("Ragebot: Reloading......")
+                        pcall(function() lf:Input("StartReloading") end)
+                    else
+                        setStatus("Ragebot: Killing " .. targetName .. "....")
+                        pcall(function() lf:Input("StartShooting") end)
                     end
                 end)
             end
