@@ -2544,38 +2544,48 @@ end
 local function playAnimation(char)
     if not animPlayerEnabled or not currentAnim then return end
     
-    local humanoid = char:WaitForChild("Humanoid", 5)
-    local animator = humanoid and humanoid:WaitForChild("Animator", 5)
-    
-    if animator then
-        if currentTrack then
-            local t = currentTrack
-            currentTrack = nil
-            pcall(function() t:Stop() end)
-        end
-        if animatorConn then
-            pcall(function() animatorConn:Disconnect() end)
-            animatorConn = nil
-        end
+    task.spawn(function()
+        local humanoid = char:WaitForChild("Humanoid", 5)
+        local animator = humanoid and humanoid:WaitForChild("Animator", 5)
         
-        pcall(function()
-            currentTrack = animator:LoadAnimation(currentAnim)
-            currentTrack.Priority = Enum.AnimationPriority.Action4
-            currentTrack.Looped = true
-            currentTrack:Play()
-            currentTrack:AdjustSpeed(animPlayerSpeed)
-
-            for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
-                if t ~= currentTrack then pcall(function() t:Stop() end) end
+        if animator then
+            -- 確実にワークスペース等に配置されるまで少し待機
+            while char.Parent == nil do
+                task.wait(0.1)
             end
+            task.wait(0.5) -- リスポーン直後のラグ対策
+            
+            if not animPlayerEnabled or not currentAnim then return end
+            
+            if currentTrack then
+                local t = currentTrack
+                currentTrack = nil
+                pcall(function() t:Stop() end)
+            end
+            if animatorConn then
+                pcall(function() animatorConn:Disconnect() end)
+                animatorConn = nil
+            end
+            
+            pcall(function()
+                currentTrack = animator:LoadAnimation(currentAnim)
+                currentTrack.Priority = Enum.AnimationPriority.Action4
+                currentTrack.Looped = true
+                currentTrack:Play()
+                currentTrack:AdjustSpeed(animPlayerSpeed)
 
-            animatorConn = animator.AnimationPlayed:Connect(function(t)
-                if currentTrack and t ~= currentTrack then
-                    pcall(function() t:Stop() end)
+                for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
+                    if t ~= currentTrack then pcall(function() t:Stop() end) end
                 end
+
+                animatorConn = animator.AnimationPlayed:Connect(function(t)
+                    if currentTrack and t ~= currentTrack then
+                        pcall(function() t:Stop() end)
+                    end
+                end)
             end)
-        end)
-    end
+        end
+    end)
 end
 
 local function updateAnimationPlayer()
