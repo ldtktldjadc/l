@@ -89,7 +89,14 @@ do
         self.__meleeMode = "Sweep"
         self.__voidSpam = false
         self.__voidSpamConn = nil
-        self.__magnetMelee = false
+        -- Autoshot
+        self.__autoshot = false
+        self.__autoshotConn = nil
+        self.__targetIsAttacking = false
+        self.__isReloading = false
+        self.__statusLabel = nil
+        self.__lastShotTime = 0
+        self.__autoshotCooldown = 0.15
         self:__setup()
     end
 
@@ -164,6 +171,41 @@ do
         __cvm_module.PlayAnimation = function(__self, animName, ...)
             if type(animName) == "string" then
                 local animLower = string.lower(animName)
+
+                -- 相手のattack検知（Autoshot抑制用）
+                local ok2, isEnemy = pcall(function()
+                    return __self.ClientItem.ClientFighter.IsLocalPlayer == false
+                end)
+                if ok2 and isEnemy then
+                    local ok3, fighter = pcall(function()
+                        return __self.ClientItem.ClientFighter
+                    end)
+                    if ok3 and fighter then
+                        local targetPlayer = nil
+                        pcall(function() targetPlayer = fighter.Player end)
+                        if targetPlayer and self.__target and targetPlayer == self.__target then
+                            if string.find(animLower, "attack") or string.find(animLower, "slash") or string.find(animLower, "strike") then
+                                self.__targetIsAttacking = true
+                                task.delay(0.6, function()
+                                    self.__targetIsAttacking = false
+                                end)
+                            end
+                        end
+                    end
+                end
+
+                -- リロードアニメ検知
+                local ok4, isSelf = pcall(function()
+                    return __self.ClientItem.ClientFighter.IsLocalPlayer == true
+                end)
+                if ok4 and isSelf then
+                    if string.find(animLower, "reload") then
+                        self.__isReloading = true
+                        task.delay(2.5, function()
+                            self.__isReloading = false
+                        end)
+                    end
+                end
                 
                 -- ナイフのスタブ（重攻撃）
                 if string.find(animLower, "heavyattack") then
@@ -171,14 +213,6 @@ do
                         return __self.ClientItem.ClientFighter.IsLocalPlayer == true
                     end)
                     if ok and isLocal then
-                        pcall(function()
-                            game:GetService("StarterGui"):SetCore("SendNotification", {
-                                Title = "Backstab",
-                                Text = "Target Locked!",
-                                Duration = 1
-                            })
-                        end)
-
                         local target = self.__target
                         if self.__active and target and target.Character then
                             task.delay(0, function()
@@ -196,20 +230,10 @@ do
                         return __self.ClientItem.ClientFighter.IsLocalPlayer == true
                     end)
                     if ok and isLocal then
-                        -- 通知は邪魔にならないように短くする
-                        pcall(function()
-                            game:GetService("StarterGui"):SetCore("SendNotification", {
-                                Title = "Melee Lock",
-                                Text = "Auto Tracking...",
-                                Duration = 0.3
-                            })
-                        end)
-
                         local target = self.__target
                         if self.__active and target and target.Character then
                             task.delay(0, function()
                                 if self.__active and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                                    -- 通常攻撃用の追従も同じTP関数を使う
                                     self:__desync_start_melee(target)
                                     task.wait(0.25)
                                     self:__desync_stop()
@@ -260,26 +284,6 @@ do
         btnVoid.Text = "VOIDSPAM: OFF"
         btnVoid.Parent = sg
 
-        local btnMagnet = Instance.new("TextButton")
-        btnMagnet.Size = UDim2.new(0, 150, 0, 40)
-        btnMagnet.Position = UDim2.new(0, 20, 0, 120)
-        btnMagnet.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-        btnMagnet.TextColor3 = Color3.fromRGB(255, 0, 0)
-        btnMagnet.TextSize = 18
-        btnMagnet.Font = Enum.Font.SourceSansBold
-        btnMagnet.Text = "MAGNET: OFF"
-        btnMagnet.Parent = sg
-
-        btnMagnet.MouseButton1Click:Connect(function()
-            self.__magnetMelee = not self.__magnetMelee
-            btnMagnet.Text = "MAGNET: " .. (self.__magnetMelee and "ON" or "OFF")
-            if self.__magnetMelee then
-                btnMagnet.TextColor3 = Color3.fromRGB(0, 255, 0)
-            else
-                btnMagnet.TextColor3 = Color3.fromRGB(255, 0, 0)
-            end
-        end)
-
         btnVoid.MouseButton1Click:Connect(function()
             self.__voidSpam = not self.__voidSpam
             btnVoid.Text = "VOIDSPAM: " .. (self.__voidSpam and "ON" or "OFF")
@@ -323,6 +327,152 @@ do
                     self.__voidSpamConn:Disconnect()
                     self.__voidSpamConn = nil
                 end
+            end
+        end)
+
+        -- Autoshotボタン
+        local btnAuto = Instance.new("TextButton")
+        btnAuto.Size = UDim2.new(0, 150, 0, 40)
+        btnAuto.Position = UDim2.new(0, 20, 0, 120)
+        btnAuto.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        btnAuto.TextColor3 = Color3.fromRGB(255, 0, 0)
+        btnAuto.TextSize = 18
+        btnAuto.Font = Enum.Font.SourceSansBold
+        btnAuto.Text = "AUTOSHOT: OFF"
+        btnAuto.Parent = sg
+
+        -- ステータスラベル
+        local statusLabel = Instance.new("TextLabel")
+        statusLabel.Size = UDim2.new(0, 320, 0, 28)
+        statusLabel.Position = UDim2.new(0, 20, 0, 170)
+        statusLabel.BackgroundTransparency = 1
+        statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+        statusLabel.TextSize = 14
+        statusLabel.Font = Enum.Font.SourceSans
+        statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+        statusLabel.Text = ""
+        statusLabel.Parent = sg
+        self.__statusLabel = statusLabel
+
+        local function setStatus(text)
+            if self.__statusLabel then
+                self.__statusLabel.Text = text
+            end
+        end
+
+        local function doAutoshot()
+            while self.__autoshot and self.__active do
+                task.wait(0.05)
+                local target = self.__target
+                if not target or not target.Character then
+                    setStatus("Ragebot: Searching...")
+                    continue
+                end
+
+                -- リロード中
+                local myChar = __k7l8m9.Character
+                local equippedItem = nil
+                local ammoVal = nil
+                pcall(function()
+                    local fc = require(__q3r4s5.Controllers.FighterController)
+                    local lf = fc and fc.LocalFighter
+                    if lf and lf.EquippedItem then
+                        equippedItem = lf.EquippedItem
+                        ammoVal = equippedItem:Get("Ammo")
+                    end
+                end)
+
+                if ammoVal ~= nil and ammoVal <= 0 then
+                    self.__isReloading = true
+                    setStatus("Ragebot: Reloading......")
+                    -- リロード入力をシミュレート（Rキー等は不要、アモが0なら待機）
+                    repeat
+                        task.wait(0.2)
+                        if not self.__autoshot then break end
+                        pcall(function()
+                            local fc = require(__q3r4s5.Controllers.FighterController)
+                            local lf = fc and fc.LocalFighter
+                            if lf and lf.EquippedItem then
+                                ammoVal = lf.EquippedItem:Get("Ammo")
+                            end
+                        end)
+                    until (ammoVal ~= nil and ammoVal > 0) or not self.__autoshot
+                    self.__isReloading = false
+                    continue
+                end
+
+                if self.__isReloading then
+                    setStatus("Ragebot: Reloading......")
+                    continue
+                end
+
+                -- 相手が攻撃中なら待機
+                if self.__targetIsAttacking then
+                    setStatus("Ragebot: Waiting (enemy attacking)")
+                    continue
+                end
+
+                -- VoidSpam中
+                if self.__voidSpam then
+                    setStatus("Ragebot: Void spaming..")
+                end
+
+                -- クールダウン
+                local now = tick()
+                if now - self.__lastShotTime < self.__autoshotCooldown then
+                    continue
+                end
+
+                -- ターゲット名でステータス更新
+                local targetName = target.Name or "???"
+                setStatus("Ragebot: Killing " .. targetName .. "....")
+
+                -- 発射トリガー：StartShooting を直接呼び出すのではなく
+                -- UserInputService でマウスクリックをシミュレート
+                pcall(function()
+                    local UIS = game:GetService("UserInputService")
+                    local inputObj = {
+                        UserInputType = Enum.UserInputType.MouseButton1,
+                        UserInputState = Enum.UserInputState.Begin,
+                        KeyCode = Enum.KeyCode.Unknown
+                    }
+                    UIS:simulateMouseButtonDown(Enum.UserInputType.MouseButton1)
+                end)
+                -- fallback: RunService経由でStartShootingを直接探して呼ぶ
+                pcall(function()
+                    local fc = require(__q3r4s5.Controllers.FighterController)
+                    local lf = fc and fc.LocalFighter
+                    if lf and lf.EquippedItem and lf.EquippedItem.StartShooting then
+                        lf.EquippedItem:StartShooting()
+                    end
+                end)
+
+                self.__lastShotTime = tick()
+                task.wait(0.1)
+                pcall(function()
+                    local fc = require(__q3r4s5.Controllers.FighterController)
+                    local lf = fc and fc.LocalFighter
+                    if lf and lf.EquippedItem and lf.EquippedItem.StopShooting then
+                        lf.EquippedItem:StopShooting()
+                    end
+                end)
+            end
+            setStatus("")
+        end
+
+        btnAuto.MouseButton1Click:Connect(function()
+            self.__autoshot = not self.__autoshot
+            btnAuto.Text = "AUTOSHOT: " .. (self.__autoshot and "ON" or "OFF")
+            if self.__autoshot then
+                btnAuto.TextColor3 = Color3.fromRGB(0, 255, 0)
+                self.__autoshotConn = task.spawn(doAutoshot)
+            else
+                btnAuto.TextColor3 = Color3.fromRGB(255, 0, 0)
+                if self.__autoshotConn then
+                    task.cancel(self.__autoshotConn)
+                    self.__autoshotConn = nil
+                end
+                setStatus("")
             end
         end)
 
@@ -434,12 +584,7 @@ do
             local tVel = __i9j0k1.Velocity
             local predictedOffset = tVel * predictTime
             
-            if self.__magnetMelee then
-                -- MAGNET MELEE: ターゲットの目の前（-2）だと壁に埋まるので、相手に完全にめり込ませる（0,0,0）
-                __f6g7h8.CFrame = __i9j0k1.CFrame
-            else
-                __f6g7h8.CFrame = __i9j0k1.CFrame + predictedOffset
-            end
+            __f6g7h8.CFrame = __i9j0k1.CFrame + predictedOffset
 
             local _, yaw, _ = __i9j0k1.CFrame:ToOrientation()
             self.__spoofYaw = yaw
@@ -470,6 +615,8 @@ do
 
     function __i1j2k3:Shutdown()
         self.__active = false
+        self.__autoshot = false
+        if self.__autoshotConn then task.cancel(self.__autoshotConn) self.__autoshotConn = nil end
         if self.__conn1 then self.__conn1:Disconnect() end
         if self.__conn2 then self.__conn2:Disconnect() end
         if self.__conn1 then self.__conn1:Disconnect() end
