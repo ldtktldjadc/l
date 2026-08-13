@@ -433,7 +433,6 @@ do
        
         local closest = nil
         local closestDist = math.huge
-        local MAX_DISTANCE = 200
 
         for _, player in next, __v2w3x4:GetPlayers() do
             if player == __k7l8m9 then continue end
@@ -447,13 +446,15 @@ do
             local hum = char:FindFirstChildWhichIsA("Humanoid")
             
             if not (root and head and hum and hum.Health > 0) then continue end
+            
+            -- 相手にForceFieldが付いている場合は無視
+            if char:FindFirstChildWhichIsA("ForceField") then continue end
+
             local cam = __e1f2g3.CurrentCamera
             if not cam then continue end
            
             -- クライアントのカメラ位置からの距離を計算する
             local dist = (cam.CFrame.Position - root.Position).Magnitude
-            
-            if dist > MAX_DISTANCE then continue end
             
             if dist < closestDist then
                 closestDist = dist
