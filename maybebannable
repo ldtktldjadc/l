@@ -426,9 +426,13 @@ do
                 local targetName = target.Name or "???"
                 setStatus("Ragebot: Killing " .. targetName .. "....")
 
-                -- Gun.StartShooting を直接叩く（最速連射）
+                -- equipped gunのStartShooting()を直接呼ぶ
                 pcall(function()
-                    __t6u7v8.StartShooting(__t6u7v8, nil, nil)
+                    local fc = require(__q3r4s5.Controllers.FighterController)
+                    local lf = fc and fc.LocalFighter
+                    if lf and lf.EquippedItem then
+                        lf.EquippedItem:StartShooting(nil, nil)
+                    end
                 end)
             end
             setStatus("")
