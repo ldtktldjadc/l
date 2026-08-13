@@ -347,12 +347,12 @@ do
 
         -- ステータスラベル
         local statusLabel = Instance.new("TextLabel")
-        statusLabel.Size = UDim2.new(0, 400, 0, 50)
-        statusLabel.Position = UDim2.new(0.5, 0, 0.6, 0)
+        statusLabel.Size = UDim2.new(0.25, 0, 0.04, 0)
+        statusLabel.Position = UDim2.new(0.5, 0, 0.65, 0)
         statusLabel.AnchorPoint = Vector2.new(0.5, 0.5)
         statusLabel.BackgroundTransparency = 1
         statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        statusLabel.TextSize = 36
+        statusLabel.TextScaled = true
         statusLabel.Font = Drawing.Fonts.UI
         statusLabel.TextXAlignment = Enum.TextXAlignment.Center
         statusLabel.Text = ""
