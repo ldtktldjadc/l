@@ -1199,6 +1199,7 @@ local AimLockSettings = {
     Smoothness = 0.65,
     AlwaysLockSmooth = false,
     WallCheck = false,
+    AliveCheck = true,
     TargetPart = "HitboxHead",
 }
 
@@ -1274,7 +1275,9 @@ local function AL_getTarget()
 				end
 			end
 		end
-		local ok = fighter and fighter.Player and fighter.Entity and AL_getHealth(fighter.Entity) > 0
+		local isAlive = (AL_getHealth(fighter.Entity) > 0)
+		if not AimLockSettings.AliveCheck then isAlive = true end
+		local ok = fighter and fighter.Player and fighter.Entity and isAlive
 		if not ok or not pcall(function() return not isBehindWall(AL_LockedTarget, fighter.Entity.Model) end) then
 			AL_LockedTarget = nil; AL_BlatantLockedFighter = nil
 		elseif isBehindWall(AL_LockedTarget, fighter.Entity.Model) then
@@ -1290,7 +1293,9 @@ local function AL_getTarget()
 		local nearest, minDist, nearestFighter = nil, AimLockSettings.FOV, nil
 		if not FighterController or type(FighterController.Objects) ~= "table" then return nil, nil end
 		for _, fighter in pairs(FighterController.Objects or {}) do
-			if fighter ~= FighterController.LocalFighter and fighter.Entity and AL_getHealth(fighter.Entity) > 0 and AL_isEnemy(fighter) then
+			local isAlive = (AL_getHealth(fighter.Entity) > 0)
+			if not AimLockSettings.AliveCheck then isAlive = true end
+			if fighter ~= FighterController.LocalFighter and fighter.Entity and isAlive and AL_isEnemy(fighter) then
 				local char = fighter.Entity.Model
 				local hrp = char:FindFirstChild("HumanoidRootPart")
 				if hrp and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
@@ -1396,6 +1401,7 @@ local AimLockToggle = AimLockSection:AddToggle("AimLockEnabled", {
 
 local AimLockDep = AimLockSection:AddDependencyBox()
 AimLockDep:AddToggle("AimLockTeamCheck", { Text = "TeamCheck", Default = false, Callback = function(v) AimLockSettings.TeamCheck = v end })
+AimLockDep:AddToggle("AimLockAliveCheck", { Text = "AliveCheck", Default = true, Callback = function(v) AimLockSettings.AliveCheck = v end })
 AimLockDep:AddSlider("AimLockFOV", { Text = "Fov", Default = 150, Min = 1, Max = 800, Rounding = 0, Callback = function(v) AimLockSettings.FOV = v end })
 AimLockDep:AddSlider("AimLockSmoothness", { Text = "SmoothNess", Default = 0.65, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.Smoothness = v end })
 AimLockDep:AddToggle("AimLockAlwaysLockSmooth", { Text = "AlwaysLockSmooth", Default = false, Callback = function(v) AimLockSettings.AlwaysLockSmooth = v end })
@@ -2651,6 +2657,147 @@ Library:UpdateColorsUsingRegistry()
 
 local ThemeSection = Tabs.Config:AddLeftGroupbox("Theme")
 ThemeManager:ApplyToGroupbox(ThemeSection)
+
+-- ========== FLY & NOCLIP ==========
+local MovementSection = Tabs.Misc:AddRightGroupbox("Movement")
+
+local flyEnabled = false
+local flySpeed = 70
+local bodyVelocity = nil
+local bodyGyro = nil
+local flyThread = nil
+local noclipEnabled = false
+local noclipConnection = nil
+
+local function cleanupFly()
+    if flyThread then task.cancel(flyThread) flyThread = nil end
+    if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+    if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
+end
+
+local function startFly()
+    local char = lp.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum then return end
+    
+    cleanupFly()
+    
+    bodyVelocity = Instance.new("BodyVelocity", root)
+    bodyVelocity.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    
+    bodyGyro = Instance.new("BodyGyro", root)
+    bodyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+    bodyGyro.P = 10000
+    
+    hum:ChangeState(Enum.HumanoidStateType.Swimming)
+    
+    flyEnabled = true
+    
+    flyThread = task.spawn(function()
+        while flyEnabled and char and char.Parent and root and root.Parent do
+            local humCurrent = char:FindFirstChildOfClass("Humanoid")
+            if humCurrent then
+                local moveDir = humCurrent.MoveDirection
+                if bodyVelocity then
+                    if moveDir.Magnitude > 0 then
+                        bodyVelocity.Velocity = moveDir * flySpeed
+                    else
+                        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                    end
+                end
+                if bodyGyro then
+                    bodyGyro.CFrame = workspace.CurrentCamera.CFrame
+                end
+                if humCurrent:GetState() ~= Enum.HumanoidStateType.Swimming then
+                    humCurrent:ChangeState(Enum.HumanoidStateType.Swimming)
+                end
+            end
+            task.wait()
+        end
+        cleanupFly()
+    end)
+end
+
+local function stopFly()
+    flyEnabled = false
+    cleanupFly()
+    local char = lp.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum and hum:GetState() == Enum.HumanoidStateType.Swimming then
+            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        end
+    end
+end
+
+local function startNoclip()
+    if noclipConnection then noclipConnection:Disconnect() end
+    noclipEnabled = true
+    noclipConnection = RunService.Stepped:Connect(function()
+        if noclipEnabled and lp.Character then
+            for _, part in pairs(lp.Character:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = false end
+            end
+        end
+    end)
+end
+
+local function stopNoclip()
+    noclipEnabled = false
+    if noclipConnection then
+        noclipConnection:Disconnect()
+        noclipConnection = nil
+    end
+    if lp.Character then
+        for _, part in pairs(lp.Character:GetDescendants()) do
+            if part:IsA("BasePart") then part.CanCollide = true end
+        end
+    end
+end
+
+MovementSection:AddToggle("FlyToggle", {
+    Text = "Fly",
+    Default = false,
+    Callback = function(value)
+        if value then startFly() else stopFly() end
+    end
+})
+
+MovementSection:AddSlider("FlySpeedSlider", {
+    Text = "Fly Speed",
+    Default = 70,
+    Min = 20,
+    Max = 200,
+    Rounding = 0,
+    Callback = function(value)
+        flySpeed = value
+        if flyEnabled and bodyVelocity then
+            local char = lp.Character
+            if char then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum and hum.MoveDirection.Magnitude > 0 then
+                    bodyVelocity.Velocity = hum.MoveDirection * value
+                end
+            end
+        end
+    end
+})
+
+MovementSection:AddToggle("NoclipToggle", {
+    Text = "Noclip",
+    Default = false,
+    Callback = function(value)
+        if value then startNoclip() else stopNoclip() end
+    end
+})
+
+lp.CharacterAdded:Connect(function()
+    if flyEnabled then task.wait(0.5) startFly() end
+    if noclipEnabled then task.wait(0.5) startNoclip() end
+end)
 
 -- ========== AUTO EXECUTE ==========
 local AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
