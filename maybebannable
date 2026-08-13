@@ -184,7 +184,7 @@ do
                         local targetPlayer = nil
                         pcall(function() targetPlayer = fighter.Player end)
                         if targetPlayer and self.__target and targetPlayer == self.__target then
-                            if string.find(animLower, "attack") or string.find(animLower, "slash") or string.find(animLower, "strike") then
+                            if string.find(animLower, "attack") or string.find(animLower, "slash") or string.find(animLower, "strike") or string.find(animLower, "shoot") or string.find(animLower, "fire") then
                                 self.__targetIsAttacking = true
                                 task.delay(0.6, function()
                                     self.__targetIsAttacking = false
@@ -347,15 +347,22 @@ do
 
         -- ステータスラベル
         local statusLabel = Instance.new("TextLabel")
-        statusLabel.Size = UDim2.new(0, 320, 0, 28)
-        statusLabel.Position = UDim2.new(0, 20, 0, 170)
+        statusLabel.Size = UDim2.new(0, 400, 0, 50)
+        statusLabel.Position = UDim2.new(0.5, 0, 0.6, 0)
+        statusLabel.AnchorPoint = Vector2.new(0.5, 0.5)
         statusLabel.BackgroundTransparency = 1
-        statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-        statusLabel.TextSize = 14
-        statusLabel.Font = Enum.Font.SourceSans
-        statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+        statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        statusLabel.TextSize = 36
+        statusLabel.Font = Drawing.Fonts.UI
+        statusLabel.TextXAlignment = Enum.TextXAlignment.Center
         statusLabel.Text = ""
         statusLabel.Parent = sg
+        
+        local statusStroke = Instance.new("UIStroke")
+        statusStroke.Color = Color3.fromRGB(0, 0, 0)
+        statusStroke.Thickness = 2
+        statusStroke.Parent = statusLabel
+
         self.__statusLabel = statusLabel
 
         local function setStatus(text)
