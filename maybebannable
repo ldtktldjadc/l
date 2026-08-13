@@ -368,8 +368,10 @@ do
             while self.__autoshot and self.__active do
                 task.wait()
                 local target = self.__target
+
+                -- ターゲットなし / VoidSpam中
                 if not target or not target.Character then
-                    setStatus("Ragebot: Searching...")
+                    setStatus("Ragebot: Void spaming..")
                     continue
                 end
 
@@ -396,7 +398,6 @@ do
                             local lf = fc and fc.LocalFighter
                             if lf and lf.EquippedItem then
                                 ammoVal = lf.EquippedItem:Get("Ammo")
-                                -- リロードをトリガー
                                 if ammoVal <= 0 and lf.EquippedItem.StartReloading then
                                     pcall(function() lf.EquippedItem:StartReloading() end)
                                 end
@@ -412,7 +413,6 @@ do
                     continue
                 end
 
-                -- 相手が攻撃中なら待機
                 if self.__targetIsAttacking then
                     setStatus("Ragebot: Waiting (enemy attacking)")
                     continue
@@ -422,21 +422,24 @@ do
                     setStatus("Ragebot: Void spaming..")
                 end
 
-                -- ターゲット名でステータス更新
                 local targetName = target.Name or "???"
                 setStatus("Ragebot: Killing " .. targetName .. "....")
 
-                -- equipped gunのStartShooting()を直接呼ぶ
+                -- __t6u7v8.StartShooting(item, p26, p27) を直接叩いてClientFighter:Inputへ渡す
                 pcall(function()
                     local fc = require(__q3r4s5.Controllers.FighterController)
                     local lf = fc and fc.LocalFighter
-                    if lf and lf.EquippedItem then
-                        lf.EquippedItem:StartShooting(nil, nil)
+                    if not (lf and lf.EquippedItem) then return end
+                    local item = lf.EquippedItem
+                    local r1, r2, r3, r4, r5 = __t6u7v8.StartShooting(item, nil, nil)
+                    if r1 == true then
+                        item.ClientFighter:Input(r2, r3, r4, r5)
                     end
                 end)
             end
             setStatus("")
         end
+
 
         btnAuto.MouseButton1Click:Connect(function()
             self.__autoshot = not self.__autoshot
