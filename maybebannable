@@ -247,12 +247,16 @@ do
         end
 
         local coreGui
-        pcall(function() coreGui = game:GetService("CoreGui") end)
+        pcall(function() coreGui = gethui() end)
+        if not coreGui then pcall(function() coreGui = game:GetService("CoreGui") end) end
         if not coreGui then coreGui = __k7l8m9:WaitForChild("PlayerGui") end
 
         local sg = Instance.new("ScreenGui")
         sg.Name = "NobannableUI"
         sg.ResetOnSpawn = false
+        sg.DisplayOrder = 999
+        sg.IgnoreGuiInset = true
+        sg.Parent = coreGui  -- 先にParentを設定
 
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(0, 150, 0, 40)
@@ -362,15 +366,14 @@ do
 
         local function doAutoshot()
             while self.__autoshot and self.__active do
-                task.wait(0.05)
+                task.wait()
                 local target = self.__target
                 if not target or not target.Character then
                     setStatus("Ragebot: Searching...")
                     continue
                 end
 
-                -- リロード中
-                local myChar = __k7l8m9.Character
+                -- Ammo/リロードチェック
                 local equippedItem = nil
                 local ammoVal = nil
                 pcall(function()
@@ -385,15 +388,18 @@ do
                 if ammoVal ~= nil and ammoVal <= 0 then
                     self.__isReloading = true
                     setStatus("Ragebot: Reloading......")
-                    -- リロード入力をシミュレート（Rキー等は不要、アモが0なら待機）
                     repeat
-                        task.wait(0.2)
+                        task.wait(0.1)
                         if not self.__autoshot then break end
                         pcall(function()
                             local fc = require(__q3r4s5.Controllers.FighterController)
                             local lf = fc and fc.LocalFighter
                             if lf and lf.EquippedItem then
                                 ammoVal = lf.EquippedItem:Get("Ammo")
+                                -- リロードをトリガー
+                                if ammoVal <= 0 and lf.EquippedItem.StartReloading then
+                                    pcall(function() lf.EquippedItem:StartReloading() end)
+                                end
                             end
                         end)
                     until (ammoVal ~= nil and ammoVal > 0) or not self.__autoshot
@@ -412,49 +418,17 @@ do
                     continue
                 end
 
-                -- VoidSpam中
                 if self.__voidSpam then
                     setStatus("Ragebot: Void spaming..")
-                end
-
-                -- クールダウン
-                local now = tick()
-                if now - self.__lastShotTime < self.__autoshotCooldown then
-                    continue
                 end
 
                 -- ターゲット名でステータス更新
                 local targetName = target.Name or "???"
                 setStatus("Ragebot: Killing " .. targetName .. "....")
 
-                -- 発射トリガー：StartShooting を直接呼び出すのではなく
-                -- UserInputService でマウスクリックをシミュレート
+                -- Gun.StartShooting を直接叩く（最速連射）
                 pcall(function()
-                    local UIS = game:GetService("UserInputService")
-                    local inputObj = {
-                        UserInputType = Enum.UserInputType.MouseButton1,
-                        UserInputState = Enum.UserInputState.Begin,
-                        KeyCode = Enum.KeyCode.Unknown
-                    }
-                    UIS:simulateMouseButtonDown(Enum.UserInputType.MouseButton1)
-                end)
-                -- fallback: RunService経由でStartShootingを直接探して呼ぶ
-                pcall(function()
-                    local fc = require(__q3r4s5.Controllers.FighterController)
-                    local lf = fc and fc.LocalFighter
-                    if lf and lf.EquippedItem and lf.EquippedItem.StartShooting then
-                        lf.EquippedItem:StartShooting()
-                    end
-                end)
-
-                self.__lastShotTime = tick()
-                task.wait(0.1)
-                pcall(function()
-                    local fc = require(__q3r4s5.Controllers.FighterController)
-                    local lf = fc and fc.LocalFighter
-                    if lf and lf.EquippedItem and lf.EquippedItem.StopShooting then
-                        lf.EquippedItem:StopShooting()
-                    end
+                    __t6u7v8.StartShooting(__t6u7v8, nil, nil)
                 end)
             end
             setStatus("")
@@ -476,7 +450,7 @@ do
             end
         end)
 
-        sg.Parent = coreGui
+        sg.Parent = coreGui  -- 先に設定済み
         self.__ui = sg
     end
 
