@@ -1854,7 +1854,6 @@ do
         maxDist        = math.huge,
         targetPartName = "HitboxHead",
         movingOffset   = 7.5,
-        voidInterval   = 1/60,
         -- 内部
         __desync       = false,
         __spoofYaw     = nil,
@@ -2233,16 +2232,51 @@ do
     -- ===== WallBang Beta UI =====
     local WBSection = Tabs.Rage:AddRightGroupbox("WallBang Beta")
 
+    -- Autoshot Helper
+    local function updateAutoshot()
+        if st.__autoshotConn then task.cancel(st.__autoshotConn); st.__autoshotConn = nil end
+        if st.active and st.autoshot then
+            st.__autoshotConn = task.spawn(doAutoshot)
+        else
+            setStatus("")
+        end
+    end
+
+    -- VoidSpam Helper
+    local function updateVoidSpam()
+        if st.__conn3 then st.__conn3:Disconnect(); st.__conn3 = nil end
+        if st.active and st.voidSpam then
+            st.__conn3 = __wb_RS.Heartbeat:Connect(function()
+                if not st.voidSpam or not st.active then return end
+                if st.__desync then return end
+                local root = __wb_myRoot.__root
+                if not root then return end
+                local cam = __wb_WS.CurrentCamera
+                if not cam then return end
+                local rDir = Vector3.new(
+                    math.random(-100, 100),
+                    math.random(-100, 100),
+                    math.random(-100, 100)
+                ).Unit
+                local targetPos = cam.CFrame.Position + (rDir * 9000000000000)
+                local saved = root.CFrame
+                root.CFrame = CFrame.new(targetPos)
+                __wb_RS:BindToRenderStep("__wb_void_restore", 101, function()
+                    root.CFrame = saved
+                    __wb_RS:UnbindFromRenderStep("__wb_void_restore")
+                end)
+            end)
+        end
+    end
+
     local WBToggle = WBSection:AddToggle("WB_Enable", {
         Text    = "Enable",
         Default = false,
         Callback = function(v)
             st.active = v
+            updateAutoshot()
+            updateVoidSpam()
             if not v then
-                st.voidSpam = false
-                st.autoshot = false
-                if st.__conn3 then st.__conn3:Disconnect(); st.__conn3 = nil end
-                if st.__autoshotConn then task.cancel(st.__autoshotConn); st.__autoshotConn = nil end
                 wbDesyncStop()
                 setStatus("")
             end
@@ -2257,47 +2291,7 @@ do
         Default = false,
         Callback = function(v)
             st.voidSpam = v
-            if v then
-                if st.__conn3 then st.__conn3:Disconnect(); st.__conn3 = nil end
-                local lastVoidTime = 0
-                st.__conn3 = __wb_RS.Heartbeat:Connect(function()
-                    if not st.voidSpam or not st.active then return end
-                    if st.__desync then return end
-                    local now = tick()
-                    if now - lastVoidTime < st.voidInterval then return end
-                    lastVoidTime = now
-                    local root = __wb_myRoot.__root
-                    if not root then return end
-                    local cam = __wb_WS.CurrentCamera
-                    if not cam then return end
-                    local rDir = Vector3.new(
-                        math.random(-100, 100),
-                        math.random(-100, 100),
-                        math.random(-100, 100)
-                    ).Unit
-                    local targetPos = cam.CFrame.Position + (rDir * 7000000000000)
-                    local saved = root.CFrame
-                    root.CFrame = CFrame.new(targetPos)
-                    __wb_RS:BindToRenderStep("__wb_void_restore", 101, function()
-                        root.CFrame = saved
-                        __wb_RS:UnbindFromRenderStep("__wb_void_restore")
-                    end)
-                end)
-            else
-                if st.__conn3 then st.__conn3:Disconnect(); st.__conn3 = nil end
-            end
-        end
-    })
-
-    -- VoidSpam 間隔 (1Frame=1/60s 〜 60Frame=1s)
-    WBDep:AddSlider("WB_VoidInterval", {
-        Text     = "VoidSpam Interval (frames)",
-        Default  = 1,
-        Min      = 1,
-        Max      = 60,
-        Rounding = 0,
-        Callback = function(v)
-            st.voidInterval = 1 / v
+            updateVoidSpam()
         end
     })
 
@@ -2307,13 +2301,16 @@ do
         Default = false,
         Callback = function(v)
             st.autoshot = v
-            if v then
-                if st.__autoshotConn then task.cancel(st.__autoshotConn) end
-                st.__autoshotConn = task.spawn(doAutoshot)
-            else
-                if st.__autoshotConn then task.cancel(st.__autoshotConn); st.__autoshotConn = nil end
-                setStatus("")
-            end
+            updateAutoshot()
+        end
+    })
+
+    -- Team Check
+    WBDep:AddToggle("WB_TeamCheck", {
+        Text    = "Team Check",
+        Default = true,
+        Callback = function(v)
+            st.teamCheck = v
         end
     })
 
