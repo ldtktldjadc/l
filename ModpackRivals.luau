@@ -1872,7 +1872,7 @@ do
         __statusLabel  = nil,
         __statusStroke = nil,
         -- StatusラベルUI設定
-        statusFont      = Drawing.Fonts.UI,
+        statusFont      = Enum.Font.SourceSansBold,
         statusSize      = 14,
         statusThickness = 2,
         statusStroke    = true,
@@ -2319,13 +2319,18 @@ do
 
     -- AutoStatus Font
     WBDep:AddDropdown("WB_StatusFont", {
-        Values  = {"UI", "Mono", "Sans"},
+        Values  = {"SourceSansBold", "Code", "RobotoMono", "Gotham"},
         Default = 1,
         Multi   = false,
         Text    = "AutoStatus Font",
         Callback = function(v)
-            local map = { UI = Drawing.Fonts.UI, Mono = Drawing.Fonts.Mono, Sans = Drawing.Fonts.Sans }
-            st.statusFont = map[v] or Drawing.Fonts.UI
+            local map = {
+                SourceSansBold = Enum.Font.SourceSansBold,
+                Code           = Enum.Font.Code,
+                RobotoMono     = Enum.Font.RobotoMono,
+                Gotham         = Enum.Font.Gotham,
+            }
+            st.statusFont = map[v] or Enum.Font.SourceSansBold
             applyStatusStyle()
         end
     })
