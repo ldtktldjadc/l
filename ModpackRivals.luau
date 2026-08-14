@@ -642,6 +642,19 @@ task.spawn(function()
     end)
 end)
 
+-- WallBang Beta モジュール
+local __wb_GunModule   = nil
+local __wb_Utility     = nil
+local __wb_CvmModule   = nil
+task.spawn(function()
+    pcall(function()
+        local ps = lp:WaitForChild("PlayerScripts", 10)
+        __wb_GunModule = require(ps.Modules.ItemTypes.Gun)
+        __wb_Utility   = require(ReplicatedStorage.Modules.Utility)
+        __wb_CvmModule = require(ps.Modules.ClientReplicatedClasses.ClientFighter.ClientItem.ClientViewModel)
+    end)
+end)
+
 local SeasonLibrary = nil
 task.spawn(function()
     pcall(function()
@@ -1795,6 +1808,679 @@ GunModsDep:AddToggle("GunMods_AntiKatana", {
 })
 
 GunModsDep:SetupDependencies({ { GunModsToggle, true } })
+
+
+-- ===== WALLBANG BETA =====
+do
+    -- EncodeCameraRotation フック（1回だけ）
+    if not getgenv().__nobannable_encode_hooked then
+        getgenv().__nobannable_encode_hooked = true
+        task.spawn(function()
+            while not __wb_Utility do task.wait(0.2) end
+            local __oldEncode = __wb_Utility.EncodeCameraRotation
+            __wb_Utility.EncodeCameraRotation = function(self, rot)
+                local st = getgenv().__wb_state
+                if st and st.__desync and st.__spoofYaw then
+                    local pitch = rot and rot.X or 0
+                    rot = Vector2.new(pitch, st.__spoofYaw)
+                end
+                return __oldEncode(self, rot)
+            end
+        end)
+    end
+
+    -- ローカルキャラクター参照
+    local __wb_lp     = lp
+    local __wb_RS     = RunService
+    local __wb_WS     = game:GetService("Workspace")
+    local __wb_Players = Players
+
+    local __wb_myRoot = setmetatable({}, {
+        __index = function(_, k)
+            local c = __wb_lp.Character
+            if not c then return nil end
+            if k == "__root" then return c:FindFirstChild("HumanoidRootPart")
+            elseif k == "__head" then return c:FindFirstChild("HitboxHead") end
+            return nil
+        end
+    })
+
+    -- 状態テーブル
+    local st = {
+        active         = false,
+        voidSpam       = false,
+        autoshot       = false,
+        teamCheck      = true,
+        maxDist        = math.huge,
+        targetPartName = "HitboxHead",
+        movingOffset   = 7.5,
+        voidInterval   = 1/60,
+        -- 内部
+        __desync       = false,
+        __spoofYaw     = nil,
+        __curr         = nil,
+        __target       = nil,
+        __conn1        = nil,
+        __conn2        = nil,
+        __conn3        = nil,
+        __task1        = nil,
+        __oldfunc      = nil,
+        __old_playanim = nil,
+        __autoshotConn = nil,
+        __targetIsAttacking = false,
+        __isReloading  = false,
+        __statusLabel  = nil,
+        __statusStroke = nil,
+        -- StatusラベルUI設定
+        statusFont      = Drawing.Fonts.UI,
+        statusSize      = 14,
+        statusThickness = 2,
+        statusStroke    = true,
+        statusColor     = Color3.fromRGB(255, 255, 255),
+        statusStrokeColor = Color3.fromRGB(0, 0, 0),
+        statusVisible   = true,
+        -- ステータスラベルの位置・サイズ
+        statusPosX  = 0.5,  -- 0.0 〜 1.0
+        statusPosY  = 0.65, -- 0.0 〜 1.0
+        statusWidth  = 0.3, -- 幅（スクリーン比率）
+        statusHeight = 0.04, -- 高さ（スクリーン比率）
+    }
+    getgenv().__wb_state = st
+
+    -- StatusLabel 更新ヘルパー
+    local function applyStatusStyle()
+        if not st.__statusLabel then return end
+        st.__statusLabel.Font       = st.statusFont
+        st.__statusLabel.TextSize   = st.statusSize
+        st.__statusLabel.TextColor3 = st.statusColor
+        st.__statusLabel.Size       = UDim2.new(st.statusWidth, 0, st.statusHeight, 0)
+        st.__statusLabel.Position   = UDim2.new(st.statusPosX, 0, st.statusPosY, 0)
+        if st.__statusStroke then
+            st.__statusStroke.Enabled   = st.statusStroke
+            st.__statusStroke.Thickness = st.statusThickness
+            st.__statusStroke.Color     = st.statusStrokeColor
+        end
+    end
+
+    local function setStatus(text)
+        if st.__statusLabel and st.statusVisible then
+            st.__statusLabel.Text = text
+        elseif st.__statusLabel then
+            st.__statusLabel.Text = ""
+        end
+    end
+
+    -- ターゲット検索
+    local function wbFind()
+        local myChar = __wb_lp.Character
+        if not myChar then return nil end
+        local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return nil end
+        local cam = __wb_WS.CurrentCamera
+        if not cam then return nil end
+        local maxD = st.maxDist
+        local closest, closestDist = nil, math.huge
+        for _, player in next, __wb_Players:GetPlayers() do
+            if player == __wb_lp then continue end
+            if st.teamCheck and player:GetAttribute("TeamID") == __wb_lp:GetAttribute("TeamID") then continue end
+            local char = player.Character
+            if not char then continue end
+            local root = char:FindFirstChild("HumanoidRootPart")
+            local head = char:FindFirstChild("HitboxHead")
+            local hum  = char:FindFirstChildWhichIsA("Humanoid")
+            if not (root and head and hum and hum.Health > 0) then continue end
+            if char:FindFirstChildWhichIsA("ForceField") then continue end
+            local isInvincible = false
+            pcall(function()
+                if FighterController then
+                    local f = FighterController:GetFighter(player)
+                    if f and f.Entity then isInvincible = f.Entity:Get("IsInvincible") end
+                end
+            end)
+            if isInvincible then continue end
+            local dist = (cam.CFrame.Position - root.Position).Magnitude
+            if dist > maxD then continue end
+            if dist < closestDist then closestDist = dist; closest = player end
+        end
+        return closest
+    end
+
+    -- DESYNC 停止
+    local function wbDesyncStop()
+        st.__desync   = false
+        st.__spoofYaw = nil
+        st.__curr     = nil
+        if st.__conn2 then st.__conn2:Disconnect(); st.__conn2 = nil end
+        pcall(function() __wb_RS:UnbindFromRenderStep("__wb_restore") end)
+        pcall(function() __wb_RS:UnbindFromRenderStep("__wb_melee_restore") end)
+    end
+
+    -- DESYNC 開始（銃）
+    local function wbDesyncStart(target)
+        if st.__conn2 then st.__conn2:Disconnect() end
+        st.__desync = true
+        st.__curr   = target
+        st.__conn2 = __wb_RS.Heartbeat:Connect(function()
+            if not st.__desync then return end
+            local myR = __wb_myRoot.__root
+            if not myR then return end
+            local tRoot = nil
+            pcall(function()
+                if FighterController then
+                    local f = FighterController:GetFighter(target)
+                    if f and f.Entity and f.Entity.RootPart then tRoot = f.Entity.RootPart end
+                end
+            end)
+            if not tRoot then
+                tRoot = target.Character and (
+                    target.Character:FindFirstChild("HitboxBody") or
+                    target.Character:FindFirstChild("HitboxBodySmall") or
+                    target.Character:FindFirstChild("HumanoidRootPart")
+                )
+            end
+            if not tRoot then wbDesyncStop(); return end
+            local saved = myR.CFrame
+            local isStopped = tRoot.Velocity.Magnitude < 1
+            local yOff = isStopped and -5 or st.movingOffset
+            myR.CFrame = tRoot.CFrame * CFrame.new(0, yOff, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+            __wb_RS:BindToRenderStep("__wb_restore", 101, function()
+                myR.CFrame = saved
+                __wb_RS:UnbindFromRenderStep("__wb_restore")
+            end)
+        end)
+    end
+
+    -- DESYNC 開始（メレー）
+    local function wbDesyncStartMelee(target)
+        if st.__conn2 then st.__conn2:Disconnect() end
+        st.__desync = true
+        st.__curr   = target
+        st.__conn2 = __wb_RS.Heartbeat:Connect(function()
+            if not st.__desync then return end
+            local myR = __wb_myRoot.__root
+            if not myR then return end
+            local tRoot = nil
+            pcall(function()
+                if FighterController then
+                    local f = FighterController:GetFighter(target)
+                    if f and f.Entity and f.Entity.RootPart then tRoot = f.Entity.RootPart end
+                end
+            end)
+            if not tRoot then
+                tRoot = target.Character and (
+                    target.Character:FindFirstChild("HitboxBody") or
+                    target.Character:FindFirstChild("HitboxBodySmall") or
+                    target.Character:FindFirstChild("HumanoidRootPart")
+                )
+            end
+            if not tRoot then wbDesyncStop(); return end
+            local savedCF  = myR.CFrame
+            local savedV   = myR.Velocity
+            local savedRV  = myR.RotVelocity
+            local pingSec  = 0.08
+            pcall(function()
+                local s = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]
+                pingSec = math.clamp(s:GetValue() / 1000, 0.02, 0.3)
+            end)
+            local predict = pingSec + 0.04
+            local vel = tRoot.Velocity
+            myR.CFrame = tRoot.CFrame + vel * predict
+            local _, yaw, _ = tRoot.CFrame:ToOrientation()
+            st.__spoofYaw = yaw
+            myR.Velocity    = Vector3.zero
+            myR.RotVelocity = Vector3.zero
+            __wb_RS:BindToRenderStep("__wb_melee_restore", 101, function()
+                myR.CFrame      = savedCF
+                myR.Velocity    = savedV
+                myR.RotVelocity = savedRV
+                __wb_RS:UnbindFromRenderStep("__wb_melee_restore")
+            end)
+        end)
+    end
+
+    -- Autoshot ループ
+    local function doAutoshot()
+        local ps = __wb_lp.PlayerScripts
+        while st.autoshot and st.active do
+            task.wait()
+            local target = st.__target
+            if not target or not target.Character then
+                setStatus("Ragebot: Void spaming..")
+                continue
+            end
+            if st.__targetIsAttacking then
+                setStatus("Ragebot: Waiting (enemy attacking)")
+                continue
+            end
+            local targetName = target.Name or "???"
+            pcall(function()
+                local fc = require(ps.Controllers.FighterController)
+                local lf = fc and fc.LocalFighter
+                if not (lf and lf.EquippedItem) then return end
+                local item = lf.EquippedItem
+                local info = item.Info
+                if not (info and info.MaxAmmo) then return end
+                local ammo = 0
+                pcall(function() ammo = item:Get("Ammo") or 0 end)
+                local isReloading = false
+                pcall(function() isReloading = item:Get("IsReloading") or lf:Get("IsReloading") end)
+                if ammo <= 0 or isReloading then
+                    setStatus("Ragebot: Reloading......")
+                    pcall(function() lf:Input("StartReloading") end)
+                else
+                    setStatus("Ragebot: Killing " .. targetName .. "....")
+                    pcall(function() lf:Input("StartShooting") end)
+                end
+            end)
+        end
+        setStatus("")
+    end
+
+    -- StartShooting フックのセットアップ
+    local function wbSetupHooks()
+        while not __wb_GunModule or not __wb_Utility or not __wb_CvmModule do task.wait(0.2) end
+
+        -- StartShooting フック
+        if not getgenv().__wb_shoot_hooked then
+            getgenv().__wb_shoot_hooked = true
+            local origSS = __wb_GunModule.StartShooting
+            st.__oldfunc = origSS
+            __wb_GunModule.StartShooting = function(self, ...)
+                local results = {origSS(self, ...)}
+                if not self.ClientFighter or not self.ClientFighter.IsLocalPlayer then
+                    return unpack(results)
+                end
+                local extra = results[3]
+                if not extra or typeof(extra) ~= "table" then return unpack(results) end
+                results[4] = true
+                local target = st.__target
+                if not st.active or not target or not target.Character then return unpack(results) end
+                if not st.__desync or st.__curr ~= target then
+                    wbDesyncStart(target)
+                    task.wait(0.15)
+                end
+                if st.__task1 then task.cancel(st.__task1); st.__task1 = nil end
+                local tPart = target.Character:FindFirstChild(st.targetPartName)
+                    or target.Character:FindFirstChild("HitboxHead")
+                if not tPart then return unpack(results) end
+                local hrp = target.Character:FindFirstChild("HumanoidRootPart")
+                local isStopped = hrp and hrp.Velocity.Magnitude < 1
+                local yOff = isStopped and -5 or st.movingOffset
+                local tPos  = tPart.Position
+                local tCF   = tPart.CFrame
+                local shootPos = tPos + Vector3.new(0.01, yOff, 0.01)
+                local lookCF   = CFrame.lookAt(shootPos, tPos)
+                local rx, ry, rz = math.random(), math.random(), math.random()
+                local hitOff = tCF:ToObjectSpace(CFrame.new(tPos + Vector3.new(rx, ry, rz)))
+                extra[utf8.char(0)] = __wb_Utility:EncodeCFrame(CFrame.new(shootPos, tPos) * CFrame.Angles(lookCF:ToOrientation()))
+                extra[utf8.char(1)] = __wb_Utility:EncodeCFrame(CFrame.new(tPos) * CFrame.Angles(lookCF:ToOrientation()))
+                extra[utf8.char(2)] = tPart
+                extra[utf8.char(3)] = __wb_Utility:EncodeCFrame(hitOff)
+                st.__task1 = task.delay(0.15, wbDesyncStop)
+                return unpack(results)
+            end
+        end
+
+        -- PlayAnimation フック（attack / heavyattack / reload 検知）
+        if not getgenv().__wb_anim_hooked then
+            getgenv().__wb_anim_hooked = true
+            local origPA = __wb_CvmModule.PlayAnimation
+            st.__old_playanim = origPA
+            __wb_CvmModule.PlayAnimation = function(self, animName, ...)
+                if type(animName) == "string" then
+                    local low = string.lower(animName)
+                    local ok2, isEnemy = pcall(function()
+                        return self.ClientItem.ClientFighter.IsLocalPlayer == false
+                    end)
+                    if ok2 and isEnemy then
+                        local ok3, fighter = pcall(function() return self.ClientItem.ClientFighter end)
+                        if ok3 and fighter then
+                            local tp = nil
+                            pcall(function() tp = fighter.Player end)
+                            if tp and st.__target and tp == st.__target then
+                                if string.find(low, "attack") or string.find(low, "slash") or
+                                   string.find(low, "strike") or string.find(low, "shoot") or
+                                   string.find(low, "fire") then
+                                    st.__targetIsAttacking = true
+                                    task.delay(0.6, function() st.__targetIsAttacking = false end)
+                                end
+                            end
+                        end
+                    end
+                    local ok4, isSelf = pcall(function()
+                        return self.ClientItem.ClientFighter.IsLocalPlayer == true
+                    end)
+                    if ok4 and isSelf then
+                        if string.find(low, "reload") then
+                            st.__isReloading = true
+                            task.delay(2.5, function() st.__isReloading = false end)
+                        end
+                        if string.find(low, "heavyattack") then
+                            local target = st.__target
+                            if st.active and target and target.Character then
+                                task.delay(0, function()
+                                    if st.active and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                                        wbDesyncStartMelee(target); task.wait(0.25); wbDesyncStop()
+                                    end
+                                end)
+                            end
+                        elseif string.find(low, "attack") then
+                            local target = st.__target
+                            if st.active and target and target.Character then
+                                task.delay(0, function()
+                                    if st.active and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                                        wbDesyncStartMelee(target); task.wait(0.25); wbDesyncStop()
+                                    end
+                                end)
+                            end
+                        end
+                    end
+                end
+                return origPA(self, animName, ...)
+            end
+        end
+    end
+    task.spawn(wbSetupHooks)
+
+    -- メインループ（Heartbeat でターゲット更新）
+    st.__conn1 = __wb_RS.Heartbeat:Connect(function()
+        if not st.active then return end
+        st.__target = wbFind()
+    end)
+
+    -- Shutdown ヘルパー（再実行時用）
+    getgenv().__wb_shutdown = function()
+        st.active   = false
+        st.autoshot = false
+        st.voidSpam = false
+        if st.__autoshotConn then task.cancel(st.__autoshotConn); st.__autoshotConn = nil end
+        if st.__conn1 then st.__conn1:Disconnect(); st.__conn1 = nil end
+        if st.__conn3 then st.__conn3:Disconnect(); st.__conn3 = nil end
+        if st.__task1 then task.cancel(st.__task1); st.__task1 = nil end
+        wbDesyncStop()
+    end
+
+    -- StatusLabel（HUD用ScreenGui に追加）
+    task.spawn(function()
+        while not screenGui do task.wait() end
+        local lbl = Instance.new("TextLabel")
+        lbl.Size                 = UDim2.new(0.3, 0, 0.04, 0)
+        lbl.Position             = UDim2.new(0.5, 0, 0.65, 0)
+        lbl.AnchorPoint          = Vector2.new(0.5, 0.5)
+        lbl.BackgroundTransparency = 1
+        lbl.TextScaled           = true
+        lbl.TextXAlignment       = Enum.TextXAlignment.Center
+        lbl.Text                 = ""
+        lbl.ZIndex               = 10
+        lbl.Parent               = screenGui
+        local stroke = Instance.new("UIStroke")
+        stroke.Parent = lbl
+        st.__statusLabel  = lbl
+        st.__statusStroke = stroke
+        applyStatusStyle()
+    end)
+
+    -- ===== WallBang Beta UI =====
+    local WBSection = Tabs.Rage:AddRightGroupbox("WallBang Beta")
+
+    local WBToggle = WBSection:AddToggle("WB_Enable", {
+        Text    = "Enable",
+        Default = false,
+        Callback = function(v)
+            st.active = v
+            if not v then
+                st.voidSpam = false
+                st.autoshot = false
+                if st.__conn3 then st.__conn3:Disconnect(); st.__conn3 = nil end
+                if st.__autoshotConn then task.cancel(st.__autoshotConn); st.__autoshotConn = nil end
+                wbDesyncStop()
+                setStatus("")
+            end
+        end
+    })
+
+    local WBDep = WBSection:AddDependencyBox()
+
+    -- VoidSpam
+    WBDep:AddToggle("WB_VoidSpam", {
+        Text    = "VoidSpam",
+        Default = false,
+        Callback = function(v)
+            st.voidSpam = v
+            if v then
+                if st.__conn3 then st.__conn3:Disconnect(); st.__conn3 = nil end
+                local lastVoidTime = 0
+                st.__conn3 = __wb_RS.Heartbeat:Connect(function()
+                    if not st.voidSpam or not st.active then return end
+                    if st.__desync then return end
+                    local now = tick()
+                    if now - lastVoidTime < st.voidInterval then return end
+                    lastVoidTime = now
+                    local root = __wb_myRoot.__root
+                    if not root then return end
+                    local cam = __wb_WS.CurrentCamera
+                    if not cam then return end
+                    local rDir = Vector3.new(
+                        math.random(-100, 100),
+                        math.random(-100, 100),
+                        math.random(-100, 100)
+                    ).Unit
+                    local targetPos = cam.CFrame.Position + (rDir * 7000000000000)
+                    local saved = root.CFrame
+                    root.CFrame = CFrame.new(targetPos)
+                    __wb_RS:BindToRenderStep("__wb_void_restore", 101, function()
+                        root.CFrame = saved
+                        __wb_RS:UnbindFromRenderStep("__wb_void_restore")
+                    end)
+                end)
+            else
+                if st.__conn3 then st.__conn3:Disconnect(); st.__conn3 = nil end
+            end
+        end
+    })
+
+    -- VoidSpam 間隔 (1Frame=1/60s 〜 60Frame=1s)
+    WBDep:AddSlider("WB_VoidInterval", {
+        Text     = "VoidSpam Interval (frames)",
+        Default  = 1,
+        Min      = 1,
+        Max      = 60,
+        Rounding = 0,
+        Callback = function(v)
+            st.voidInterval = 1 / v
+        end
+    })
+
+    -- Auto (Autoshot)
+    WBDep:AddToggle("WB_Auto", {
+        Text    = "Auto",
+        Default = false,
+        Callback = function(v)
+            st.autoshot = v
+            if v then
+                if st.__autoshotConn then task.cancel(st.__autoshotConn) end
+                st.__autoshotConn = task.spawn(doAutoshot)
+            else
+                if st.__autoshotConn then task.cancel(st.__autoshotConn); st.__autoshotConn = nil end
+                setStatus("")
+            end
+        end
+    })
+
+    -- AutoStatus 表示 ON/OFF
+    WBDep:AddToggle("WB_AutoStatus", {
+        Text    = "AutoStatus",
+        Default = true,
+        Callback = function(v)
+            st.statusVisible = v
+            if not v and st.__statusLabel then st.__statusLabel.Text = "" end
+        end
+    })
+
+    -- AutoStatus Font
+    WBDep:AddDropdown("WB_StatusFont", {
+        Values  = {"UI", "Mono", "Sans"},
+        Default = 1,
+        Multi   = false,
+        Text    = "AutoStatus Font",
+        Callback = function(v)
+            local map = { UI = Drawing.Fonts.UI, Mono = Drawing.Fonts.Mono, Sans = Drawing.Fonts.Sans }
+            st.statusFont = map[v] or Drawing.Fonts.UI
+            applyStatusStyle()
+        end
+    })
+
+    -- AutoStatus TextSize
+    WBDep:AddSlider("WB_StatusSize", {
+        Text     = "AutoStatus Size",
+        Default  = 14,
+        Min      = 8,
+        Max      = 32,
+        Rounding = 0,
+        Callback = function(v)
+            st.statusSize = v
+            applyStatusStyle()
+        end
+    })
+
+    -- AutoStatus Stroke ON/OFF
+    WBDep:AddToggle("WB_StatusStrokeEnabled", {
+        Text    = "AutoStatus Stroke",
+        Default = true,
+        Callback = function(v)
+            st.statusStroke = v
+            applyStatusStyle()
+        end
+    })
+
+    -- AutoStatus Stroke Thickness
+    WBDep:AddSlider("WB_StatusThickness", {
+        Text     = "AutoStatus Stroke Thickness",
+        Default  = 2,
+        Min      = 1,
+        Max      = 5,
+        Rounding = 0,
+        Callback = function(v)
+            st.statusThickness = v
+            applyStatusStyle()
+        end
+    })
+
+    -- AutoStatus 文字色
+    WBDep:AddToggle("WB_StatusColorToggle", {
+        Text    = "AutoStatus Color",
+        Default = false,
+        Callback = function() end
+    }):AddColorPicker("WB_StatusColor", {
+        Default  = Color3.fromRGB(255, 255, 255),
+        Callback = function(v)
+            st.statusColor = v
+            applyStatusStyle()
+        end
+    })
+
+    -- AutoStatus Stroke 色
+    WBDep:AddToggle("WB_StatusStrokeColorToggle", {
+        Text    = "AutoStatus Stroke Color",
+        Default = false,
+        Callback = function() end
+    }):AddColorPicker("WB_StatusStrokeColor", {
+        Default  = Color3.fromRGB(0, 0, 0),
+        Callback = function(v)
+            st.statusStrokeColor = v
+            applyStatusStyle()
+        end
+    })
+
+    -- MaxDistance (100〜9999、9999=Inf)
+    WBDep:AddSlider("WB_MaxDist", {
+        Text     = "MaxDistance (9999=Inf)",
+        Default  = 9999,
+        Min      = 100,
+        Max      = 9999,
+        Rounding = 0,
+        Callback = function(v)
+            st.maxDist = (v >= 9999) and math.huge or v
+        end
+    })
+
+    -- TargetPart
+    WBDep:AddDropdown("WB_TargetPart", {
+        Values  = {"HitboxHead", "HitboxBody", "HumanoidRootPart"},
+        Default = 1,
+        Multi   = false,
+        Text    = "Target Part",
+        Callback = function(v)
+            st.targetPartName = v
+        end
+    })
+
+    -- Moving Y Offset (-10〜10, デフォルト7.5)
+    WBDep:AddSlider("WB_MovingOffset", {
+        Text     = "Moving TP Offset",
+        Default  = 7.5,
+        Min      = -10,
+        Max      = 10,
+        Rounding = 1,
+        Callback = function(v)
+            st.movingOffset = v
+        end
+    })
+
+    -- Status Position X (0.0〜1.0, デフォルト0.5)
+    WBDep:AddSlider("WB_StatusPosX", {
+        Text     = "Status Pos X",
+        Default  = 0.5,
+        Min      = 0,
+        Max      = 1,
+        Rounding = 2,
+        Callback = function(v)
+            st.statusPosX = v
+            applyStatusStyle()
+        end
+    })
+
+    -- Status Position Y (0.0〜1.0, デフォルト0.65)
+    WBDep:AddSlider("WB_StatusPosY", {
+        Text     = "Status Pos Y",
+        Default  = 0.65,
+        Min      = 0,
+        Max      = 1,
+        Rounding = 2,
+        Callback = function(v)
+            st.statusPosY = v
+            applyStatusStyle()
+        end
+    })
+
+    -- Status Width (0.05〜1.0, デフォルト0.3)
+    WBDep:AddSlider("WB_StatusWidth", {
+        Text     = "Status Width",
+        Default  = 0.3,
+        Min      = 0.05,
+        Max      = 1,
+        Rounding = 2,
+        Callback = function(v)
+            st.statusWidth = v
+            applyStatusStyle()
+        end
+    })
+
+    -- Status Height (0.01〜0.2, デフォルト0.04)
+    WBDep:AddSlider("WB_StatusHeight", {
+        Text     = "Status Height",
+        Default  = 0.04,
+        Min      = 0.01,
+        Max      = 0.2,
+        Rounding = 2,
+        Callback = function(v)
+            st.statusHeight = v
+            applyStatusStyle()
+        end
+    })
+
+    WBDep:SetupDependencies({ { WBToggle, true } })
+end
 
 
 do
