@@ -2202,17 +2202,27 @@ do
 
     -- StatusLabel（HUD用ScreenGui に追加）
     task.spawn(function()
-        while not screenGui do task.wait() end
+        local sg = Instance.new("ScreenGui")
+        sg.Name = "WallBangStatusGUI"
+        sg.ResetOnSpawn = false
+        local success = pcall(function()
+            sg.Parent = game:GetService("CoreGui")
+        end)
+        if not success then
+            local pg = __wb_lp:WaitForChild("PlayerGui", 10)
+            if pg then sg.Parent = pg end
+        end
+
         local lbl = Instance.new("TextLabel")
-        lbl.Size                 = UDim2.new(0.3, 0, 0.04, 0)
-        lbl.Position             = UDim2.new(0.5, 0, 0.65, 0)
+        lbl.Size                 = UDim2.new(st.statusWidth, 0, st.statusHeight, 0)
+        lbl.Position             = UDim2.new(st.statusPosX, 0, st.statusPosY, 0)
         lbl.AnchorPoint          = Vector2.new(0.5, 0.5)
         lbl.BackgroundTransparency = 1
         lbl.TextScaled           = true
         lbl.TextXAlignment       = Enum.TextXAlignment.Center
         lbl.Text                 = ""
         lbl.ZIndex               = 10
-        lbl.Parent               = screenGui
+        lbl.Parent               = sg
         local stroke = Instance.new("UIStroke")
         stroke.Parent = lbl
         st.__statusLabel  = lbl
