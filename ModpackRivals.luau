@@ -2084,9 +2084,10 @@ do
             getgenv().__wb_encode_hooked = true
             local oldEncode = __wb_Utility.EncodeCameraRotation
             __wb_Utility.EncodeCameraRotation = function(self, rot)
-                if st.active and st.__desync and st.__spoofYaw then
+                local currentSt = getgenv().__wb_state or st
+                if currentSt.active and currentSt.__desync and currentSt.__spoofYaw then
                     local pitch = rot and rot.X or 0
-                    rot = Vector2.new(pitch, st.__spoofYaw)
+                    rot = Vector2.new(pitch, currentSt.__spoofYaw)
                 end
                 return oldEncode(self, rot)
             end
@@ -2098,21 +2099,22 @@ do
             local origSS = __wb_GunModule.StartShooting
             st.__oldfunc = origSS
             __wb_GunModule.StartShooting = function(self, ...)
+                local currentSt = getgenv().__wb_state or st
                 local results = {origSS(self, ...)}
                 if not self.ClientFighter or not self.ClientFighter.IsLocalPlayer then
                     return unpack(results)
                 end
                 local extra = results[3]
                 if not extra or typeof(extra) ~= "table" then return unpack(results) end
+                local target = currentSt.__target
+                if not currentSt.active or not target or not target.Character then return unpack(results) end
                 results[4] = true
-                local target = st.__target
-                if not st.active or not target or not target.Character then return unpack(results) end
-                if not st.__desync or st.__curr ~= target then
+                if not currentSt.__desync or currentSt.__curr ~= target then
                     wbDesyncStart(target)
                     task.wait(0.15)
                 end
-                if st.__task1 then task.cancel(st.__task1); st.__task1 = nil end
-                local tPart = target.Character:FindFirstChild(st.targetPartName)
+                if currentSt.__task1 then task.cancel(currentSt.__task1); currentSt.__task1 = nil end
+                local tPart = target.Character:FindFirstChild(currentSt.targetPartName)
                     or target.Character:FindFirstChild("HitboxHead")
                 if not tPart then return unpack(results) end
                 local hrp = target.Character:FindFirstChild("HumanoidRootPart")
@@ -2128,7 +2130,7 @@ do
                 extra[utf8.char(1)] = __wb_Utility:EncodeCFrame(CFrame.new(tPos) * CFrame.Angles(lookCF:ToOrientation()))
                 extra[utf8.char(2)] = tPart
                 extra[utf8.char(3)] = __wb_Utility:EncodeCFrame(hitOff)
-                st.__task1 = task.delay(0.15, wbDesyncStop)
+                currentSt.__task1 = task.delay(0.15, wbDesyncStop)
                 return unpack(results)
             end
         end
@@ -2139,6 +2141,7 @@ do
             local origPA = __wb_CvmModule.PlayAnimation
             st.__old_playanim = origPA
             __wb_CvmModule.PlayAnimation = function(self, animName, ...)
+                local currentSt = getgenv().__wb_state or st
                 if type(animName) == "string" then
                     local low = string.lower(animName)
                     local ok2, isEnemy = pcall(function()
@@ -2149,12 +2152,12 @@ do
                         if ok3 and fighter then
                             local tp = nil
                             pcall(function() tp = fighter.Player end)
-                            if tp and st.__target and tp == st.__target then
+                            if tp and currentSt.__target and tp == currentSt.__target then
                                 if string.find(low, "attack") or string.find(low, "slash") or
                                    string.find(low, "strike") or string.find(low, "shoot") or
                                    string.find(low, "fire") then
-                                    st.__targetIsAttacking = true
-                                    task.delay(0.6, function() st.__targetIsAttacking = false end)
+                                    currentSt.__targetIsAttacking = true
+                                    task.delay(0.6, function() currentSt.__targetIsAttacking = false end)
                                 end
                             end
                         end
@@ -2164,23 +2167,23 @@ do
                     end)
                     if ok4 and isSelf then
                         if string.find(low, "reload") then
-                            st.__isReloading = true
-                            task.delay(2.5, function() st.__isReloading = false end)
+                            currentSt.__isReloading = true
+                            task.delay(2.5, function() currentSt.__isReloading = false end)
                         end
                         if string.find(low, "heavyattack") then
-                            local target = st.__target
-                            if st.active and target and target.Character then
+                            local target = currentSt.__target
+                            if currentSt.active and target and target.Character then
                                 task.delay(0, function()
-                                    if st.active and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                                    if currentSt.active and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
                                         wbDesyncStartMelee(target); task.wait(0.25); wbDesyncStop()
                                     end
                                 end)
                             end
                         elseif string.find(low, "attack") then
-                            local target = st.__target
-                            if st.active and target and target.Character then
+                            local target = currentSt.__target
+                            if currentSt.active and target and target.Character then
                                 task.delay(0, function()
-                                    if st.active and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                                    if currentSt.active and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
                                         wbDesyncStartMelee(target); task.wait(0.25); wbDesyncStop()
                                     end
                                 end)
