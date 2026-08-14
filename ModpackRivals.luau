@@ -1065,7 +1065,7 @@ RunService.Heartbeat:Connect(function()
                     local hpPct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
                     cache.HPBarFill.Size = UDim2.new(1, 0, hpPct, 0)
                     cache.HPBarFill.Position = UDim2.new(0, 0, 1 - hpPct, 0)
-                    cache.HPBarFill.BackgroundColor3 = espSettings.HPColor
+                    cache.HPBarFill.BackgroundColor3 = Color3.new(1 - hpPct, hpPct, 0) -- 緑(0,1,0)から赤(1,0,0)へのグラデーション
                     cache.HPBarBg.BorderColor3 = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
                     cache.HPBarBg.Visible = true
                     cache.HPBarFill.Visible = true
@@ -1980,7 +1980,7 @@ do
             if not tRoot then wbDesyncStop(); return end
             local saved = myR.CFrame
             local isStopped = tRoot.Velocity.Magnitude < 1
-            local yOff = isStopped and -5 or st.movingOffset
+            local yOff = isStopped and -5 or 7.5
             myR.CFrame = tRoot.CFrame * CFrame.new(0, yOff, 0) * CFrame.Angles(math.rad(-90), 0, 0)
             __wb_RS:BindToRenderStep("__wb_restore", 101, function()
                 myR.CFrame = saved
@@ -2079,6 +2079,19 @@ do
     local function wbSetupHooks()
         while not __wb_GunModule or not __wb_Utility or not __wb_CvmModule do task.wait(0.2) end
 
+        -- EncodeCameraRotation フック (バン対策用 Yaw 偽装)
+        if not getgenv().__wb_encode_hooked then
+            getgenv().__wb_encode_hooked = true
+            local oldEncode = __wb_Utility.EncodeCameraRotation
+            __wb_Utility.EncodeCameraRotation = function(self, rot)
+                if st.active and st.__desync and st.__spoofYaw then
+                    local pitch = rot and rot.X or 0
+                    rot = Vector2.new(pitch, st.__spoofYaw)
+                end
+                return oldEncode(self, rot)
+            end
+        end
+
         -- StartShooting フック
         if not getgenv().__wb_shoot_hooked then
             getgenv().__wb_shoot_hooked = true
@@ -2104,7 +2117,7 @@ do
                 if not tPart then return unpack(results) end
                 local hrp = target.Character:FindFirstChild("HumanoidRootPart")
                 local isStopped = hrp and hrp.Velocity.Magnitude < 1
-                local yOff = isStopped and -5 or st.movingOffset
+                local yOff = isStopped and -5 or 7.5
                 local tPos  = tPart.Position
                 local tCF   = tPart.CFrame
                 local shootPos = tPos + Vector3.new(0.01, yOff, 0.01)
@@ -2279,6 +2292,10 @@ do
             if not v then
                 wbDesyncStop()
                 setStatus("")
+            else
+                if Toggles and Toggles.FlyToggle and Toggles.FlyToggle.Value then
+                    Toggles.FlyToggle:SetValue(false)
+                end
             end
         end
     })
@@ -2427,17 +2444,7 @@ do
         end
     })
 
-    -- Moving Y Offset (-10〜10, デフォルト7.5)
-    WBDep:AddSlider("WB_MovingOffset", {
-        Text     = "Moving TP Offset",
-        Default  = 7.5,
-        Min      = -10,
-        Max      = 10,
-        Rounding = 1,
-        Callback = function(v)
-            st.movingOffset = v
-        end
-    })
+
 
     -- Status Position X (0.0〜1.0, デフォルト0.5)
     WBDep:AddSlider("WB_StatusPosX", {
@@ -3470,6 +3477,15 @@ MovementSection:AddToggle("FlyToggle", {
     Text = "Fly",
     Default = false,
     Callback = function(value)
+        if value and st.active then
+            if Toggles and Toggles.FlyToggle then
+                Toggles.FlyToggle:SetValue(false)
+            end
+            if MyLinoriaLibrary then
+                MyLinoriaLibrary:Notify("Cannot use Fly while Rage is active!")
+            end
+            return
+        end
         if value then startFly() else stopFly() end
     end
 })
