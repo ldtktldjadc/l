@@ -890,7 +890,11 @@ RunService.Heartbeat:Connect(function()
         return
     end
 
-    for _, p in pairs(Players:GetPlayers()) do
+    local espTargets = Players:GetPlayers()
+    if getgenv().ESPShowcaseDummy and getgenv().ESPShowcaseDummy.Character and getgenv().ESPShowcaseDummy.Character.Parent then
+        table.insert(espTargets, getgenv().ESPShowcaseDummy)
+    end
+    for _, p in pairs(espTargets) do
         if p == lp then continue end
         
         local char = p.Character
@@ -1475,6 +1479,84 @@ ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callba
 
 ESPDep:SetupDependencies({ { ESPToggle, true } })
 
+local ESPShowcaseSection = Tabs.Visuals:AddRightGroupbox("ESP Showcase")
+local showcaseEnabled = false
+local showcaseClone = nil
+local showcaseConn = nil
+local showcaseRot = 0
+local showcaseHealth = 100
+local showcaseHealthDir = -1
+
+getgenv().ESPShowcaseDummy = {
+    Name = "Showcase",
+    DisplayName = "Showcase",
+    Character = nil,
+    UserId = 0,
+    GetAttribute = function(self, attr) return nil end,
+    FindFirstChild = function(self, name) return nil end,
+}
+
+local function startESPShowcase()
+    if showcaseClone then showcaseClone:Destroy() end
+    local char = lp.Character
+    if not char then return end
+    char.Archivable = true
+    showcaseClone = char:Clone()
+    showcaseClone.Name = "ESP Showcase Char"
+    showcaseClone.Parent = workspace
+    
+    for _, v in pairs(showcaseClone:GetDescendants()) do
+        if v:IsA("Script") or v:IsA("LocalScript") then v:Destroy() end
+        if v:IsA("BasePart") then v.Anchored = true; v.CanCollide = false end
+    end
+    
+    local hum = showcaseClone:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+        hum.Health = 100
+        hum.MaxHealth = 100
+    end
+    
+    getgenv().ESPShowcaseDummy.Character = showcaseClone
+    showcaseEnabled = true
+    
+    if showcaseConn then showcaseConn:Disconnect() end
+    showcaseConn = RunService.RenderStepped:Connect(function(dt)
+        if not showcaseEnabled then return end
+        if showcaseClone and showcaseClone.PrimaryPart then
+            showcaseRot = (showcaseRot + 60 * dt) % 360
+            showcaseHealth = showcaseHealth + (showcaseHealthDir * 50 * dt)
+            if showcaseHealth <= 1 then showcaseHealth = 1; showcaseHealthDir = 1 end
+            if showcaseHealth >= 100 then showcaseHealth = 100; showcaseHealthDir = -1 end
+            
+            local chH = showcaseClone:FindFirstChildOfClass("Humanoid")
+            if chH then chH.Health = showcaseHealth end
+            
+            local cam = workspace.CurrentCamera
+            local pos = cam.CFrame * CFrame.new(3.5, -1.5, -6) * CFrame.Angles(0, math.rad(showcaseRot), 0)
+            showcaseClone:SetPrimaryPartCFrame(pos)
+        end
+    end)
+end
+
+local function stopESPShowcase()
+    showcaseEnabled = false
+    if showcaseConn then showcaseConn:Disconnect(); showcaseConn = nil end
+    if showcaseClone then showcaseClone:Destroy(); showcaseClone = nil end
+    getgenv().ESPShowcaseDummy.Character = nil
+end
+
+ESPShowcaseSection:AddToggle("ESPShowcaseToggle", {
+    Text = "Enable Showcase",
+    Default = false,
+    Callback = function(value)
+        if value then startESPShowcase() else stopESPShowcase() end
+    end
+})
+
+lp.CharacterAdded:Connect(function()
+    if showcaseEnabled then task.wait(0.5); startESPShowcase() end
+end)
 
 
 -- ===== ENVIRONMENT TAB (WORLD) =====
@@ -3480,12 +3562,16 @@ MovementSection:AddToggle("FlyToggle", {
     Text = "Fly",
     Default = false,
     Callback = function(value)
-        if value and st.active then
+        local isBlocked = false
+        if getgenv().__wb_state and getgenv().__wb_state.active then isBlocked = true end
+        if getgenv().RageSettings and getgenv().RageSettings.Enabled then isBlocked = true end
+        
+        if value and isBlocked then
             if Toggles and Toggles.FlyToggle then
                 Toggles.FlyToggle:SetValue(false)
             end
             if MyLinoriaLibrary then
-                MyLinoriaLibrary:Notify("Cannot use Fly while Rage is active!")
+                MyLinoriaLibrary:Notify("Cannot use Fly while Rage/Wallbang is active!")
             end
             return
         end
