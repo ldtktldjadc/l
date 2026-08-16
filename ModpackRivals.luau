@@ -3666,11 +3666,90 @@ MovementSection:AddSlider("FlySpeedSlider", {
     end
 })
 
+local hideInFloorEnabled = false
+local hideDesyncEnabled = false
+local hideTargetPos = nil
+local hideSteppedConn = nil
+local hideHeartbeatConn = nil
+
+local function startHideInFloor()
+    local char = lp.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = {char}
+    local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -9999, 0), rayParams)
+    
+    if ray then
+        hideTargetPos = ray.Position - Vector3.new(0, 5, 0)
+    else
+        hideTargetPos = hrp.Position - Vector3.new(0, 5, 0)
+    end
+    
+    if hideSteppedConn then hideSteppedConn:Disconnect() end
+    hideSteppedConn = RunService.Stepped:Connect(function()
+        if not hideInFloorEnabled then return end
+        local c = lp.Character
+        if c and c:FindFirstChild("HumanoidRootPart") and hideTargetPos then
+            local h = c.HumanoidRootPart
+            h.CFrame = CFrame.new(hideTargetPos) * h.CFrame.Rotation
+            h.Velocity = Vector3.new(h.Velocity.X, 0, h.Velocity.Z) 
+        end
+    end)
+    
+    if hideHeartbeatConn then hideHeartbeatConn:Disconnect() end
+    hideHeartbeatConn = RunService.Heartbeat:Connect(function()
+        if not hideInFloorEnabled then return end
+        local c = lp.Character
+        if c and c:FindFirstChild("HumanoidRootPart") then
+            local h = c.HumanoidRootPart
+            if hideDesyncEnabled then
+                h.Velocity = Vector3.new(math.random(-5000, 5000), math.random(-5000, 5000), math.random(-5000, 5000))
+            else
+                h.Velocity = Vector3.zero
+            end
+        end
+    end)
+end
+
+local function stopHideInFloor()
+    if hideSteppedConn then hideSteppedConn:Disconnect() hideSteppedConn = nil end
+    if hideHeartbeatConn then hideHeartbeatConn:Disconnect() hideHeartbeatConn = nil end
+    hideTargetPos = nil
+    
+    local char = lp.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        local hrp = char.HumanoidRootPart
+        hrp.CFrame = hrp.CFrame + Vector3.new(0, 10, 0)
+        hrp.Velocity = Vector3.zero
+    end
+end
+
 MovementSection:AddToggle("NoclipToggle", {
     Text = "Noclip",
     Default = false,
     Callback = function(value)
         if value then startNoclip() else stopNoclip() end
+    end
+})
+
+MovementSection:AddToggle("HideInFloorToggle", {
+    Text = "Hide In Floor",
+    Default = false,
+    Callback = function(value)
+        hideInFloorEnabled = value
+        if value then startHideInFloor() else stopHideInFloor() end
+    end
+})
+
+MovementSection:AddToggle("HideDesyncToggle", {
+    Text = "Desync In Floor",
+    Default = false,
+    Callback = function(value)
+        hideDesyncEnabled = value
     end
 })
 
