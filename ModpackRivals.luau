@@ -890,11 +890,7 @@ RunService.Heartbeat:Connect(function()
         return
     end
 
-    local espTargets = Players:GetPlayers()
-    if getgenv().ESPShowcaseDummy and getgenv().ESPShowcaseDummy.Character and getgenv().ESPShowcaseDummy.Character.Parent then
-        table.insert(espTargets, getgenv().ESPShowcaseDummy)
-    end
-    for _, p in pairs(espTargets) do
+    for _, p in pairs(Players:GetPlayers()) do
         if p == lp then continue end
         
         local char = p.Character
@@ -1479,85 +1475,156 @@ ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callba
 
 ESPDep:SetupDependencies({ { ESPToggle, true } })
 
-local ESPShowcaseSection = Tabs.Visuals:AddRightGroupbox("ESP Showcase")
-local showcaseEnabled = false
-local showcaseClone = nil
-local showcaseConn = nil
-local showcaseRot = 0
-local showcaseHealth = 100
-local showcaseHealthDir = -1
+local CrosshairSection = Tabs.Visuals:AddRightGroupbox("Custom Crosshair")
 
-getgenv().ESPShowcaseDummy = {
-    Name = "Showcase",
-    DisplayName = "Showcase",
-    Character = nil,
-    UserId = 0,
-    GetAttribute = function(self, attr) return nil end,
-    FindFirstChild = function(self, name) return nil end,
-}
+local chEnabled = false
+local chTextStr = "kei.win"
+local chLineColor = Color3.fromRGB(255, 255, 255)
+local chRainbow = true
+local chStretch = true
+local chSpin = true
 
-local function startESPShowcase()
-    if showcaseClone then showcaseClone:Destroy() end
-    local char = lp.Character
-    if not char then return end
-    char.Archivable = true
-    showcaseClone = char:Clone()
-    showcaseClone.Name = "ESP Showcase Char"
-    showcaseClone.Parent = workspace
-    
-    for _, v in pairs(showcaseClone:GetDescendants()) do
-        if v:IsA("Script") or v:IsA("LocalScript") then v:Destroy() end
-        if v:IsA("BasePart") then v.Anchored = true; v.CanCollide = false end
-    end
-    
-    local hum = showcaseClone:FindFirstChildOfClass("Humanoid")
-    if hum then
-        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-        hum.Health = 100
-        hum.MaxHealth = 100
-    end
-    
-    getgenv().ESPShowcaseDummy.Character = showcaseClone
-    showcaseEnabled = true
-    
-    if showcaseConn then showcaseConn:Disconnect() end
-    showcaseConn = RunService.RenderStepped:Connect(function(dt)
-        if not showcaseEnabled then return end
-        if showcaseClone and showcaseClone.PrimaryPart then
-            showcaseRot = (showcaseRot + 60 * dt) % 360
-            showcaseHealth = showcaseHealth + (showcaseHealthDir * 50 * dt)
-            if showcaseHealth <= 1 then showcaseHealth = 1; showcaseHealthDir = 1 end
-            if showcaseHealth >= 100 then showcaseHealth = 100; showcaseHealthDir = -1 end
-            
-            local chH = showcaseClone:FindFirstChildOfClass("Humanoid")
-            if chH then chH.Health = showcaseHealth end
-            
-            local cam = workspace.CurrentCamera
-            local pos = cam.CFrame * CFrame.new(3.5, -1.5, -6) * CFrame.Angles(0, math.rad(showcaseRot), 0)
-            showcaseClone:SetPrimaryPartCFrame(pos)
-        end
-    end)
+
+local chGui = Instance.new("ScreenGui")
+chGui.Name = "CustomCrosshairGui"
+chGui.ResetOnSpawn = false
+chGui.IgnoreGuiInset = true
+chGui.Parent = getESPContainerParent()
+chGui.Enabled = false
+
+local chCenter = Instance.new("Frame")
+chCenter.Name = "CenterFrame"
+chCenter.Size = UDim2.new(0, 0, 0, 0)
+chCenter.AnchorPoint = Vector2.new(0.5, 0.5)
+chCenter.Position = UDim2.new(0.5, 0, 0.5, 0)
+chCenter.BackgroundTransparency = 1
+chCenter.Parent = chGui
+
+local function makeCHLine(parent)
+    local outer = Instance.new("Frame")
+    outer.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    outer.BackgroundTransparency = 0.2
+    outer.BorderSizePixel = 0
+    outer.Parent = parent
+
+    local inner = Instance.new("Frame")
+    inner.Name = "MainLine"
+    inner.Size = UDim2.new(1, -2, 1, -2)
+    inner.Position = UDim2.new(0, 1, 0, 1)
+    inner.BackgroundTransparency = 0
+    inner.BorderSizePixel = 0
+    inner.Parent = outer
+
+    return outer, inner
 end
 
-local function stopESPShowcase()
-    showcaseEnabled = false
-    if showcaseConn then showcaseConn:Disconnect(); showcaseConn = nil end
-    if showcaseClone then showcaseClone:Destroy(); showcaseClone = nil end
-    getgenv().ESPShowcaseDummy.Character = nil
+local chUpO, chUpI = makeCHLine(chCenter)
+local chRightO, chRightI = makeCHLine(chCenter)
+local chLeftO, chLeftI = makeCHLine(chCenter)
+local chDownO, chDownI = makeCHLine(chCenter)
+
+local chText = Instance.new("TextLabel")
+chText.Name = "CrosshairText"
+chText.Size = UDim2.new(0, 200, 0, 20)
+chText.AnchorPoint = Vector2.new(0.5, 0)
+chText.Position = UDim2.new(0.5, 0, 0.5, 45)
+chText.BackgroundTransparency = 1
+chText.Text = chTextStr
+chText.TextSize = 16
+chText.Font = Enum.Font.Arcade
+chText.TextColor3 = Color3.fromRGB(255, 255, 255)
+chText.TextStrokeTransparency = 0
+chText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+chText.Parent = chGui
+
+local function chEaseOutQuad(t)
+    return 1 - (1 - t) * (1 - t)
 end
 
-ESPShowcaseSection:AddToggle("ESPShowcaseToggle", {
-    Text = "Enable Showcase",
+local chConn
+local function updateCrosshair(dt)
+    if not chEnabled then return end
+    local t = tick()
+    
+    local cColor = chLineColor
+    if chRainbow then cColor = Color3.fromHSV((t * 0.5) % 1, 1, 1) end
+
+    local length = 28
+    if chStretch then
+        local raw = math.sin(t * 4)
+        length = 28 + chEaseOutQuad((raw + 1) / 2) * 12
+    end
+
+    chUpO.Size = UDim2.new(0, 4, 0, length)
+    chUpO.Position = UDim2.new(0.5, -2, 0.5, -length - 10)
+    chUpI.BackgroundColor3 = cColor
+
+    chRightO.Size = UDim2.new(0, length, 0, 4)
+    chRightO.Position = UDim2.new(0.5, 10, 0.5, -2)
+    chRightI.BackgroundColor3 = cColor
+
+    chLeftO.Size = UDim2.new(0, length, 0, 4)
+    chLeftO.Position = UDim2.new(0.5, -length - 10, 0.5, -2)
+    chLeftI.BackgroundColor3 = cColor
+
+    chDownO.Size = UDim2.new(0, 4, 0, length)
+    chDownO.Position = UDim2.new(0.5, -2, 0.5, 10)
+    chDownI.BackgroundColor3 = cColor
+
+    chText.TextColor3 = cColor
+    chText.Text = chTextStr
+
+    if chSpin then
+        chCenter.Rotation = (chCenter.Rotation + dt * 180) % 360
+    else
+        chCenter.Rotation = 0
+    end
+end
+
+CrosshairSection:AddToggle("Crosshair_Enable", {
+    Text = "Enable Crosshair",
     Default = false,
-    Callback = function(value)
-        if value then startESPShowcase() else stopESPShowcase() end
+    Callback = function(v) 
+        chEnabled = v
+        chGui.Enabled = v
+        if v then
+            if chConn then chConn:Disconnect() end
+            chConn = RunService.RenderStepped:Connect(updateCrosshair)
+        else
+            if chConn then chConn:Disconnect() chConn = nil end
+        end
     end
 })
 
-lp.CharacterAdded:Connect(function()
-    if showcaseEnabled then task.wait(0.5); startESPShowcase() end
-end)
+CrosshairSection:AddInput("Crosshair_Text", {
+    Default = "kei.win",
+    Numeric = false,
+    Finished = true,
+    Text = "Crosshair Text",
+    Placeholder = "Enter text...",
+    Callback = function(v) chTextStr = v end
+})
 
+CrosshairSection:AddToggle("Crosshair_Rainbow", {
+    Text = "Rainbow Animation",
+    Default = true,
+    Callback = function(v) chRainbow = v end
+}):AddColorPicker("Crosshair_Color", {
+    Default = Color3.fromRGB(255,255,255),
+    Callback = function(v) chLineColor = v end
+})
+
+CrosshairSection:AddToggle("Crosshair_Stretch", {
+    Text = "Stretch Animation",
+    Default = true,
+    Callback = function(v) chStretch = v end
+})
+
+CrosshairSection:AddToggle("Crosshair_Spin", {
+    Text = "Spin Animation",
+    Default = true,
+    Callback = function(v) chSpin = v end
+})
 
 -- ===== ENVIRONMENT TAB (WORLD) =====
 local EnvSection = Tabs.World:AddLeftGroupbox("Environment")
