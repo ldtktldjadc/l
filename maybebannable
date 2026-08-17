@@ -128,10 +128,9 @@ do
 
             if not self.__desync or self.__curr ~= __x6y7z8 then
                 self:__desync_start(__x6y7z8)
-                local __pingDelay = 0.08
-                pcall(function() __pingDelay = math.clamp(__k7l8m9:GetNetworkPing(), 0.03, 0.3) end)
-                local __shootReadyAt = os.clock() + __pingDelay
-                while os.clock() < __shootReadyAt do
+                local ping_delay = __k7l8m9:GetNetworkPing()
+                local shoot_ready_at = os.clock() + math.max(0.03, ping_delay)
+                while os.clock() < shoot_ready_at do
                     task.wait()
                 end
             end
