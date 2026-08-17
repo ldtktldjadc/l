@@ -2200,6 +2200,10 @@ do
                 setStatus("Ragebot: Waiting (enemy attacking)")
                 continue
             end
+            if target.Character and target.Character:FindFirstChildWhichIsA("ForceField") then
+                setStatus("Ragebot: Waiting (ForceField)")
+                continue
+            end
             local targetName = target.Name or "???"
             pcall(function()
                 local fc = require(ps.Controllers.FighterController)
@@ -2260,7 +2264,11 @@ do
                 results[4] = true
                 if not currentSt.__desync or currentSt.__curr ~= target then
                     wbDesyncStart(target)
-                    task.wait(0.15)
+                    local ping_delay = __wb_lp:GetNetworkPing()
+                    local shoot_ready_at = os.clock() + math.max(0.03, ping_delay)
+                    while os.clock() < shoot_ready_at do
+                        task.wait()
+                    end
                 end
                 if currentSt.__task1 then task.cancel(currentSt.__task1); currentSt.__task1 = nil end
                 local tPart = target.Character:FindFirstChild(currentSt.targetPartName)
@@ -3629,16 +3637,12 @@ MovementSection:AddToggle("FlyToggle", {
     Text = "Fly",
     Default = false,
     Callback = function(value)
-        local isBlocked = false
-        if getgenv().__wb_state and getgenv().__wb_state.active then isBlocked = true end
-        if getgenv().RageSettings and getgenv().RageSettings.Enabled then isBlocked = true end
-        
-        if value and isBlocked then
+        if value and getgenv().__wb_state and getgenv().__wb_state.active then
             if Toggles and Toggles.FlyToggle then
                 Toggles.FlyToggle:SetValue(false)
             end
             if MyLinoriaLibrary then
-                MyLinoriaLibrary:Notify("Cannot use Fly while Rage/Wallbang is active!")
+                MyLinoriaLibrary:Notify("Cannot use Fly while Wallbang is active!")
             end
             return
         end
@@ -3669,8 +3673,7 @@ MovementSection:AddSlider("FlySpeedSlider", {
 local hideInFloorEnabled = false
 local hideDesyncEnabled = false
 local hideTargetPos = nil
-local hideSteppedConn = nil
-local hideHeartbeatConn = nil
+local hideDesyncConn = nil
 
 local function startHideInFloor()
     local char = lp.Character
@@ -3682,49 +3685,41 @@ local function startHideInFloor()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.FilterDescendantsInstances = {char}
     local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -9999, 0), rayParams)
-    
+
     if ray then
         hideTargetPos = ray.Position - Vector3.new(0, 5, 0)
     else
         hideTargetPos = hrp.Position - Vector3.new(0, 5, 0)
     end
-    
-    if hideSteppedConn then hideSteppedConn:Disconnect() end
-    hideSteppedConn = RunService.Stepped:Connect(function()
+
+    if hideDesyncConn then hideDesyncConn:Disconnect() end
+    hideDesyncConn = RunService.Heartbeat:Connect(function()
         if not hideInFloorEnabled then return end
         local c = lp.Character
-        if c and c:FindFirstChild("HumanoidRootPart") and hideTargetPos then
-            local h = c.HumanoidRootPart
-            h.CFrame = CFrame.new(hideTargetPos) * h.CFrame.Rotation
-            h.Velocity = Vector3.new(h.Velocity.X, 0, h.Velocity.Z) 
-        end
-    end)
-    
-    if hideHeartbeatConn then hideHeartbeatConn:Disconnect() end
-    hideHeartbeatConn = RunService.Heartbeat:Connect(function()
-        if not hideInFloorEnabled then return end
-        local c = lp.Character
-        if c and c:FindFirstChild("HumanoidRootPart") then
-            local h = c.HumanoidRootPart
-            if hideDesyncEnabled then
-                h.Velocity = Vector3.new(math.random(-5000, 5000), math.random(-5000, 5000), math.random(-5000, 5000))
-            else
-                h.Velocity = Vector3.zero
-            end
+        if not (c and c:FindFirstChild("HumanoidRootPart") and hideTargetPos) then return end
+        local h = c.HumanoidRootPart
+        local savedCF = h.CFrame
+        -- 実際の位置を床の下に固定
+        h.CFrame = CFrame.new(hideTargetPos) * CFrame.Angles(savedCF:ToEulerAnglesXYZ())
+        if hideDesyncEnabled then
+            -- WBと同じパターン: RenderStepで元のCFrameに戻す（サーバー側にズレた位置を送信）
+            RunService:BindToRenderStep("__hif_restore", 200, function()
+                h.CFrame = savedCF
+                RunService:UnbindFromRenderStep("__hif_restore")
+            end)
         end
     end)
 end
 
 local function stopHideInFloor()
-    if hideSteppedConn then hideSteppedConn:Disconnect() hideSteppedConn = nil end
-    if hideHeartbeatConn then hideHeartbeatConn:Disconnect() hideHeartbeatConn = nil end
+    if hideDesyncConn then hideDesyncConn:Disconnect() hideDesyncConn = nil end
+    pcall(function() RunService:UnbindFromRenderStep("__hif_restore") end)
     hideTargetPos = nil
-    
+
     local char = lp.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
         local hrp = char.HumanoidRootPart
         hrp.CFrame = hrp.CFrame + Vector3.new(0, 10, 0)
-        hrp.Velocity = Vector3.zero
     end
 end
 
