@@ -128,7 +128,11 @@ do
 
             if not self.__desync or self.__curr ~= __x6y7z8 then
                 self:__desync_start(__x6y7z8)
-                task.wait(0.15)
+                local __pingDelay = math.max(0.03, __k7l8m9:GetNetworkPing())
+                self.__shoot_ready_at = os.clock() + __pingDelay
+                while os.clock() < self.__shoot_ready_at do
+                    task.wait()
+                end
             end
 
             if self.__task1 then
@@ -137,8 +141,7 @@ do
             end
 
             local __a9b0c1 = __x6y7z8.Character:FindFirstChild("HitboxHead")
-            if not __a9b0c1 then return unpack(__r0s1t2) end
-            
+            if not __a9b0c1 then return unpack(__r0s1t2) end　
             local hrp = __x6y7z8.Character:FindFirstChild("HumanoidRootPart")
             local isStopped = hrp and hrp.Velocity.Magnitude < 1
             local yOffset = isStopped and -5 or 7.5
@@ -487,7 +490,7 @@ do
         self.__desync = true
         self.__curr = __c3d4e5
 
-        self.__conn2 = __y5z6a7.Heartbeat:Connect(function()
+        self.__conn2 = __y5z6a7.PostSimulation:Connect(function()
             if not self.__desync then return end
             local __f6g7h8 = __z2a3b4.__root
             if not __f6g7h8 then return end
@@ -508,15 +511,18 @@ do
                 return
             end
 
-            local __l2m3n4 = __f6g7h8.CFrame
+            local __savedCF     = __f6g7h8.CFrame
+            local __savedLinVel = __f6g7h8.AssemblyLinearVelocity
+            local __savedAngVel = __f6g7h8.AssemblyAngularVelocity
 
-            -- 銃（__desync_start）のTP位置を変更
-            local isStopped = __i9j0k1.Velocity.Magnitude < 1
+            local isStopped = __i9j0k1.AssemblyLinearVelocity.Magnitude < 1
             local yOffset = isStopped and -5 or 7.5
             __f6g7h8.CFrame = __i9j0k1.CFrame * CFrame.new(0, yOffset, 0) * CFrame.Angles(math.rad(-90), 0, 0)
 
-            __y5z6a7:BindToRenderStep("__restore", 101, function()
-                __f6g7h8.CFrame = __l2m3n4
+            __y5z6a7:BindToRenderStep("__restore", 0, function()
+                __f6g7h8.CFrame = __savedCF
+                __f6g7h8.AssemblyLinearVelocity = __savedLinVel
+                __f6g7h8.AssemblyAngularVelocity = __savedAngVel
                 __y5z6a7:UnbindFromRenderStep("__restore")
             end)
         end)
@@ -527,8 +533,8 @@ do
         self.__desync = true
         self.__curr = __c3d4e5
         self.__meleeStartTime = tick()
-        
-        self.__conn2 = __y5z6a7.Heartbeat:Connect(function()
+
+        self.__conn2 = __y5z6a7.PostSimulation:Connect(function()
             if not self.__desync then return end
             local __f6g7h8 = __z2a3b4.__root
             if not __f6g7h8 then return end
@@ -549,37 +555,28 @@ do
                 return
             end
 
-            local __savedCF = __f6g7h8.CFrame
-            local __savedVel = __f6g7h8.Velocity
-            local __savedRotVel = __f6g7h8.RotVelocity
+            local __savedCF     = __f6g7h8.CFrame
+            local __savedLinVel = __f6g7h8.AssemblyLinearVelocity
+            local __savedAngVel = __f6g7h8.AssemblyAngularVelocity
 
-            -- Mode: Direct (Dynamic Ping)
-            -- 実際のPing値を取得して予測時間を動的に算出する
-            -- ping取得に失敗した場合は80msにフォールバック
-            local pingSeconds = 0.08
-            pcall(function()
-                local stat = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]
-                pingSeconds = math.clamp(stat:GetValue() / 1000, 0.02, 0.3)
-            end)
-            -- サーバー処理遅延分（約40ms）を加算
+            local pingSeconds = math.max(0.03, __k7l8m9:GetNetworkPing())
             local predictTime = pingSeconds + 0.04
 
-            local tVel = __i9j0k1.Velocity
+            local tVel = __i9j0k1.AssemblyLinearVelocity
             local predictedOffset = tVel * predictTime
-            
+
             __f6g7h8.CFrame = __i9j0k1.CFrame + predictedOffset
 
             local _, yaw, _ = __i9j0k1.CFrame:ToOrientation()
             self.__spoofYaw = yaw
-            
-            -- TP中は自分自身の慣性をゼロにしてすっぽ抜けを防ぐ
-            __f6g7h8.Velocity = Vector3.new(0, 0, 0)
-            __f6g7h8.RotVelocity = Vector3.new(0, 0, 0)
 
-            __y5z6a7:BindToRenderStep("__melee_restore", 101, function()
+            __f6g7h8.AssemblyLinearVelocity  = Vector3.zero
+            __f6g7h8.AssemblyAngularVelocity = Vector3.zero
+
+            __y5z6a7:BindToRenderStep("__melee_restore", 0, function()
                 __f6g7h8.CFrame = __savedCF
-                __f6g7h8.Velocity = __savedVel
-                __f6g7h8.RotVelocity = __savedRotVel
+                __f6g7h8.AssemblyLinearVelocity  = __savedLinVel
+                __f6g7h8.AssemblyAngularVelocity = __savedAngVel
                 __y5z6a7:UnbindFromRenderStep("__melee_restore")
             end)
         end)
