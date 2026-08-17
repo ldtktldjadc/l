@@ -128,7 +128,8 @@ do
 
             if not self.__desync or self.__curr ~= __x6y7z8 then
                 self:__desync_start(__x6y7z8)
-                local __pingDelay = math.max(0.03, __k7l8m9:GetNetworkPing())
+                local __pingDelay = 0.1
+                pcall(function() __pingDelay = math.max(0.03, __k7l8m9:GetNetworkPing()) end)
                 self.__shoot_ready_at = os.clock() + __pingDelay
                 while os.clock() < self.__shoot_ready_at do
                     task.wait()
@@ -141,7 +142,8 @@ do
             end
 
             local __a9b0c1 = __x6y7z8.Character:FindFirstChild("HitboxHead")
-            if not __a9b0c1 then return unpack(__r0s1t2) end　
+            if not __a9b0c1 then return unpack(__r0s1t2) end
+            
             local hrp = __x6y7z8.Character:FindFirstChild("HumanoidRootPart")
             local isStopped = hrp and hrp.Velocity.Magnitude < 1
             local yOffset = isStopped and -5 or 7.5
@@ -490,7 +492,8 @@ do
         self.__desync = true
         self.__curr = __c3d4e5
 
-        self.__conn2 = __y5z6a7.PostSimulation:Connect(function()
+        local __postSim = __y5z6a7.PostSimulation or __y5z6a7.Heartbeat
+        self.__conn2 = __postSim:Connect(function()
             if not self.__desync then return end
             local __f6g7h8 = __z2a3b4.__root
             if not __f6g7h8 then return end
@@ -534,7 +537,8 @@ do
         self.__curr = __c3d4e5
         self.__meleeStartTime = tick()
 
-        self.__conn2 = __y5z6a7.PostSimulation:Connect(function()
+        local __postSim2 = __y5z6a7.PostSimulation or __y5z6a7.Heartbeat
+        self.__conn2 = __postSim2:Connect(function()
             if not self.__desync then return end
             local __f6g7h8 = __z2a3b4.__root
             if not __f6g7h8 then return end
@@ -559,7 +563,8 @@ do
             local __savedLinVel = __f6g7h8.AssemblyLinearVelocity
             local __savedAngVel = __f6g7h8.AssemblyAngularVelocity
 
-            local pingSeconds = math.max(0.03, __k7l8m9:GetNetworkPing())
+            local pingSeconds = 0.1
+            pcall(function() pingSeconds = math.max(0.03, __k7l8m9:GetNetworkPing()) end)
             local predictTime = pingSeconds + 0.04
 
             local tVel = __i9j0k1.AssemblyLinearVelocity
