@@ -513,8 +513,6 @@ do
             end
 
             local __l2m3n4 = __f6g7h8.CFrame
-            local __savedLinVel = __f6g7h8.AssemblyLinearVelocity
-            local __savedAngVel = __f6g7h8.AssemblyAngularVelocity
 
             -- 銃（__desync_start）のTP位置を変更
             local isStopped = __i9j0k1.Velocity.Magnitude < 1
@@ -523,8 +521,6 @@ do
 
             __y5z6a7:BindToRenderStep("__restore", 101, function()
                 __f6g7h8.CFrame = __l2m3n4
-                __f6g7h8.AssemblyLinearVelocity = __savedLinVel
-                __f6g7h8.AssemblyAngularVelocity = __savedAngVel
                 __y5z6a7:UnbindFromRenderStep("__restore")
             end)
         end)
