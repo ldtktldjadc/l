@@ -3699,11 +3699,12 @@ local function startHideInFloor()
         if not (c and c:FindFirstChild("HumanoidRootPart") and hideTargetPos) then return end
         local h = c.HumanoidRootPart
         local savedCF = h.CFrame
-        -- 実際の位置を床の下に固定
-        h.CFrame = CFrame.new(hideTargetPos) * CFrame.Angles(savedCF:ToEulerAnglesXYZ())
+        -- 実際の位置を床の下に固定（XとZは現在の位置を使用し、Yのみ固定）
+        local targetPos = Vector3.new(savedCF.X, hideTargetPos.Y, savedCF.Z)
+        h.CFrame = CFrame.new(targetPos) * CFrame.Angles(savedCF:ToEulerAnglesXYZ())
         if hideDesyncEnabled then
             -- WBと同じパターン: RenderStepで元のCFrameに戻す（サーバー側にズレた位置を送信）
-            RunService:BindToRenderStep("__hif_restore", 200, function()
+            RunService:BindToRenderStep("__hif_restore", 101, function()
                 h.CFrame = savedCF
                 RunService:UnbindFromRenderStep("__hif_restore")
             end)
