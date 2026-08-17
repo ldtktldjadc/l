@@ -390,6 +390,11 @@ do
                     continue
                 end
 
+                if target.Character and target.Character:FindFirstChildWhichIsA("ForceField") then
+                    setStatus("Ragebot: Waiting (ForceField)")
+                    continue
+                end
+
                 -- ammo確認して発射 or リロード
                 local targetName = target.Name or "???"
                 pcall(function()
