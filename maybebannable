@@ -128,10 +128,10 @@ do
 
             if not self.__desync or self.__curr ~= __x6y7z8 then
                 self:__desync_start(__x6y7z8)
-                local __pingDelay = 0.1
-                pcall(function() __pingDelay = math.max(0.03, __k7l8m9:GetNetworkPing()) end)
-                self.__shoot_ready_at = os.clock() + __pingDelay
-                while os.clock() < self.__shoot_ready_at do
+                local __pingDelay = 0.08
+                pcall(function() __pingDelay = math.clamp(__k7l8m9:GetNetworkPing(), 0.03, 0.3) end)
+                local __shootReadyAt = os.clock() + __pingDelay
+                while os.clock() < __shootReadyAt do
                     task.wait()
                 end
             end
@@ -352,12 +352,12 @@ do
 
         -- ステータスラベル
         local statusLabel = Instance.new("TextLabel")
-        statusLabel.Size = UDim2.new(0.3, 0, 0.3, 0)
+        statusLabel.Size = UDim2.new(0.025, 0, 0.004, 0)
         statusLabel.Position = UDim2.new(0.5, 0, 0.65, 0)
         statusLabel.AnchorPoint = Vector2.new(0.5, 0.5)
         statusLabel.BackgroundTransparency = 1
         statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        statusLabel.TextScaled = false
+        statusLabel.TextScaled = true
         statusLabel.Font = Drawing.Fonts.UI
         statusLabel.TextXAlignment = Enum.TextXAlignment.Center
         statusLabel.Text = ""
@@ -365,7 +365,7 @@ do
         
         local statusStroke = Instance.new("UIStroke")
         statusStroke.Color = Color3.fromRGB(0, 0, 0)
-        statusStroke.Thickness = 1
+        statusStroke.Thickness = 2
         statusStroke.Parent = statusLabel
 
         self.__statusLabel = statusLabel
@@ -492,8 +492,7 @@ do
         self.__desync = true
         self.__curr = __c3d4e5
 
-        local __postSim = __y5z6a7.PostSimulation or __y5z6a7.Heartbeat
-        self.__conn2 = __postSim:Connect(function()
+        self.__conn2 = __y5z6a7.Heartbeat:Connect(function()
             if not self.__desync then return end
             local __f6g7h8 = __z2a3b4.__root
             if not __f6g7h8 then return end
@@ -514,16 +513,17 @@ do
                 return
             end
 
-            local __savedCF     = __f6g7h8.CFrame
+            local __l2m3n4 = __f6g7h8.CFrame
             local __savedLinVel = __f6g7h8.AssemblyLinearVelocity
             local __savedAngVel = __f6g7h8.AssemblyAngularVelocity
 
-            local isStopped = __i9j0k1.AssemblyLinearVelocity.Magnitude < 1
+            -- 銃（__desync_start）のTP位置を変更
+            local isStopped = __i9j0k1.Velocity.Magnitude < 1
             local yOffset = isStopped and -5 or 7.5
             __f6g7h8.CFrame = __i9j0k1.CFrame * CFrame.new(0, yOffset, 0) * CFrame.Angles(math.rad(-90), 0, 0)
 
-            __y5z6a7:BindToRenderStep("__restore", 0, function()
-                __f6g7h8.CFrame = __savedCF
+            __y5z6a7:BindToRenderStep("__restore", 101, function()
+                __f6g7h8.CFrame = __l2m3n4
                 __f6g7h8.AssemblyLinearVelocity = __savedLinVel
                 __f6g7h8.AssemblyAngularVelocity = __savedAngVel
                 __y5z6a7:UnbindFromRenderStep("__restore")
@@ -536,9 +536,8 @@ do
         self.__desync = true
         self.__curr = __c3d4e5
         self.__meleeStartTime = tick()
-
-        local __postSim2 = __y5z6a7.PostSimulation or __y5z6a7.Heartbeat
-        self.__conn2 = __postSim2:Connect(function()
+        
+        self.__conn2 = __y5z6a7.Heartbeat:Connect(function()
             if not self.__desync then return end
             local __f6g7h8 = __z2a3b4.__root
             if not __f6g7h8 then return end
@@ -559,29 +558,37 @@ do
                 return
             end
 
-            local __savedCF     = __f6g7h8.CFrame
-            local __savedLinVel = __f6g7h8.AssemblyLinearVelocity
-            local __savedAngVel = __f6g7h8.AssemblyAngularVelocity
+            local __savedCF = __f6g7h8.CFrame
+            local __savedVel = __f6g7h8.Velocity
+            local __savedRotVel = __f6g7h8.RotVelocity
 
-            local pingSeconds = 0.1
-            pcall(function() pingSeconds = math.max(0.03, __k7l8m9:GetNetworkPing()) end)
+            -- Mode: Direct (Dynamic Ping)
+            -- 実際のPing値を取得して予測時間を動的に算出する
+            -- ping取得に失敗した場合は80msにフォールバック
+            local pingSeconds = 0.08
+            pcall(function()
+                local stat = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]
+                pingSeconds = math.clamp(stat:GetValue() / 1000, 0.02, 0.3)
+            end)
+            -- サーバー処理遅延分（約40ms）を加算
             local predictTime = pingSeconds + 0.04
 
-            local tVel = __i9j0k1.AssemblyLinearVelocity
+            local tVel = __i9j0k1.Velocity
             local predictedOffset = tVel * predictTime
-
+            
             __f6g7h8.CFrame = __i9j0k1.CFrame + predictedOffset
 
             local _, yaw, _ = __i9j0k1.CFrame:ToOrientation()
             self.__spoofYaw = yaw
+            
+            -- TP中は自分自身の慣性をゼロにしてすっぽ抜けを防ぐ
+            __f6g7h8.Velocity = Vector3.new(0, 0, 0)
+            __f6g7h8.RotVelocity = Vector3.new(0, 0, 0)
 
-            __f6g7h8.AssemblyLinearVelocity  = Vector3.zero
-            __f6g7h8.AssemblyAngularVelocity = Vector3.zero
-
-            __y5z6a7:BindToRenderStep("__melee_restore", 0, function()
+            __y5z6a7:BindToRenderStep("__melee_restore", 101, function()
                 __f6g7h8.CFrame = __savedCF
-                __f6g7h8.AssemblyLinearVelocity  = __savedLinVel
-                __f6g7h8.AssemblyAngularVelocity = __savedAngVel
+                __f6g7h8.Velocity = __savedVel
+                __f6g7h8.RotVelocity = __savedRotVel
                 __y5z6a7:UnbindFromRenderStep("__melee_restore")
             end)
         end)
