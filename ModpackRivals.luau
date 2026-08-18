@@ -3754,6 +3754,158 @@ lp.CharacterAdded:Connect(function()
     if noclipEnabled then task.wait(0.5) startNoclip() end
 end)
 
+-- ========== AUTO LOADOUT ==========
+local autoLoadoutEnabled = false
+local ChosenWeapons = {}
+local WeaponLists = {}
+local ListIndexes = {1, 1, 1, 1}
+
+local LoadCoreBox = Tabs.Misc:AddLeftGroupbox("Loadout Core")
+LoadCoreBox:AddToggle("AutoLoadToggle", { Text = "Enable Auto Loadout", Default = autoLoadoutEnabled, Callback = function(Value) autoLoadoutEnabled = Value end })
+
+local LoadSlotsBox = Tabs.Misc:AddRightGroupbox("Weapon Slots")
+local PriDropObj = LoadSlotsBox:AddDropdown("PriDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Primary", Callback = function(Value) ChosenWeapons[1] = Value end })
+local SecDropObj = LoadSlotsBox:AddDropdown("SecDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Secondary", Callback = function(Value) ChosenWeapons[2] = Value end })
+local MelDropObj = LoadSlotsBox:AddDropdown("MelDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Melee", Callback = function(Value) ChosenWeapons[3] = Value end })
+local UtiDropObj = LoadSlotsBox:AddDropdown("UtiDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Utility", Callback = function(Value) ChosenWeapons[4] = Value end })
+
+local AutoLoadout_ItemLibrary = nil
+local AutoLoadout_FighterController = nil
+local AutoLoadout_DuelController = nil
+
+local function updateWeaponLabels()
+    if WeaponLists[1] and #WeaponLists[1] > 0 then PriDropObj:SetValues(WeaponLists[1]); ChosenWeapons[1] = PriDropObj.Value end
+    if WeaponLists[2] and #WeaponLists[2] > 0 then SecDropObj:SetValues(WeaponLists[2]); ChosenWeapons[2] = SecDropObj.Value end
+    if WeaponLists[3] and #WeaponLists[3] > 0 then MelDropObj:SetValues(WeaponLists[3]); ChosenWeapons[3] = MelDropObj.Value end
+    if WeaponLists[4] and #WeaponLists[4] > 0 then UtiDropObj:SetValues(WeaponLists[4]); ChosenWeapons[4] = UtiDropObj.Value end
+end
+
+local function refreshWeapons()
+    if not AutoLoadout_ItemLibrary or not AutoLoadout_FighterController then return end
+    local maxSlots = AutoLoadout_FighterController.LocalFighter and AutoLoadout_FighterController.LocalFighter:GetMaxEquippableWeapons() or 4
+    for slotIndex = 1, maxSlots do
+        local weapons = {}
+        local classData = AutoLoadout_ItemLibrary.SlotToClass[slotIndex]
+        local className = classData and classData.Name
+        if className then
+            local weaponPool = AutoLoadout_FighterController.LocalFighter and AutoLoadout_FighterController.LocalFighter:Get("WeaponPool") or {}
+            local filterType = AutoLoadout_FighterController.LocalFighter and AutoLoadout_FighterController.LocalFighter:Get("WeaponPoolFilterType") or ""
+            for _, itemName in ipairs(AutoLoadout_ItemLibrary.ItemsAlphabetized) do
+                local itemData = AutoLoadout_ItemLibrary.Items[itemName]
+                if itemData and itemData.Class == className then
+                    local isBlacklisted = (filterType == "Blacklist") and table.find(weaponPool, itemName)
+                    local canUse = AutoLoadout_FighterController.LocalFighter and AutoLoadout_FighterController.LocalFighter:CanUseWeapon(itemName)
+                    if (canUse or isBlacklisted) then
+                        table.insert(weapons, itemName)
+                    end
+                end
+            end
+        end
+        WeaponLists[slotIndex] = weapons
+        if type(weapons) == "table" and ListIndexes[slotIndex] > #weapons then ListIndexes[slotIndex] = 1 end
+        if type(weapons) == "table" and #weapons > 0 and not ChosenWeapons[slotIndex] then
+            ChosenWeapons[slotIndex] = weapons[ListIndexes[slotIndex]]
+        end
+    end
+end
+
+LoadCoreBox:AddButton({
+    Text = "Refresh Weapons Data",
+    Func = function()
+        refreshWeapons()
+        updateWeaponLabels()
+    end,
+})
+
+local function triggerAutoLoadout()
+    if not autoLoadoutEnabled then return end
+    local validLoadout = {}
+    local maxSlots = AutoLoadout_FighterController and AutoLoadout_FighterController.LocalFighter and AutoLoadout_FighterController.LocalFighter:GetMaxEquippableWeapons() or 4
+    for i = 1, maxSlots do validLoadout[i] = ChosenWeapons[i] end
+    local duel = AutoLoadout_DuelController and AutoLoadout_DuelController:GetDuel(lp)
+    if duel and duel.LocalDueler and duel.LocalDueler:GetStaggeredSpawnsTurn() then
+        ReplicatedStorage.Remotes.Duels.PickWeaponsAheadOfTime:FireServer(validLoadout)
+    else
+        ReplicatedStorage.Remotes.Replication.Fighter.PickWeapons:FireServer(validLoadout)
+    end
+end
+
+local function enforceAutoLoadout()
+    local function hideExpectedUI(guiObj)
+        if not autoLoadoutEnabled then return end
+        local nameStr = string.lower(guiObj.Name)
+        if string.find(nameStr, "pickweapon") or string.find(nameStr, "weaponselect") then
+            task.spawn(function()
+                if guiObj:IsA("ScreenGui") then
+                    guiObj.Enabled = false
+                    guiObj:GetPropertyChangedSignal("Enabled"):Connect(function()
+                        if autoLoadoutEnabled and guiObj.Enabled then
+                            guiObj.Enabled = false; refreshWeapons(); triggerAutoLoadout()
+                        end
+                    end)
+                elseif guiObj:IsA("GuiObject") then
+                    guiObj.Visible = false
+                    guiObj:GetPropertyChangedSignal("Visible"):Connect(function()
+                        if autoLoadoutEnabled and guiObj.Visible then
+                            guiObj.Visible = false; refreshWeapons(); triggerAutoLoadout()
+                        end
+                    end)
+                end
+            end)
+            refreshWeapons()
+            triggerAutoLoadout()
+        end
+    end
+    
+    local PlayerGui = lp:WaitForChild("PlayerGui")
+    PlayerGui.ChildAdded:Connect(hideExpectedUI)
+    PlayerGui.DescendantAdded:Connect(hideExpectedUI)
+    for _, desc in ipairs(PlayerGui:GetDescendants()) do hideExpectedUI(desc) end
+
+    local function attachToFighter()
+        if AutoLoadout_FighterController and AutoLoadout_FighterController.LocalFighter and type(AutoLoadout_FighterController.LocalFighter.GetPropertyChangedSignal) == "function" then
+            pcall(function()
+                AutoLoadout_FighterController.LocalFighter:GetPropertyChangedSignal("CanPickWeapons"):Connect(function()
+                    if autoLoadoutEnabled and AutoLoadout_FighterController.LocalFighter:Get("CanPickWeapons") then
+                        refreshWeapons(); triggerAutoLoadout()
+                    end
+                end)
+            end)
+        end
+    end
+
+    if AutoLoadout_FighterController then
+        attachToFighter()
+        if type(AutoLoadout_FighterController.FighterAdded) == "userdata" then
+            AutoLoadout_FighterController.FighterAdded:Connect(attachToFighter)
+        end
+    end
+end
+
+task.spawn(function()
+    local Modules = ReplicatedStorage:WaitForChild("Modules", 10)
+    if Modules then AutoLoadout_ItemLibrary = require(Modules:WaitForChild("ItemLibrary", 10)) end
+    local playerScripts = lp:WaitForChild("PlayerScripts", 10)
+    local Controllers = playerScripts and playerScripts:WaitForChild("Controllers", 10)
+    if Controllers then
+        AutoLoadout_FighterController = require(Controllers:WaitForChild("FighterController", 10))
+        AutoLoadout_DuelController = require(Controllers:WaitForChild("DuelController", 10))
+    end
+    
+    task.wait(1)
+    refreshWeapons()
+    updateWeaponLabels()
+    enforceAutoLoadout()
+end)
+
+lp.CharacterAdded:Connect(function()
+    task.wait(1.5)
+    if autoLoadoutEnabled then
+        refreshWeapons()
+        triggerAutoLoadout()
+    end
+end)
+
 -- ========== AUTO EXECUTE ==========
 local AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
 
