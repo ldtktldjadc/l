@@ -3773,32 +3773,51 @@ local AutoLoadout_ItemLibrary = nil
 local AutoLoadout_FighterController = nil
 local AutoLoadout_DuelController = nil
 
-local function updateWeaponLabels()
-    if WeaponLists[1] and #WeaponLists[1] > 0 then PriDropObj:SetValues(WeaponLists[1]); ChosenWeapons[1] = PriDropObj.Value end
-    if WeaponLists[2] and #WeaponLists[2] > 0 then SecDropObj:SetValues(WeaponLists[2]); ChosenWeapons[2] = SecDropObj.Value end
-    if WeaponLists[3] and #WeaponLists[3] > 0 then MelDropObj:SetValues(WeaponLists[3]); ChosenWeapons[3] = MelDropObj.Value end
-    if WeaponLists[4] and #WeaponLists[4] > 0 then UtiDropObj:SetValues(WeaponLists[4]); ChosenWeapons[4] = UtiDropObj.Value end
-end
-
-local function restoreAutoLoadWeapons()
+local function getSavedWeaponSelections()
+    local saved = {}
     pcall(function()
         local sm = getgenv().SaveManager or SaveManager
-        if not sm then return end
-        local folder = sm.Folder
-        local autoFile = folder .. "/settings/autoload.txt"
-        if not isfile(autoFile) then return end
+        if not (sm and sm.Folder) then return end
+        local autoFile = sm.Folder .. "/settings/autoload.txt"
+        if not (type(isfile) == "function" and isfile(autoFile)) then return end
         local name = readfile(autoFile)
-        local path = folder .. "/settings/" .. name .. ".json"
+        local path = sm.Folder .. "/settings/" .. name .. ".json"
         if not isfile(path) then return end
-        
         local decoded = game:GetService("HttpService"):JSONDecode(readfile(path))
         if type(decoded) == "table" and type(decoded.Options) == "table" then
-            if decoded.Options.PriDrop then PriDropObj:SetValue(decoded.Options.PriDrop) end
-            if decoded.Options.SecDrop then SecDropObj:SetValue(decoded.Options.SecDrop) end
-            if decoded.Options.MelDrop then MelDropObj:SetValue(decoded.Options.MelDrop) end
-            if decoded.Options.UtiDrop then UtiDropObj:SetValue(decoded.Options.UtiDrop) end
+            saved[1] = decoded.Options.PriDrop
+            saved[2] = decoded.Options.SecDrop
+            saved[3] = decoded.Options.MelDrop
+            saved[4] = decoded.Options.UtiDrop
         end
     end)
+    return saved
+end
+
+local dropObjs = {PriDropObj, SecDropObj, MelDropObj, UtiDropObj}
+
+local function updateWeaponLabels()
+    local saved = getSavedWeaponSelections()
+    if WeaponLists[1] and #WeaponLists[1] > 0 then
+        PriDropObj:SetValues(WeaponLists[1])
+        local v = (saved[1] and table.find(WeaponLists[1], saved[1])) and saved[1] or PriDropObj.Value
+        PriDropObj:SetValue(v); ChosenWeapons[1] = v
+    end
+    if WeaponLists[2] and #WeaponLists[2] > 0 then
+        SecDropObj:SetValues(WeaponLists[2])
+        local v = (saved[2] and table.find(WeaponLists[2], saved[2])) and saved[2] or SecDropObj.Value
+        SecDropObj:SetValue(v); ChosenWeapons[2] = v
+    end
+    if WeaponLists[3] and #WeaponLists[3] > 0 then
+        MelDropObj:SetValues(WeaponLists[3])
+        local v = (saved[3] and table.find(WeaponLists[3], saved[3])) and saved[3] or MelDropObj.Value
+        MelDropObj:SetValue(v); ChosenWeapons[3] = v
+    end
+    if WeaponLists[4] and #WeaponLists[4] > 0 then
+        UtiDropObj:SetValues(WeaponLists[4])
+        local v = (saved[4] and table.find(WeaponLists[4], saved[4])) and saved[4] or UtiDropObj.Value
+        UtiDropObj:SetValue(v); ChosenWeapons[4] = v
+    end
 end
 
 local function refreshWeapons()
@@ -3916,7 +3935,6 @@ task.spawn(function()
     task.wait(1)
     refreshWeapons()
     updateWeaponLabels()
-    restoreAutoLoadWeapons()
     enforceAutoLoadout()
 end)
 
