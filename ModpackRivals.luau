@@ -3797,25 +3797,31 @@ end
 local dropObjs = {PriDropObj, SecDropObj, MelDropObj, UtiDropObj}
 
 local function updateWeaponLabels()
-    local saved = getSavedWeaponSelections()
+    -- SetValues前に現在の値を保存（SaveManagerがすでにロードした値を守る）
+    local prevVals = {
+        PriDropObj.Value,
+        SecDropObj.Value,
+        MelDropObj.Value,
+        UtiDropObj.Value,
+    }
     if WeaponLists[1] and #WeaponLists[1] > 0 then
         PriDropObj:SetValues(WeaponLists[1])
-        local v = (saved[1] and table.find(WeaponLists[1], saved[1])) and saved[1] or PriDropObj.Value
+        local v = (prevVals[1] and table.find(WeaponLists[1], prevVals[1])) and prevVals[1] or PriDropObj.Value
         PriDropObj:SetValue(v); ChosenWeapons[1] = v
     end
     if WeaponLists[2] and #WeaponLists[2] > 0 then
         SecDropObj:SetValues(WeaponLists[2])
-        local v = (saved[2] and table.find(WeaponLists[2], saved[2])) and saved[2] or SecDropObj.Value
+        local v = (prevVals[2] and table.find(WeaponLists[2], prevVals[2])) and prevVals[2] or SecDropObj.Value
         SecDropObj:SetValue(v); ChosenWeapons[2] = v
     end
     if WeaponLists[3] and #WeaponLists[3] > 0 then
         MelDropObj:SetValues(WeaponLists[3])
-        local v = (saved[3] and table.find(WeaponLists[3], saved[3])) and saved[3] or MelDropObj.Value
+        local v = (prevVals[3] and table.find(WeaponLists[3], prevVals[3])) and prevVals[3] or MelDropObj.Value
         MelDropObj:SetValue(v); ChosenWeapons[3] = v
     end
     if WeaponLists[4] and #WeaponLists[4] > 0 then
         UtiDropObj:SetValues(WeaponLists[4])
-        local v = (saved[4] and table.find(WeaponLists[4], saved[4])) and saved[4] or UtiDropObj.Value
+        local v = (prevVals[4] and table.find(WeaponLists[4], prevVals[4])) and prevVals[4] or UtiDropObj.Value
         UtiDropObj:SetValue(v); ChosenWeapons[4] = v
     end
 end
