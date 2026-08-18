@@ -3780,6 +3780,27 @@ local function updateWeaponLabels()
     if WeaponLists[4] and #WeaponLists[4] > 0 then UtiDropObj:SetValues(WeaponLists[4]); ChosenWeapons[4] = UtiDropObj.Value end
 end
 
+local function restoreAutoLoadWeapons()
+    pcall(function()
+        local sm = getgenv().SaveManager or SaveManager
+        if not sm then return end
+        local folder = sm.Folder
+        local autoFile = folder .. "/settings/autoload.txt"
+        if not isfile(autoFile) then return end
+        local name = readfile(autoFile)
+        local path = folder .. "/settings/" .. name .. ".json"
+        if not isfile(path) then return end
+        
+        local decoded = game:GetService("HttpService"):JSONDecode(readfile(path))
+        if type(decoded) == "table" and type(decoded.Options) == "table" then
+            if decoded.Options.PriDrop then PriDropObj:SetValue(decoded.Options.PriDrop) end
+            if decoded.Options.SecDrop then SecDropObj:SetValue(decoded.Options.SecDrop) end
+            if decoded.Options.MelDrop then MelDropObj:SetValue(decoded.Options.MelDrop) end
+            if decoded.Options.UtiDrop then UtiDropObj:SetValue(decoded.Options.UtiDrop) end
+        end
+    end)
+end
+
 local function refreshWeapons()
     if not AutoLoadout_ItemLibrary or not AutoLoadout_FighterController then return end
     local maxSlots = AutoLoadout_FighterController.LocalFighter and AutoLoadout_FighterController.LocalFighter:GetMaxEquippableWeapons() or 4
@@ -3895,6 +3916,7 @@ task.spawn(function()
     task.wait(1)
     refreshWeapons()
     updateWeaponLabels()
+    restoreAutoLoadWeapons()
     enforceAutoLoadout()
 end)
 
