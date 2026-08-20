@@ -3130,28 +3130,36 @@ local function startHideInFloor()
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
-    local rayParams = RaycastParams.new()
-    rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.FilterDescendantsInstances = {char}
-    
-    local cam = workspace.CurrentCamera
-    if cam then
-        local ray = workspace:Raycast(cam.CFrame.Position, Vector3.new(0, -9999, 0), rayParams)
-        if ray then
-            hideTargetPos = ray.Position - Vector3.new(0, 5, 0)
-        else
-            hideTargetPos = cam.CFrame.Position - Vector3.new(0, 5, 0)
-        end
-    else
-        local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -9999, 0), rayParams)
-        if ray then
-            hideTargetPos = ray.Position - Vector3.new(0, 5, 0)
-        else
-            hideTargetPos = hrp.Position - Vector3.new(0, 5, 0)
-        end
-    end
-
     if hideDesyncConn then hideDesyncConn:Disconnect() end
+    
+    task.spawn(function()
+        while hideInFloorEnabled do
+            local cam = workspace.CurrentCamera
+            local rayParams = RaycastParams.new()
+            rayParams.FilterType = Enum.RaycastFilterType.Exclude
+            local c = lp.Character
+            if c then rayParams.FilterDescendantsInstances = {c} end
+
+            if cam then
+                local ray = workspace:Raycast(cam.CFrame.Position, Vector3.new(0, -9999, 0), rayParams)
+                if ray then
+                    hideTargetPos = ray.Position - Vector3.new(0, 5, 0)
+                else
+                    hideTargetPos = cam.CFrame.Position - Vector3.new(0, 5, 0)
+                end
+            elseif c and c:FindFirstChild("HumanoidRootPart") then
+                local hrp = c.HumanoidRootPart
+                local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -9999, 0), rayParams)
+                if ray then
+                    hideTargetPos = ray.Position - Vector3.new(0, 5, 0)
+                else
+                    hideTargetPos = hrp.Position - Vector3.new(0, 5, 0)
+                end
+            end
+            task.wait(1)
+        end
+    end)
+
     hideDesyncConn = RunService.Heartbeat:Connect(function()
         if not hideInFloorEnabled then return end
         local c = lp.Character
