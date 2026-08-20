@@ -1682,6 +1682,7 @@ do
         self.__statusLabel = nil
         self.__statusStroke = nil
         self.__setup_done = false
+        self.__maxDist = 500
     end
 
     function __i1j2k3:__setup()
@@ -1914,6 +1915,7 @@ do
             local cam = __e1f2g3.CurrentCamera
             if not cam then continue end
             local dist = (cam.CFrame.Position - root.Position).Magnitude
+            if dist > self.__maxDist then continue end
             if dist < closestDist then
                 closestDist = dist
                 closest = player
@@ -2091,6 +2093,17 @@ do
         Default = true,
         Callback = function(v)
             __i1j2k3.__teamCheck = v
+        end
+    })
+
+    WBDep:AddSlider("WB_MaxDist", {
+        Text     = "MaxDistance",
+        Default  = 500,
+        Min      = 100,
+        Max      = 9999,
+        Rounding = 0,
+        Callback = function(v)
+            __i1j2k3.__maxDist = v
         end
     })
 
