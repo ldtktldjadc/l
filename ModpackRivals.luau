@@ -3133,12 +3133,22 @@ local function startHideInFloor()
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.FilterDescendantsInstances = {char}
-    local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -9999, 0), rayParams)
-
-    if ray then
-        hideTargetPos = ray.Position - Vector3.new(0, 5, 0)
+    
+    local cam = workspace.CurrentCamera
+    if cam then
+        local ray = workspace:Raycast(cam.CFrame.Position, Vector3.new(0, -9999, 0), rayParams)
+        if ray then
+            hideTargetPos = ray.Position - Vector3.new(0, 5, 0)
+        else
+            hideTargetPos = cam.CFrame.Position - Vector3.new(0, 5, 0)
+        end
     else
-        hideTargetPos = hrp.Position - Vector3.new(0, 5, 0)
+        local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -9999, 0), rayParams)
+        if ray then
+            hideTargetPos = ray.Position - Vector3.new(0, 5, 0)
+        else
+            hideTargetPos = hrp.Position - Vector3.new(0, 5, 0)
+        end
     end
 
     if hideDesyncConn then hideDesyncConn:Disconnect() end
