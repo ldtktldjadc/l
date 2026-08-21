@@ -23,7 +23,7 @@ local function safeUnbindFromRenderStep(rs, name)
     end
 end
 
--- 多重ロード防止（5秒以内に連続で実行された場合は弾く）
+-- 螟夐㍾繝ｭ繝ｼ繝蛾亟豁｢・・遘剃ｻ･蜀・↓騾｣邯壹〒螳溯｡後＆繧後◆蝣ｴ蜷医・蠑ｾ縺擾ｼ・
 if getgenv().ModpackRivals_Executing then return end
 getgenv().ModpackRivals_Executing = true
 task.delay(5, function() getgenv().ModpackRivals_Executing = false end)
@@ -55,7 +55,7 @@ if getgenv().MyModpackESP then
 end
 
 --=============================================================================
--- Emit/ClearフックによるKatanaパリー判定 (AntiKatana)
+-- Emit/Clear繝輔ャ繧ｯ縺ｫ繧医ｋKatana繝代Μ繝ｼ蛻､螳・(AntiKatana)
 --=============================================================================
 local DeflectingPlayers = {}
 getgenv().DeflectingPlayers = DeflectingPlayers
@@ -202,8 +202,8 @@ end
 
 local function setupSilentAim()
     -- Utility:Raycast(self, origin, endPos, maxDist, filterList, filterType, debug)
-    -- 内部で direction = (endPos - origin).Unit * maxDist を計算している
-    -- なので args[3] (endPos) をターゲット座標に差し替えるだけでいい
+    -- 蜀・Κ縺ｧ direction = (endPos - origin).Unit * maxDist 繧定ｨ育ｮ励＠縺ｦ縺・ｋ
+    -- 縺ｪ縺ｮ縺ｧ args[3] (endPos) 繧偵ち繝ｼ繧ｲ繝・ヨ蠎ｧ讓吶↓蟾ｮ縺玲崛縺医ｋ縺縺代〒縺・＞
     local utilityModule = nil
     for _, module in pairs(ReplicatedStorage:GetDescendants()) do
         if module:IsA("ModuleScript") and module.Name == "Utility" then
@@ -286,18 +286,6 @@ task.spawn(function()
     end)
 end)
 
--- WallBang Beta モジュール
-local __wb_GunModule   = nil
-local __wb_Utility     = nil
-local __wb_CvmModule   = nil
-task.spawn(function()
-    pcall(function()
-        local ps = lp:WaitForChild("PlayerScripts", 10)
-        __wb_GunModule = require(ps.Modules.ItemTypes.Gun)
-        __wb_Utility   = require(ReplicatedStorage.Modules.Utility)
-        __wb_CvmModule = require(ps.Modules.ClientReplicatedClasses.ClientFighter.ClientItem.ClientViewModel)
-    end)
-end)
 
 local SeasonLibrary = nil
 task.spawn(function()
@@ -709,7 +697,7 @@ RunService.Heartbeat:Connect(function()
                     local hpPct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
                     cache.HPBarFill.Size = UDim2.new(1, 0, hpPct, 0)
                     cache.HPBarFill.Position = UDim2.new(0, 0, 1 - hpPct, 0)
-                    cache.HPBarFill.BackgroundColor3 = Color3.new(1 - hpPct, hpPct, 0) -- 緑(0,1,0)から赤(1,0,0)へのグラデーション
+                    cache.HPBarFill.BackgroundColor3 = Color3.new(1 - hpPct, hpPct, 0) -- 邱・0,1,0)縺九ｉ襍､(1,0,0)縺ｸ縺ｮ繧ｰ繝ｩ繝・・繧ｷ繝ｧ繝ｳ
                     cache.HPBarBg.BorderColor3 = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
                     cache.HPBarBg.Visible = true
                     cache.HPBarFill.Visible = true
@@ -1456,7 +1444,7 @@ task.spawn(function()
                     end
                 end
 
-                -- Anti-Katana: StartShootingをフック
+                -- Anti-Katana: StartShooting繧偵ヵ繝・け
                 local origSS = self.StartShooting
                 if type(origSS) == "function" and not self._isAntiKatanaSSHooked then
                     self._isAntiKatanaSSHooked = true
@@ -1475,7 +1463,7 @@ task.spawn(function()
                     end
                 end
 
-                -- Anti-Katana: Shot:Fire()をフック（予備）
+                -- Anti-Katana: Shot:Fire()繧偵ヵ繝・け・井ｺ亥ｙ・・
                 if self.Shot and not self._isAntiKatanaShotHooked then
                     self._isAntiKatanaShotHooked = true
                     local origShotFire = self.Shot.Fire
@@ -1546,7 +1534,7 @@ task.spawn(function()
                 }
 
                 for prop, tgtValue in pairs(overrides) do
-                    -- もともとその武器にプロパティが存在する場合のみ上書きする
+                    -- 繧ゅ→繧ゅ→縺昴・豁ｦ蝎ｨ縺ｫ繝励Ο繝代ユ繧｣縺悟ｭ伜惠縺吶ｋ蝣ｴ蜷医・縺ｿ荳頑嶌縺阪☆繧・
                     if orig[prop] ~= nil and self.Info[prop] ~= tgtValue then
                         self.Info[prop] = tgtValue
                     end
@@ -1603,512 +1591,6 @@ GunModsDep:AddToggle("GunMods_AntiKatana", {
 GunModsDep:SetupDependencies({ { GunModsToggle, true } })
 
 
--- ===== WALLBANG BETA =====
-do
-    local __p6q7r8 = getgenv()
-    local __v2w3x4 = game:GetService("Players")
-    local __y5z6a7 = game:GetService("RunService")
-    local __b8c9d0 = game:GetService("ReplicatedStorage")
-    local __e1f2g3 = workspace
-    local __k7l8m9 = __v2w3x4.LocalPlayer
-    local __n0o1p2 = __e1f2g3.CurrentCamera
-    
-    local __q3r4s5 = nil
-    local __t6u7v8 = nil
-    local __w9x0y1 = nil
-    local __cvm_module = nil
-    
-    task.spawn(function()
-        __q3r4s5 = __k7l8m9:WaitForChild("PlayerScripts", 10)
-        if __q3r4s5 then
-            local modules = __q3r4s5:WaitForChild("Modules", 10)
-            if modules then
-                __t6u7v8 = require(modules:WaitForChild("ItemTypes", 5):WaitForChild("Gun", 5))
-                __cvm_module = require(modules:WaitForChild("ClientReplicatedClasses", 5):WaitForChild("ClientFighter", 5):WaitForChild("ClientItem", 5):WaitForChild("ClientViewModel", 5))
-            end
-        end
-        __w9x0y1 = require(__b8c9d0:WaitForChild("Modules", 10):WaitForChild("Utility", 5))
-    end)
-
-    if not getgenv().__nobannable_encode_hooked then
-        getgenv().__nobannable_encode_hooked = true
-        task.spawn(function()
-            while not __w9x0y1 do task.wait(0.2) end
-            local __oldEncode = __w9x0y1.EncodeCameraRotation
-            __w9x0y1.EncodeCameraRotation = function(self, rot)
-                local cheat = getgenv().__s9t0u1
-                if cheat and cheat.__desync and cheat.__spoofYaw then
-                    local pitch = rot and rot.X or 0
-                    rot = Vector2.new(pitch, cheat.__spoofYaw)
-                end
-                return __oldEncode(self, rot)
-            end
-        end)
-    end
-
-    local __z2a3b4 = setmetatable({}, {
-        __index = function(_, __c5d6e7)
-            local __f8g9h0 = __k7l8m9.Character
-            if not __f8g9h0 then return nil end
-            if __c5d6e7 == "__root" then
-                return __f8g9h0:FindFirstChild("HumanoidRootPart")
-            elseif __c5d6e7 == "__head" then
-                return __f8g9h0:FindFirstChild("HitboxHead")
-            end
-            return nil
-        end
-    })
-
-    __p6q7r8.__s9t0u1 = {}
-    local __i1j2k3 = __p6q7r8.__s9t0u1
-
-    function __i1j2k3:__init()
-        self.__active = false
-        self.__target = nil
-        self.__desync = false
-        self.__conn1 = nil
-        self.__conn2 = nil
-        self.__task1 = nil
-        self.__oldfunc = nil
-        self.__old_playanim_func = nil
-        self.__spoofYaw = nil
-        self.__teamCheck = true
-        self.__voidSpam = false
-        self.__voidSpamConn = nil
-        self.__autoshot = false
-        self.__autoshotConn = nil
-        self.__targetIsAttacking = false
-        self.__isReloading = false
-        self.__statusLabel = nil
-        self.__statusStroke = nil
-        self.__setup_done = false
-        self.__maxDist = 500
-    end
-
-    function __i1j2k3:__setup()
-        if self.__setup_done then return end
-        self.__setup_done = true
-        
-        while not __t6u7v8 or not __cvm_module do task.wait(0.2) end
-        
-        self.__conn1 = __y5z6a7.Heartbeat:Connect(function()
-            if not self.__active then return end
-            self.__target = self:__find()
-        end)
-
-        local __l4m5n6 = __t6u7v8.StartShooting
-        self.__oldfunc = __l4m5n6
-        __t6u7v8.StartShooting = function(__o7p8q9, ...)
-            local __r0s1t2 = {__l4m5n6(__o7p8q9, ...)}
-            if not __o7p8q9.ClientFighter or not __o7p8q9.ClientFighter.IsLocalPlayer then
-                return unpack(__r0s1t2)
-            end
-
-            local __u3v4w5 = __r0s1t2[3]
-            if not __u3v4w5 or typeof(__u3v4w5) ~= "table" then
-                return unpack(__r0s1t2)
-            end
-
-            __r0s1t2[4] = true
-            local __x6y7z8 = self.__target
-
-            if not self.__active or not __x6y7z8 or not __x6y7z8.Character then
-                return unpack(__r0s1t2)
-            end
-
-            if not self.__desync or self.__curr ~= __x6y7z8 then
-                self:__desync_start(__x6y7z8)
-                local ping_delay = __k7l8m9:GetNetworkPing()
-                local shoot_ready_at = os.clock() + math.max(0.03, ping_delay)
-                while os.clock() < shoot_ready_at do
-                    task.wait()
-                end
-            end
-
-            if self.__task1 then
-                task.cancel(self.__task1)
-                self.__task1 = nil
-            end
-
-            local __a9b0c1 = __x6y7z8.Character:FindFirstChild("HitboxHead")
-            if not __a9b0c1 then return unpack(__r0s1t2) end
-            
-            local hrp = __x6y7z8.Character:FindFirstChild("HumanoidRootPart")
-            local isStopped = hrp and hrp.Velocity.Magnitude < 1
-            local yOffset = isStopped and -5 or 7.5
-
-            local __d2e3f4 = __a9b0c1.Position
-            local __g5h6i7 = __a9b0c1.CFrame
-            local __j8k9l0 = __d2e3f4 + Vector3.new(0.01, yOffset, 0.01)
-            local __m1n2o3 = CFrame.lookAt(__j8k9l0, __d2e3f4)
-            local __rx = math.random()
-            local __ry = math.random()
-            local __rz = math.random()
-            local __p4q5r6 = __g5h6i7:ToObjectSpace(CFrame.new(__d2e3f4 + Vector3.new(__rx, __ry, __rz)))
-
-            __u3v4w5[utf8.char(0)] = __w9x0y1:EncodeCFrame(CFrame.new(__j8k9l0, __d2e3f4) * CFrame.Angles(__m1n2o3:ToOrientation()))
-            __u3v4w5[utf8.char(1)] = __w9x0y1:EncodeCFrame(CFrame.new(__d2e3f4) * CFrame.Angles(__m1n2o3:ToOrientation()))
-            __u3v4w5[utf8.char(2)] = __a9b0c1
-            __u3v4w5[utf8.char(3)] = __w9x0y1:EncodeCFrame(__p4q5r6)
-
-            self.__task1 = task.delay(0.15, function()
-                self:__desync_stop()
-            end)
-
-            return unpack(__r0s1t2)
-        end
-
-        local __old_playanim = __cvm_module.PlayAnimation
-        self.__old_playanim_func = __old_playanim
-        __cvm_module.PlayAnimation = function(__self, animName, ...)
-            if type(animName) == "string" then
-                local animLower = string.lower(animName)
-                local ok2, isEnemy = pcall(function() return __self.ClientItem.ClientFighter.IsLocalPlayer == false end)
-                if ok2 and isEnemy then
-                    local ok3, fighter = pcall(function() return __self.ClientItem.ClientFighter end)
-                    if ok3 and fighter then
-                        local targetPlayer = nil
-                        pcall(function() targetPlayer = fighter.Player end)
-                        if targetPlayer and self.__target and targetPlayer == self.__target then
-                            if string.find(animLower, "attack") or string.find(animLower, "slash") or string.find(animLower, "strike") or string.find(animLower, "shoot") or string.find(animLower, "fire") then
-                                self.__targetIsAttacking = true
-                                task.delay(0.6, function() self.__targetIsAttacking = false end)
-                            end
-                        end
-                    end
-                end
-                local ok4, isSelf = pcall(function() return __self.ClientItem.ClientFighter.IsLocalPlayer == true end)
-                if ok4 and isSelf then
-                    if string.find(animLower, "reload") then
-                        self.__isReloading = true
-                        task.delay(2.5, function() self.__isReloading = false end)
-                    end
-                end
-                
-                if string.find(animLower, "heavyattack") or string.find(animLower, "attack") then
-                    local ok, isLocal = pcall(function() return __self.ClientItem.ClientFighter.IsLocalPlayer == true end)
-                    if ok and isLocal then
-                        local target = self.__target
-                        if self.__active and target and target.Character then
-                            task.delay(0, function()
-                                if self.__active and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                                    self:__desync_start_melee(target)
-                                    task.wait(0.25)
-                                    self:__desync_stop()
-                                end
-                            end)
-                        end
-                    end
-                end
-            end
-            return __old_playanim(__self, animName, ...)
-        end
-
-        task.spawn(function()
-            local coreGui
-            pcall(function() coreGui = gethui() end)
-            if not coreGui then pcall(function() coreGui = game:GetService("CoreGui") end) end
-            if not coreGui then coreGui = __k7l8m9:WaitForChild("PlayerGui") end
-
-            local sg = Instance.new("ScreenGui")
-            sg.Name = "WallBangStatusGUI_Nobannable"
-            sg.ResetOnSpawn = false
-            sg.DisplayOrder = 999
-            sg.IgnoreGuiInset = true
-            sg.Parent = coreGui
-
-            local statusLabel = Instance.new("TextLabel")
-            statusLabel.Size = UDim2.new(0.3, 0, 0.04, 0)
-            statusLabel.Position = UDim2.new(0.5, 0, 0.65, 0)
-            statusLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-            statusLabel.BackgroundTransparency = 1
-            statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-            statusLabel.TextScaled = true
-            statusLabel.Font = Enum.Font.SourceSansBold
-            statusLabel.TextXAlignment = Enum.TextXAlignment.Center
-            statusLabel.Text = ""
-            statusLabel.Parent = sg
-            
-            local statusStroke = Instance.new("UIStroke")
-            statusStroke.Color = Color3.fromRGB(0, 0, 0)
-            statusStroke.Thickness = 2
-            statusStroke.Parent = statusLabel
-
-            self.__statusLabel = statusLabel
-            self.__statusStroke = statusStroke
-            self.__ui = sg
-        end)
-    end
-
-    function __i1j2k3:__setStatus(text)
-        if self.__statusLabel then
-            self.__statusLabel.Text = text
-        end
-    end
-
-    function __i1j2k3:__doAutoshot()
-        while self.__autoshot and self.__active do
-            task.wait()
-            local target = self.__target
-            if not target or not target.Character then
-                self:__setStatus("Ragebot: Void spaming..")
-                continue
-            end
-            if self.__targetIsAttacking then
-                self:__setStatus("Ragebot: Waiting (enemy attacking)")
-                continue
-            end
-            if target.Character and target.Character:FindFirstChildWhichIsA("ForceField") then
-                self:__setStatus("Ragebot: Waiting (ForceField)")
-                continue
-            end
-            local targetName = target.Name or "???"
-            pcall(function()
-                local fc = require(__q3r4s5.Controllers.FighterController)
-                local lf = fc and fc.LocalFighter
-                if not (lf and lf.EquippedItem) then return end
-                local item = lf.EquippedItem
-                local info = item.Info
-                if not (info and info.MaxAmmo) then return end
-                local ammo = 0
-                pcall(function() ammo = item:Get("Ammo") or 0 end)
-                local isReloading = false
-                pcall(function() isReloading = item:Get("IsReloading") or lf:Get("IsReloading") end)
-                if ammo <= 0 or isReloading then
-                    self:__setStatus("Ragebot: Reloading......")
-                    pcall(function() lf:Input("StartReloading") end)
-                else
-                    self:__setStatus("Ragebot: Killing " .. targetName .. "....")
-                    pcall(function() lf:Input("StartShooting") end)
-                end
-            end)
-        end
-        self:__setStatus("")
-    end
-
-    function __i1j2k3:__find()
-        local myChar = __k7l8m9.Character
-        if not myChar then return nil end
-        local myRoot = myChar:FindFirstChild("HumanoidRootPart")
-        if not myRoot then return nil end
-        local closest = nil
-        local closestDist = math.huge
-        for _, player in next, __v2w3x4:GetPlayers() do
-            if player == __k7l8m9 then continue end
-            if self.__teamCheck and player:GetAttribute("TeamID") == __k7l8m9:GetAttribute("TeamID") then continue end
-            local char = player.Character
-            if not char then continue end
-            local root = char:FindFirstChild("HumanoidRootPart")
-            local head = char:FindFirstChild("HitboxHead")
-            local hum = char:FindFirstChildWhichIsA("Humanoid")
-            if not (root and head and hum and hum.Health > 0) then continue end
-            if char:FindFirstChildWhichIsA("ForceField") then continue end
-            local isInvincible = false
-            pcall(function()
-                local fc = require(__q3r4s5.Controllers.FighterController)
-                local fighter = fc and fc:GetFighter(player)
-                if fighter and fighter.Entity then
-                    isInvincible = fighter.Entity:Get("IsInvincible")
-                end
-            end)
-            if isInvincible then continue end
-            local cam = __e1f2g3.CurrentCamera
-            if not cam then continue end
-            local dist = (cam.CFrame.Position - root.Position).Magnitude
-            if dist > self.__maxDist then continue end
-            if dist < closestDist then
-                closestDist = dist
-                closest = player
-            end
-        end
-        return closest
-    end
-
-    function __i1j2k3:__desync_start(__c3d4e5)
-        if self.__conn2 then self.__conn2:Disconnect() end
-        self.__desync = true
-        self.__curr = __c3d4e5
-        self.__conn2 = __y5z6a7.Heartbeat:Connect(function()
-            if not self.__desync then return end
-            local __f6g7h8 = __z2a3b4.__root
-            if not __f6g7h8 then return end
-            local __i9j0k1 = nil
-            pcall(function()
-                local fc = require(__q3r4s5.Controllers.FighterController)
-                local fighter = fc and fc:GetFighter(__c3d4e5)
-                if fighter and fighter.Entity and fighter.Entity.RootPart then
-                    __i9j0k1 = fighter.Entity.RootPart
-                end
-            end)
-            if not __i9j0k1 then
-                __i9j0k1 = __c3d4e5.Character and (__c3d4e5.Character:FindFirstChild("HitboxBody") or __c3d4e5.Character:FindFirstChild("HitboxBodySmall") or __c3d4e5.Character:FindFirstChild("HumanoidRootPart"))
-            end
-            if not __i9j0k1 then
-                self:__desync_stop()
-                return
-            end
-            local __l2m3n4 = __f6g7h8.CFrame
-            local isStopped = __i9j0k1.Velocity.Magnitude < 1
-            local yOffset = isStopped and -5 or 7.5
-            __f6g7h8.CFrame = __i9j0k1.CFrame * CFrame.new(0, yOffset, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-            __y5z6a7:BindToRenderStep("__restore", 101, function()
-                __f6g7h8.CFrame = __l2m3n4
-                __y5z6a7:UnbindFromRenderStep("__restore")
-            end)
-        end)
-    end
-
-    function __i1j2k3:__desync_start_melee(__c3d4e5)
-        if self.__conn2 then self.__conn2:Disconnect() end
-        self.__desync = true
-        self.__curr = __c3d4e5
-        self.__conn2 = __y5z6a7.Heartbeat:Connect(function()
-            if not self.__desync then return end
-            local __f6g7h8 = __z2a3b4.__root
-            if not __f6g7h8 then return end
-            local __i9j0k1 = nil
-            pcall(function()
-                local fc = require(__q3r4s5.Controllers.FighterController)
-                local fighter = fc and fc:GetFighter(__c3d4e5)
-                if fighter and fighter.Entity and fighter.Entity.RootPart then
-                    __i9j0k1 = fighter.Entity.RootPart
-                end
-            end)
-            if not __i9j0k1 then
-                __i9j0k1 = __c3d4e5.Character and (__c3d4e5.Character:FindFirstChild("HitboxBody") or __c3d4e5.Character:FindFirstChild("HitboxBodySmall") or __c3d4e5.Character:FindFirstChild("HumanoidRootPart"))
-            end
-            if not __i9j0k1 then
-                self:__desync_stop()
-                return
-            end
-            local __savedCF = __f6g7h8.CFrame
-            local __savedVel = __f6g7h8.Velocity
-            local __savedRotVel = __f6g7h8.RotVelocity
-            local pingSeconds = 0.08
-            pcall(function()
-                local stat = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]
-                pingSeconds = math.clamp(stat:GetValue() / 1000, 0.02, 0.3)
-            end)
-            local predictTime = pingSeconds + 0.04
-            local tVel = __i9j0k1.Velocity
-            local predictedOffset = tVel * predictTime
-            __f6g7h8.CFrame = __i9j0k1.CFrame + predictedOffset
-            local _, yaw, _ = __i9j0k1.CFrame:ToOrientation()
-            self.__spoofYaw = yaw
-            __f6g7h8.Velocity = Vector3.new(0, 0, 0)
-            __f6g7h8.RotVelocity = Vector3.new(0, 0, 0)
-            __y5z6a7:BindToRenderStep("__melee_restore", 101, function()
-                __f6g7h8.CFrame = __savedCF
-                __f6g7h8.Velocity = __savedVel
-                __f6g7h8.RotVelocity = __savedRotVel
-                __y5z6a7:UnbindFromRenderStep("__melee_restore")
-            end)
-        end)
-    end
-
-    function __i1j2k3:__desync_stop()
-        self.__desync = false
-        self.__spoofYaw = nil
-        self.__curr = nil
-        if self.__conn2 then
-            self.__conn2:Disconnect()
-            self.__conn2 = nil
-        end
-        pcall(function() __y5z6a7:UnbindFromRenderStep("__melee_restore") end)
-    end
-
-    __i1j2k3:__init()
-
-    local WBSection = Tabs.Rage:AddRightGroupbox("WallBang Beta (Nobannable)")
-
-    local WBToggle = WBSection:AddToggle("WB_Enable", {
-        Text    = "Enable",
-        Default = false,
-        Callback = function(v)
-            __i1j2k3.__active = v
-            if v then
-                __i1j2k3:__setup()
-                if Toggles and Toggles.FlyToggle and Toggles.FlyToggle.Value then
-                    Toggles.FlyToggle:SetValue(false)
-                end
-            else
-                __i1j2k3:__desync_stop()
-            end
-        end
-    })
-
-    local WBDep = WBSection:AddDependencyBox()
-
-    WBDep:AddToggle("WB_VoidSpam", {
-        Text    = "VoidSpam",
-        Default = false,
-        Callback = function(v)
-            __i1j2k3.__voidSpam = v
-            if v then
-                if not __i1j2k3.__voidSpamConn then
-                    __i1j2k3.__voidSpamConn = __y5z6a7.Heartbeat:Connect(function()
-                        if __i1j2k3.__desync or __i1j2k3.__active == false then return end
-                        local root = __z2a3b4.__root
-                        if not root then return end
-                        local cam = __e1f2g3.CurrentCamera
-                        if not cam then return end
-                        local randomDir = Vector3.new(math.random(-100, 100), math.random(-100, 100), math.random(-100, 100)).Unit
-                        local targetPos = cam.CFrame.Position + (randomDir * 7000000000000)
-                        local savedCF = root.CFrame
-                        root.CFrame = CFrame.new(targetPos)
-                        __y5z6a7:BindToRenderStep("__void_restore", 101, function()
-                            root.CFrame = savedCF
-                            __y5z6a7:UnbindFromRenderStep("__void_restore")
-                        end)
-                    end)
-                end
-            else
-                if __i1j2k3.__voidSpamConn then
-                    __i1j2k3.__voidSpamConn:Disconnect()
-                    __i1j2k3.__voidSpamConn = nil
-                end
-            end
-        end
-    })
-
-    WBDep:AddToggle("WB_Auto", {
-        Text    = "Auto",
-        Default = false,
-        Callback = function(v)
-            __i1j2k3.__autoshot = v
-            if v then
-                __i1j2k3.__autoshotConn = task.spawn(function() __i1j2k3:__doAutoshot() end)
-            else
-                if __i1j2k3.__autoshotConn then
-                    task.cancel(__i1j2k3.__autoshotConn)
-                    __i1j2k3.__autoshotConn = nil
-                end
-                __i1j2k3:__setStatus("")
-            end
-        end
-    })
-
-    WBDep:AddToggle("WB_TeamCheck", {
-        Text    = "Team Check",
-        Default = true,
-        Callback = function(v)
-            __i1j2k3.__teamCheck = v
-        end
-    })
-
-    WBDep:AddSlider("WB_MaxDist", {
-        Text     = "MaxDistance",
-        Default  = 500,
-        Min      = 100,
-        Max      = 9999,
-        Rounding = 0,
-        Callback = function(v)
-            __i1j2k3.__maxDist = v
-        end
-    })
-
-    WBDep:SetupDependencies({ { WBToggle, true } })
-end
 
 
 do
@@ -2612,7 +2094,7 @@ DeviceSpoofDropdownObj = DeviceSpoofDep:AddDropdown("DeviceSpoofDropdown", {
     Multi = false,
     Text = "Select Device",
     Callback = function(value)
-        -- 変更しただけでは走らないようにする（オンにした時のみ）
+        -- 螟画峩縺励◆縺縺代〒縺ｯ襍ｰ繧峨↑縺・ｈ縺・↓縺吶ｋ・医が繝ｳ縺ｫ縺励◆譎ゅ・縺ｿ・・
     end
 })
 DeviceSpoofDep:SetupDependencies({ { DeviceSpooferToggle, true } })
@@ -2634,7 +2116,7 @@ local StaffRoles = {
 }
 
 local function HandleStaffDetection(player, role)
-    local msg = "⚠️ STAFF DETECTED ⚠️\nName: " .. player.Name .. "\nRole: " .. role
+    local msg = "笞・・STAFF DETECTED 笞・十nName: " .. player.Name .. "\nRole: " .. role
     if StaffDetectorAction == "Kick" then
         lp:Kick(msg)
     else
@@ -2863,11 +2345,11 @@ local function playAnimation(char)
         local animator = humanoid and humanoid:WaitForChild("Animator", 5)
         
         if animator then
-            -- 確実にワークスペース等に配置されるまで少し待機
+            -- 遒ｺ螳溘↓繝ｯ繝ｼ繧ｯ繧ｹ繝壹・繧ｹ遲峨↓驟咲ｽｮ縺輔ｌ繧九∪縺ｧ蟆代＠蠕・ｩ・
             while char.Parent == nil do
                 task.wait(0.1)
             end
-            task.wait(0.5) -- リスポーン直後のラグ対策
+            task.wait(0.5) -- 繝ｪ繧ｹ繝昴・繝ｳ逶ｴ蠕後・繝ｩ繧ｰ蟇ｾ遲・
             
             if not animPlayerEnabled or not currentAnim then return end
             
@@ -3086,15 +2568,6 @@ MovementSection:AddToggle("FlyToggle", {
     Text = "Fly",
     Default = false,
     Callback = function(value)
-        if value and getgenv().__wb_state and getgenv().__wb_state.active then
-            if Toggles and Toggles.FlyToggle then
-                Toggles.FlyToggle:SetValue(false)
-            end
-            if MyLinoriaLibrary then
-                MyLinoriaLibrary:Notify("Cannot use Fly while Wallbang is active!")
-            end
-            return
-        end
         if value then startFly() else stopFly() end
     end
 })
@@ -3166,11 +2639,11 @@ local function startHideInFloor()
         if not (c and c:FindFirstChild("HumanoidRootPart") and hideTargetPos) then return end
         local h = c.HumanoidRootPart
         local savedCF = h.CFrame
-        -- 実際の位置を床の下に固定（XとZは現在の位置を使用し、Yのみ固定）
+        -- 螳滄圀縺ｮ菴咲ｽｮ繧貞ｺ翫・荳九↓蝗ｺ螳夲ｼ・縺ｨZ縺ｯ迴ｾ蝨ｨ縺ｮ菴咲ｽｮ繧剃ｽｿ逕ｨ縺励〆縺ｮ縺ｿ蝗ｺ螳夲ｼ・
         local targetPos = Vector3.new(savedCF.X, hideTargetPos.Y, savedCF.Z)
         h.CFrame = CFrame.new(targetPos) * CFrame.Angles(savedCF:ToEulerAnglesXYZ())
         if hideDesyncEnabled then
-            -- WBと同じパターン: RenderStepで元のCFrameに戻す（サーバー側にズレた位置を送信）
+            -- WB縺ｨ蜷後§繝代ち繝ｼ繝ｳ: RenderStep縺ｧ蜈・・CFrame縺ｫ謌ｻ縺呻ｼ医し繝ｼ繝舌・蛛ｴ縺ｫ繧ｺ繝ｬ縺滉ｽ咲ｽｮ繧帝∽ｿ｡・・
             safeBindToRenderStep(RunService, "__hif_restore", 101, function()
                 h.CFrame = savedCF
                 safeUnbindFromRenderStep(RunService, "__hif_restore")
@@ -3264,7 +2737,7 @@ end
 local dropObjs = {PriDropObj, SecDropObj, MelDropObj, UtiDropObj}
 
 local function updateWeaponLabels()
-    -- SetValues前に現在の値を保存（SaveManagerがすでにロードした値を守る）
+    -- SetValues蜑阪↓迴ｾ蝨ｨ縺ｮ蛟､繧剃ｿ晏ｭ假ｼ・aveManager縺後☆縺ｧ縺ｫ繝ｭ繝ｼ繝峨＠縺溷､繧貞ｮ医ｋ・・
     local prevVals = {
         PriDropObj.Value,
         SecDropObj.Value,
@@ -3334,7 +2807,7 @@ local lastAutoLoadoutTime = 0
 local function triggerAutoLoadout()
     if not autoLoadoutEnabled then return end
     
-    -- 連続送信による検知を防ぐデバウンス（1秒に1回まで）
+    -- 騾｣邯夐∽ｿ｡縺ｫ繧医ｋ讀懃衍繧帝亟縺舌ョ繝舌え繝ｳ繧ｹ・・遘偵↓1蝗槭∪縺ｧ・・
     if os.clock() - lastAutoLoadoutTime < 1 then return end
     lastAutoLoadoutTime = os.clock()
 
@@ -3422,7 +2895,7 @@ task.spawn(function()
     task.wait(1)
     refreshWeapons()
     updateWeaponLabels()
-    -- 武器リストが揃った後にSaveManagerのAutoloadを再適用して値を復元
+    -- 豁ｦ蝎ｨ繝ｪ繧ｹ繝医′謠・▲縺溷ｾ後↓SaveManager縺ｮAutoload繧貞・驕ｩ逕ｨ縺励※蛟､繧貞ｾｩ蜈・
     pcall(function() SaveManager:LoadAutoloadConfig() end)
     enforceAutoLoadout()
 end)
@@ -3447,7 +2920,7 @@ pcall(function()
     end
 end)
 
--- 起動時にファイルが存在していれば queue_on_teleport を再登録
+-- 襍ｷ蜍墓凾縺ｫ繝輔ぃ繧､繝ｫ縺悟ｭ伜惠縺励※縺・ｌ縺ｰ queue_on_teleport 繧貞・逋ｻ骭ｲ
 if _autoExecOn then
     pcall(function()
         if queue_on_teleport then queue_on_teleport(pastebinCode)
