@@ -117,6 +117,21 @@ end
 local function checkTeam(plr, isESP)
     local tc = isESP and getgenv().ESPSettings_TeamCheck or teamCheck
     if not tc then return true end
+    if plr == lp then return false end
+    
+    if SpectateController then
+        local duel = SpectateController.CurrentDuelSubject
+        local localDueler = duel and duel:GetDueler(lp)
+        local localTeam = localDueler and localDueler:Get("TeamID") or nil
+        if localTeam and duel and duel.Duelers then
+            for _, dueler in next, duel.Duelers do
+                if dueler.Player == plr then
+                    local team = dueler:Get("TeamID")
+                    return team ~= localTeam
+                end
+            end
+        end
+    end
     
     local myID = getMyTeamID()
     local theirID = getPlayerTeamID(plr)
@@ -273,6 +288,7 @@ if not getgenv().ParticleHooked then
 end
 
 local FighterController = nil
+local SpectateController = nil
 task.spawn(function()
     pcall(function()
         local playerScripts = lp:WaitForChild("PlayerScripts", 5)
@@ -281,6 +297,9 @@ task.spawn(function()
             if controllers then
                 local fc = controllers:WaitForChild("FighterController", 5)
                 if fc then FighterController = require(fc) end
+                
+                local sc = controllers:WaitForChild("SpectateController", 5)
+                if sc then SpectateController = require(sc) end
             end
         end
     end)
@@ -864,8 +883,25 @@ end
 
 local function AL_isEnemy(fighter)
     if not AimLockSettings.TeamCheck then return true end
+    local plr = fighter.Player
+    if plr == lp then return false end
+    
+    if SpectateController then
+        local duel = SpectateController.CurrentDuelSubject
+        local localDueler = duel and duel:GetDueler(lp)
+        local localTeam = localDueler and localDueler:Get("TeamID") or nil
+        if localTeam and duel and duel.Duelers then
+            for _, dueler in next, duel.Duelers do
+                if dueler.Player == plr then
+                    local team = dueler:Get("TeamID")
+                    return team ~= localTeam
+                end
+            end
+        end
+    end
+    
 	local localTeam = lp:GetAttribute("TeamID") or (FighterController and FighterController.LocalFighter and FighterController.LocalFighter:Get("TeamID"))
-	local targetTeam = fighter.Player:GetAttribute("TeamID") or (fighter.Get and fighter:Get("TeamID"))
+	local targetTeam = plr:GetAttribute("TeamID") or (fighter.Get and fighter:Get("TeamID"))
 	if localTeam == nil or targetTeam == nil then return true end
 	return localTeam ~= targetTeam
 end
@@ -2476,7 +2512,7 @@ local noclipEnabled = false
 local noclipConnection = nil
 
 local function cleanupFly()
-    if flyThread then task.cancel(flyThread) flyThread = nil end
+    if flyThread then pcall(task.cancel, flyThread) flyThread = nil end
     if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
     if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
 end
