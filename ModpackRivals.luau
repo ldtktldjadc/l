@@ -1567,6 +1567,8 @@ task.spawn(function()
     end
 
     runS.Heartbeat:Connect(function()
+        if not getgenv().RageBotConfig.Enabled then return end
+        
         updateDeflection()
         local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
         if not myRoot then return end
