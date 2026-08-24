@@ -1447,19 +1447,17 @@ EnvSection:AddSlider("Env_Snow_Speed", {
 
 local RageBotSection = Tabs.Rage:AddRightGroupbox("RageBot")
 
+getgenv().RageBotConfig = {
+    Enabled = false,
+    WeaponSlot = "Primary",
+    FireRate = 0.0005
+}
+
 RageBotSection:AddToggle("RageBot_Enabled", {
     Text = "Enable RageBot",
     Default = false,
     Callback = function(value)
-        getgenv().Config = getgenv().Config or {}
-        getgenv().Config.Enabled = value
-        
-        if value and not getgenv().RageBotExecuted then
-            getgenv().RageBotExecuted = true
-            task.spawn(function()
-                loadfile("c:\\Users\\keish\\Roblox\\DumpedScripts\\DumpedScripts\\ragebot.lua")()
-            end)
-        end
+        getgenv().RageBotConfig.Enabled = value
     end
 })
 
@@ -1469,11 +1467,202 @@ RageBotSection:AddDropdown("RageBot_Slot", {
     Multi = false,
     Text = "Weapon Slot",
     Callback = function(value)
-        getgenv().Config = getgenv().Config or {}
-        getgenv().Config.WeaponSlot = value
+        getgenv().RageBotConfig.WeaponSlot = value
     end
 })
 
+task.spawn(function()
+    local repS = game:GetService("ReplicatedStorage")
+    local plrs = game:GetService("Players")
+    local runS = game:GetService("RunService")
+    local ws = game:GetService("Workspace")
+    local lplr = plrs.LocalPlayer
+    local util = nil
+    local enum = nil
+    pcall(function() util = require(repS.Modules.Utility) end)
+    pcall(function() enum = require(repS.Modules.EnumLibrary) end)
+    
+    local slots = { Primary = 1, Secondary = 2, Melee = 3 }
+    local function getSlotNumber() return slots[getgenv().RageBotConfig.WeaponSlot] or 3 end
+    
+    task.spawn(function()
+        while true do
+            task.wait(1)
+            if not getgenv().RageBotConfig.Enabled then continue end
+            local localFighter = FighterController and FighterController.LocalFighter
+            if localFighter then
+                pcall(function() localFighter:EquipItem(getSlotNumber()) end)
+            end
+        end
+    end)
+
+    local lastFire = 0
+    local deflecting = {}
+    plrs.PlayerRemoving:Connect(function(player) deflecting[player] = nil end)
+
+    local function updateDeflection()
+        if not FighterController or not FighterController.Objects then return end
+        for _, fighterObj in FighterController.Objects do
+            local player = fighterObj.Player
+            if not player then continue end
+            if not fighterObj.Entity or not fighterObj.Entity:IsAlive() or fighterObj:Get("IsSpectating") then
+                deflecting[player] = false
+                continue
+            end
+            local equipped = fighterObj.EquippedItem
+            local isKatana = equipped and equipped.ViewModel and equipped.ViewModel.Name == "Katana"
+            local isDeflecting = false
+            if isKatana then
+                isDeflecting = (equipped._attack_cooldown and equipped._attack_cooldown > tick()) or false
+            end
+            deflecting[player] = isDeflecting
+        end
+    end
+
+    local function isEnemy(player)
+        if player == lplr then return false end
+        local duel = SpectateController and SpectateController.CurrentDuelSubject
+        local localDueler = duel and duel:GetDueler(lplr)
+        local localTeam = localDueler and localDueler:Get("TeamID") or nil
+        if localTeam and duel and duel.Duelers then
+            for _, dueler in duel.Duelers do
+                if dueler.Player == player then
+                    local team = dueler:Get("TeamID")
+                    return team ~= localTeam
+                end
+            end
+        end
+        local pTeam = player:GetAttribute("TeamID")
+        local lTeam = lplr:GetAttribute("TeamID")
+        if pTeam and lTeam then return pTeam ~= lTeam end
+        return true
+    end
+
+    local function getClosestTarget()
+        local char = lplr.Character
+        if not char then return nil, nil, nil end
+        local myRoot = char:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return nil, nil, nil end
+        local closestPlayer = nil
+        local closestRoot = nil
+        local closestHead = nil
+        local closestDist = 500
+        for _, player in plrs:GetPlayers() do
+            if not isEnemy(player) then continue end
+            local pChar = player.Character
+            if not pChar then continue end
+            local pRoot = pChar:FindFirstChild("HumanoidRootPart")
+            local pHead = pChar:FindFirstChild("HitboxHead") or pChar:FindFirstChild("Head")
+            local pHum = pChar:FindFirstChildWhichIsA("Humanoid")
+            if not (pRoot and pHead and pHum and pHum.Health > 0) then continue end
+            local dist = (myRoot.Position - pRoot.Position).Magnitude
+            if dist < closestDist then
+                closestDist = dist
+                closestPlayer = player
+                closestRoot = pRoot
+                closestHead = pHead
+            end
+        end
+        return closestPlayer, closestRoot, closestHead
+    end
+
+    runS.Heartbeat:Connect(function()
+        updateDeflection()
+        local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return end
+
+        local item = nil
+        local isReloading = false
+        if FighterController and FighterController.LocalFighter then
+            item = FighterController.LocalFighter.EquippedItem
+            if item then
+                pcall(function()
+                    local ammo = item:Get("Ammo")
+                    local reloadCD = item._reload_cooldown or 0
+                    isReloading = (tick() < reloadCD) or (type(ammo) == "number" and ammo <= 0)
+                end)
+            end
+        end
+
+        local targetPlayer, targetRoot, targetHead = getClosestTarget()
+
+        local myFF = false
+        local targetFF = false
+        pcall(function()
+            local lf = FighterController and FighterController.LocalFighter
+            if lf and lf.Entity then myFF = lf.Entity:Get("IsInvincible") == true end
+        end)
+        if targetPlayer then
+            pcall(function()
+                local fighter = FighterController:GetFighter(targetPlayer)
+                if fighter and fighter.Entity then targetFF = fighter.Entity:Get("IsInvincible") == true end
+            end)
+        end
+
+        local canAttack = getgenv().RageBotConfig.Enabled
+            and (not isReloading)
+            and (not myFF)
+            and (not targetFF)
+            and targetPlayer ~= nil
+            and targetRoot ~= nil
+            and targetHead ~= nil
+            and (not deflecting[targetPlayer])
+            and item ~= nil
+
+        local desyncCF
+        if canAttack then
+            local targetLowerTorso = targetPlayer.Character and targetPlayer.Character:FindFirstChild("LowerTorso")
+            local baseCFrame = targetLowerTorso and targetLowerTorso.CFrame or targetRoot.CFrame
+            local desyncPos = (baseCFrame * CFrame.new(0, 5, 0)).Position
+            desyncCF = CFrame.lookAt(desyncPos, targetHead.Position)
+        else
+            local randomDir = Vector3.new(math.random(-100, 100), math.random(-100, 100), math.random(-100, 100)).Unit
+            local cam = ws.CurrentCamera
+            local camPos = cam and cam.CFrame.Position or Vector3.new(0, 0, 0)
+            desyncCF = CFrame.new(camPos + randomDir * 7000000000000)
+        end
+
+        local oldCF     = myRoot.CFrame
+        local oldVel    = myRoot.Velocity
+        local oldRotVel = myRoot.RotVelocity
+        myRoot.CFrame = desyncCF
+        runS:BindToRenderStep("__restore", 101, function()
+            if myRoot then
+                myRoot.CFrame    = oldCF
+                myRoot.Velocity  = oldVel
+                myRoot.RotVelocity = oldRotVel
+            end
+            runS:UnbindFromRenderStep("__restore")
+        end)
+
+        if not canAttack then return end
+        if tick() - lastFire < getgenv().RageBotConfig.FireRate then return end
+        lastFire = tick()
+
+        if not util or not enum then return end
+
+        local originPos = desyncCF.Position
+        local targetPos = targetHead.Position
+        local aimCF    = CFrame.lookAt(originPos, targetPos)
+        local targetCF = targetHead.CFrame
+        local randomOffset = Vector3.new((math.random() - 0.5) * 0.1, (math.random() - 0.5) * 0.1, (math.random() - 0.5) * 0.1)
+        local aimedPos = targetPos + randomOffset
+        local objSpaceHeadOffset = targetHead.CFrame:ToObjectSpace(CFrame.new(aimedPos))
+        local cameradata = {}
+        cameradata[utf8.char(1)] = {
+            [utf8.char(0)] = util:EncodeCFrame(aimCF),
+            [utf8.char(1)] = util:EncodeCFrame(targetCF),
+            [utf8.char(2)] = targetHead,
+            [utf8.char(3)] = util:EncodeCFrame(objSpaceHeadOffset)
+        }
+        repS.Remotes.Replication.Fighter.UseItem:FireServer(
+            item:Get("ObjectID"),
+            enum:ToEnum("StartShooting"),
+            cameradata,
+            nil
+        )
+    end)
+end)
 local GunModsSection = Tabs.Rage:AddLeftGroupbox("Gun Mods")
 
 getgenv().RageSettings = {
