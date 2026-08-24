@@ -1438,12 +1438,8 @@ EnvSection:AddSlider("Env_Snow_Rate", {
 })
 
 EnvSection:AddSlider("Env_Snow_Speed", {
-    Text = "Snow Speed", Default = 30, Min = 1, Max = 100, Rounding = 0,
-    Callback = function(v) envSettings.SnowSpeed = v; updateSnow() end
+    Text = "Snow Speed", Default = 30, Min = 1, Max = 100, Rounding = 0
 })
-
-
--- ===== RAGE TAB =====
 
 local RageBotSection = Tabs.Rage:AddRightGroupbox("RageBot")
 
@@ -1472,8 +1468,8 @@ RageBotSection:AddDropdown("RageBot_Slot", {
 })
 
 task.spawn(function()
-    local repS = game:GetService("ReplicatedStorage")
     local plrs = game:GetService("Players")
+    local repS = game:GetService("ReplicatedStorage")
     local runS = game:GetService("RunService")
     local ws = game:GetService("Workspace")
     local lplr = plrs.LocalPlayer
