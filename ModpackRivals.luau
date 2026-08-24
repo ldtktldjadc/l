@@ -1445,6 +1445,35 @@ EnvSection:AddSlider("Env_Snow_Speed", {
 
 -- ===== RAGE TAB =====
 
+local RageBotSection = Tabs.Rage:AddRightGroupbox("RageBot")
+
+RageBotSection:AddToggle("RageBot_Enabled", {
+    Text = "Enable RageBot",
+    Default = false,
+    Callback = function(value)
+        getgenv().Config = getgenv().Config or {}
+        getgenv().Config.Enabled = value
+        
+        if value and not getgenv().RageBotExecuted then
+            getgenv().RageBotExecuted = true
+            task.spawn(function()
+                loadfile("c:\\Users\\keish\\Roblox\\DumpedScripts\\DumpedScripts\\ragebot.lua")()
+            end)
+        end
+    end
+})
+
+RageBotSection:AddDropdown("RageBot_Slot", {
+    Values = {"Primary", "Secondary", "Melee"},
+    Default = 1,
+    Multi = false,
+    Text = "Weapon Slot",
+    Callback = function(value)
+        getgenv().Config = getgenv().Config or {}
+        getgenv().Config.WeaponSlot = value
+    end
+})
+
 local GunModsSection = Tabs.Rage:AddLeftGroupbox("Gun Mods")
 
 getgenv().RageSettings = {
