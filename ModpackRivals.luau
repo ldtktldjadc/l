@@ -81,7 +81,13 @@ pcall(function()
     local oldEmit; oldEmit = hookfunction(_tempPE.Emit, function(self, count)
         if self.Name == "bigstar" then
             local p = getPlayerFromObj(self)
-            if p then DeflectingPlayers[p] = tick() + 1 end
+            if p then
+                if not getgenv().DeflectingStartTimes then getgenv().DeflectingStartTimes = {} end
+                if not DeflectingPlayers[p] or DeflectingPlayers[p] <= tick() then
+                    getgenv().DeflectingStartTimes[p] = tick()
+                end
+                DeflectingPlayers[p] = tick() + 1
+            end
         end
         return oldEmit(self, count)
     end)
@@ -304,7 +310,13 @@ if not getgenv().ParticleHooked then
     local oldEmit; oldEmit = hookfunction(_tempPE.Emit, function(self, count)
         if self.Name == "bigstar" then
             local p = getPlayerFromObj(self)
-            if p then DeflectingPlayers[p] = tick() + 1 end
+            if p then
+                if not getgenv().DeflectingStartTimes then getgenv().DeflectingStartTimes = {} end
+                if not DeflectingPlayers[p] or DeflectingPlayers[p] <= tick() then
+                    getgenv().DeflectingStartTimes[p] = tick()
+                end
+                DeflectingPlayers[p] = tick() + 1
+            end
         end
         return oldEmit(self, count)
     end)
@@ -1143,6 +1155,7 @@ task.spawn(function()
 
                 if AimLockSettings.AlwaysLockSmooth and targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
                     local char = targetFighter.Entity.Model
+                    -- lerp後の現在の向きからエイム先を計算
                     local rot = self.Rotation
                     local postPitch, postYaw = rot.X, rot.Y
                     local postDir = Vector3.new(
@@ -1155,10 +1168,12 @@ task.spawn(function()
                     local reclamped = AL_clampToHitboxes(char, aimPoint)
                     if reclamped then
                         local rdir = (reclamped - camOrigin).Unit
-                        self.Rotation = Vector2.new(
-                            math.asin(math.clamp(rdir.Y, -1, 1)),
-                            math.atan2(-rdir.X, -rdir.Z)
-                        )
+                        local finalYaw = math.atan2(-rdir.X, -rdir.Z)
+                        local finalPitch = math.asin(math.clamp(rdir.Y, -1, 1))
+                        local diffYaw2 = (finalYaw - current.Y + math.pi) % (2 * math.pi) - math.pi
+                        local finalRotAdj = Vector2.new(finalPitch, current.Y + diffYaw2)
+                        -- 瞬間移動(Snap)ではなく、元のcurrentからSmoothness(alpha)を適用してLerpする
+                        self.Rotation = current:Lerp(finalRotAdj, alpha)
                     end
                 end
             end
@@ -1939,7 +1954,8 @@ getgenv().RageSettings = {
     NoRecoil = false,
     NoSpread = false,
     RapidFire = false,
-    AntiKatana = false
+    AntiKatana = false,
+    AntiKatanaDelay = 0.0,
 }
 
 task.spawn(function()
@@ -1975,8 +1991,10 @@ task.spawn(function()
                         if getgenv().RageSettings.Enabled and getgenv().RageSettings.AntiKatana then
                             local now = tick()
                             local cam = workspace.CurrentCamera
+                            local delay = getgenv().RageSettings.AntiKatanaDelay or 0
                             for p, endTime in pairs(DeflectingPlayers) do
-                                if now < endTime and p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                local startTime = (getgenv().DeflectingStartTimes and getgenv().DeflectingStartTimes[p]) or (endTime - 1)
+                                if now < endTime and now >= (startTime + delay) and p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                                     local _, onScreen = cam:WorldToScreenPoint(p.Character.HumanoidRootPart.Position)
                                     if onScreen then return false end
                                 end
@@ -1994,8 +2012,10 @@ task.spawn(function()
                         if getgenv().RageSettings.Enabled and getgenv().RageSettings.AntiKatana then
                             local now = tick()
                             local cam = workspace.CurrentCamera
+                            local delay = getgenv().RageSettings.AntiKatanaDelay or 0
                             for p, endTime in pairs(DeflectingPlayers) do
-                                if now < endTime and p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                local startTime = (getgenv().DeflectingStartTimes and getgenv().DeflectingStartTimes[p]) or (endTime - 1)
+                                if now < endTime and now >= (startTime + delay) and p ~= lp and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                                     local _, onScreen = cam:WorldToViewportPoint(p.Character.HumanoidRootPart.Position)
                                     if onScreen then return end
                                 end
@@ -2108,6 +2128,17 @@ GunModsDep:AddToggle("GunMods_AntiKatana", {
     Default = false,
     Callback = function(value)
         getgenv().RageSettings.AntiKatana = value
+    end
+})
+
+GunModsDep:AddSlider("GunMods_AntiKatanaDelay", {
+    Text = "Anti Katana Delay (sec)",
+    Default = 0.0,
+    Min = 0.0,
+    Max = 1.0,
+    Rounding = 2,
+    Callback = function(value)
+        getgenv().RageSettings.AntiKatanaDelay = value
     end
 })
 
