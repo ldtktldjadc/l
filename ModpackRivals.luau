@@ -169,6 +169,8 @@ local function getClosestPlayerInFOV()
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
     raycastParams.FilterDescendantsInstances = {lp.Character}
 
+    local validTargets = {}
+
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= lp and isPlayerAliveSA(plr) and checkTeam(plr, false) and plr.Character then
             local partName = targetPart
@@ -193,16 +195,38 @@ local function getClosestPlayerInFOV()
                     local visible = not ray or ray.Instance:IsDescendantOf(plr.Character)
     
                     if visible then
-                        local dist = (aim360 and myHRP) and (part.Position - myHRP.Position).Magnitude or (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-                        if dist <= maxDist and dist < bestDist then
-                            bestDist = dist
-                            bestTarget = plr
-                            bestPartName = partName
+                        local mouseDist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+                        local worldDist = (aim360 and myHRP) and (part.Position - myHRP.Position).Magnitude or mouseDist
+                        if mouseDist <= maxDist then
+                            local health = 100
+                            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+                            if hum then health = hum.Health end
+                            table.insert(validTargets, {
+                                Player = plr,
+                                PartName = partName,
+                                MouseDist = mouseDist,
+                                WorldDist = (myHRP) and (part.Position - myHRP.Position).Magnitude or math.huge,
+                                Health = health
+                            })
                         end
                     end
                 end
             end
         end
+    end
+
+    if #validTargets > 0 then
+        table.sort(validTargets, function(a, b)
+            if silentTargetSort == "Distance (Closest)" then return a.WorldDist < b.WorldDist
+            elseif silentTargetSort == "Distance (Farthest)" then return a.WorldDist > b.WorldDist
+            elseif silentTargetSort == "Health (Lowest)" then return a.Health < b.Health
+            elseif silentTargetSort == "Health (Highest)" then return a.Health > b.Health
+            elseif silentTargetSort == "Mouse (Closest)" then return a.MouseDist < b.MouseDist
+            elseif silentTargetSort == "Mouse (Farthest)" then return a.MouseDist > b.MouseDist
+            else return a.MouseDist < b.MouseDist end
+        end)
+        bestTarget = validTargets[1].Player
+        bestPartName = validTargets[1].PartName
     end
 
     if bestTarget then
@@ -831,6 +855,15 @@ AimDep:AddDropdown("TargetPart", {
     Callback = function(value) targetPart = value end,
 })
 
+local silentTargetSort = "Distance (Closest)"
+AimDep:AddDropdown("SilentAimTargetSort", {
+    Values = {"Distance (Closest)", "Distance (Farthest)", "Health (Lowest)", "Health (Highest)", "Mouse (Closest)", "Mouse (Farthest)"},
+    Default = 1,
+    Multi = false,
+    Text = "Target Sort",
+    Callback = function(value) silentTargetSort = value end,
+})
+
 AimDep:AddSlider("SAHitChance", {
     Text    = "Hit Chance (%)", Default = 100, Min = 1, Max = 100, Rounding = 0,
     Callback = function(value) hitChance = value end,
@@ -865,6 +898,7 @@ local AimLockSettings = {
     WallCheck = false,
     AliveCheck = true,
     TargetPart = "HitboxHead",
+    TargetSort = "Mouse (Closest)",
 }
 
 local AL_LockedTarget = nil
@@ -971,7 +1005,7 @@ local function AL_getTarget()
 	end
 
 	if not AL_LockedTarget then
-		local nearest, minDist, nearestFighter = nil, AimLockSettings.FOV, nil
+		local validTargets = {}
 		if not FighterController or type(FighterController.Objects) ~= "table" then return nil, nil end
 		for _, fighter in pairs(FighterController.Objects or {}) do
 			local isAlive = (AL_getHealth(fighter.Entity) > 0)
@@ -980,14 +1014,21 @@ local function AL_getTarget()
 				local char = fighter.Entity.Model
 				local hrp = char:FindFirstChild("HumanoidRootPart")
 				if hrp and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
-					if (hrp.Position - lp.Character.HumanoidRootPart.Position).Magnitude < 500 then
+					local worldDist = (hrp.Position - lp.Character.HumanoidRootPart.Position).Magnitude
+					if worldDist < 500 then
 						local part = char:FindFirstChild(AimLockSettings.TargetPart) or char:FindFirstChild("Head")
 						if part then
 							local sp, onScreen = camera:WorldToViewportPoint(part.Position)
 							if onScreen then
-								local dist = (Vector2.new(sp.X, sp.Y) - screenCenter).Magnitude
-								if dist < minDist and not isBehindWall(part, char) then
-									minDist = dist; nearest = part; nearestFighter = fighter
+								local mouseDist = (Vector2.new(sp.X, sp.Y) - screenCenter).Magnitude
+								if mouseDist < AimLockSettings.FOV and not isBehindWall(part, char) then
+									table.insert(validTargets, {
+										Part = part,
+										Fighter = fighter,
+										MouseDist = mouseDist,
+										WorldDist = worldDist,
+										Health = AL_getHealth(fighter.Entity)
+									})
 								end
 							end
 						end
@@ -995,8 +1036,24 @@ local function AL_getTarget()
 				end
 			end
 		end
-		AL_LockedTarget = nearest
-		AL_BlatantLockedFighter = nearestFighter
+
+		if #validTargets > 0 then
+			table.sort(validTargets, function(a, b)
+				local sortMethod = AimLockSettings.TargetSort or "Mouse (Closest)"
+				if sortMethod == "Distance (Closest)" then return a.WorldDist < b.WorldDist
+				elseif sortMethod == "Distance (Farthest)" then return a.WorldDist > b.WorldDist
+				elseif sortMethod == "Health (Lowest)" then return a.Health < b.Health
+				elseif sortMethod == "Health (Highest)" then return a.Health > b.Health
+				elseif sortMethod == "Mouse (Closest)" then return a.MouseDist < b.MouseDist
+				elseif sortMethod == "Mouse (Farthest)" then return a.MouseDist > b.MouseDist
+				else return a.MouseDist < b.MouseDist end
+			end)
+			AL_LockedTarget = validTargets[1].Part
+			AL_BlatantLockedFighter = validTargets[1].Fighter
+		else
+			AL_LockedTarget = nil
+			AL_BlatantLockedFighter = nil
+		end
 	end
 	return AL_LockedTarget, AL_BlatantLockedFighter
 end
@@ -1094,7 +1151,137 @@ AimLockDep:AddDropdown("AimLockTargetPart", {
     Text = "Target Part",
     Callback = function(value) AimLockSettings.TargetPart = value end
 })
+AimLockDep:AddDropdown("AimLockTargetSort", {
+    Values = {"Distance (Closest)", "Distance (Farthest)", "Health (Lowest)", "Health (Highest)", "Mouse (Closest)", "Mouse (Farthest)"},
+    Default = 5,
+    Multi = false,
+    Text = "Target Sort",
+    Callback = function(value) AimLockSettings.TargetSort = value end
+})
 AimLockDep:SetupDependencies({ { AimLockToggle, true } })
+
+-- ===== TRIGGERBOT =====
+local TriggerBotSection = Tabs.Combat:AddLeftGroupbox("TriggerBot")
+
+getgenv().TriggerBotSettings = {
+    Enabled = false,
+    Delay = 100,
+    MaxDistance = 50,
+    TeamCheck = false,
+}
+
+local TriggerBotToggle = TriggerBotSection:AddToggle("TriggerBotEnabled", {
+    Text = "Enabled",
+    Default = false,
+    Callback = function(value) getgenv().TriggerBotSettings.Enabled = value end
+})
+
+local TriggerBotDep = TriggerBotSection:AddDependencyBox()
+
+TriggerBotDep:AddToggle("TriggerBotTeamCheck", {
+    Text = "TeamCheck",
+    Default = false,
+    Callback = function(value) getgenv().TriggerBotSettings.TeamCheck = value end
+})
+
+TriggerBotDep:AddSlider("TriggerBotDelay", {
+    Text = "Delay (ms)", Default = 100, Min = 0, Max = 1000, Rounding = 0,
+    Callback = function(value) getgenv().TriggerBotSettings.Delay = value end
+})
+
+TriggerBotDep:AddSlider("TriggerBotMaxDistance", {
+    Text = "Max Distance", Default = 50, Min = 5, Max = 500, Rounding = 0,
+    Callback = function(value) getgenv().TriggerBotSettings.MaxDistance = value end
+})
+
+TriggerBotDep:SetupDependencies({ { TriggerBotToggle, true } })
+
+task.spawn(function()
+    local plrs = game:GetService("Players")
+    local runS = game:GetService("RunService")
+    local ws = game:GetService("Workspace")
+    local lplr = plrs.LocalPlayer
+    
+    local fC, mC
+    pcall(function() fC = require(lplr.PlayerScripts.Controllers.FighterController) end)
+    pcall(function() mC = require(lplr.PlayerScripts.Controllers.MechanicsController) end)
+    
+    local lastShot = 0
+    runS.Heartbeat:Connect(function()
+        if not getgenv().TriggerBotSettings.Enabled then return end
+        
+        local cam = ws.CurrentCamera
+        if not cam then return end
+        local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
+        local unitRay = cam:ViewportPointToRay(center.X, center.Y)
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Exclude
+        rayParams.FilterDescendantsInstances = {lplr.Character, cam}
+        rayParams.IgnoreWater = true
+        
+        local maxDist = getgenv().TriggerBotSettings.MaxDistance
+        local rayResult = ws:Raycast(unitRay.Origin, unitRay.Direction * maxDist, rayParams)
+        
+        if not rayResult or not rayResult.Instance then return end
+        
+        local hitPart = rayResult.Instance
+        local hitModel = hitPart:FindFirstAncestorOfClass("Model")
+        if not hitModel then return end
+        
+        local hitPlr = plrs:GetPlayerFromCharacter(hitModel)
+        if not hitPlr or hitPlr == lplr then return end
+        
+        local triggerTeamCheck = getgenv().TriggerBotSettings.TeamCheck
+        if triggerTeamCheck then
+            local myID = lplr:GetAttribute("TeamID")
+            local theirID = hitPlr:GetAttribute("TeamID")
+            if theirID == nil or (myID and myID == theirID) then
+                if SpectateController then
+                    local duel = SpectateController.CurrentDuelSubject
+                    local localDueler = duel and duel:GetDueler(lplr)
+                    local localTeam = localDueler and localDueler:Get("TeamID") or nil
+                    if localTeam and duel and duel.Duelers then
+                        local isEnemy = false
+                        for _, dueler in next, duel.Duelers do
+                            if dueler.Player == hitPlr then
+                                local team = dueler:Get("TeamID")
+                                if team ~= localTeam then isEnemy = true end
+                                break
+                            end
+                        end
+                        if not isEnemy then return end
+                    else
+                        return
+                    end
+                else
+                    return
+                end
+            end
+        end
+        
+        local hum = hitModel:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then return end
+        
+        local fighter = fC and fC:GetFighter(lplr)
+        if not fighter then return end
+        local item = fighter.EquippedItem
+        if not item then return end
+        
+        local ammo = nil
+        pcall(function() ammo = item:Get("Ammo") end)
+        local reloadCD = item._reload_cooldown or 0
+        if (tick() < reloadCD) or (type(ammo) == "number" and ammo <= 0) then return end
+        
+        local now = tick()
+        local delaySec = getgenv().TriggerBotSettings.Delay / 1000
+        if now - lastShot < delaySec then return end
+        
+        lastShot = now
+        if mC and type(mC.EquippedItemInput) == "function" then
+            mC:EquippedItemInput("StartShooting")
+        end
+    end)
+end)
 
 -- ===== VISUALS TAB =====
 local ESPSection = Tabs.Visuals:AddLeftGroupbox("ESP")
@@ -1446,7 +1633,8 @@ local RageBotSection = Tabs.Rage:AddRightGroupbox("RageBot")
 getgenv().RageBotConfig = {
     Enabled = false,
     WeaponSlot = "Primary",
-    FireRate = 0.0005
+    FireRate = 0.0005,
+    TargetSort = "Distance (Closest)"
 }
 
 RageBotSection:AddToggle("RageBot_Enabled", {
@@ -1467,11 +1655,21 @@ RageBotSection:AddDropdown("RageBot_Slot", {
     end
 })
 
+RageBotSection:AddDropdown("RageBot_TargetSort", {
+    Values = {"Distance (Closest)", "Distance (Farthest)", "Health (Lowest)", "Health (Highest)", "Mouse (Closest)", "Mouse (Farthest)"},
+    Default = 1,
+    Multi = false,
+    Text = "Target Sort",
+    Callback = function(value)
+        getgenv().RageBotConfig.TargetSort = value
+    end
+})
+
 task.spawn(function()
-    local plrs = game:GetService("Players")
-    local repS = game:GetService("ReplicatedStorage")
-    local runS = game:GetService("RunService")
-    local ws = game:GetService("Workspace")
+    local plrs = cloneref(game:GetService("Players"))
+    local repS = cloneref(game:GetService("ReplicatedStorage"))
+    local runS = cloneref(game:GetService("RunService"))
+    local ws   = cloneref(game:GetService("Workspace"))
     local lplr = plrs.LocalPlayer
     local util = nil
     local enum = nil
@@ -1539,10 +1737,11 @@ task.spawn(function()
         if not char then return nil, nil, nil end
         local myRoot = char:FindFirstChild("HumanoidRootPart")
         if not myRoot then return nil, nil, nil end
-        local closestPlayer = nil
-        local closestRoot = nil
-        local closestHead = nil
-        local closestDist = 500
+        
+        local cam = workspace.CurrentCamera
+        local center = cam and Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2) or Vector2.zero
+
+        local validTargets = {}
         for _, player in plrs:GetPlayers() do
             if not isEnemy(player) then continue end
             local pChar = player.Character
@@ -1551,15 +1750,43 @@ task.spawn(function()
             local pHead = pChar:FindFirstChild("HitboxHead") or pChar:FindFirstChild("Head")
             local pHum = pChar:FindFirstChildWhichIsA("Humanoid")
             if not (pRoot and pHead and pHum and pHum.Health > 0) then continue end
-            local dist = (myRoot.Position - pRoot.Position).Magnitude
-            if dist < closestDist then
-                closestDist = dist
-                closestPlayer = player
-                closestRoot = pRoot
-                closestHead = pHead
+            
+            local worldDist = (myRoot.Position - pRoot.Position).Magnitude
+            if worldDist < 500 then
+                local mouseDist = math.huge
+                if cam then
+                    local screenPos, onScreen = cam:WorldToViewportPoint(pRoot.Position)
+                    if onScreen then
+                        mouseDist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+                    end
+                end
+                
+                table.insert(validTargets, {
+                    Player = player,
+                    Root = pRoot,
+                    Head = pHead,
+                    WorldDist = worldDist,
+                    MouseDist = mouseDist,
+                    Health = pHum.Health
+                })
             end
         end
-        return closestPlayer, closestRoot, closestHead
+        
+        if #validTargets > 0 then
+            table.sort(validTargets, function(a, b)
+                local sortMethod = getgenv().RageBotConfig.TargetSort or "Distance (Closest)"
+                if sortMethod == "Distance (Closest)" then return a.WorldDist < b.WorldDist
+                elseif sortMethod == "Distance (Farthest)" then return a.WorldDist > b.WorldDist
+                elseif sortMethod == "Health (Lowest)" then return a.Health < b.Health
+                elseif sortMethod == "Health (Highest)" then return a.Health > b.Health
+                elseif sortMethod == "Mouse (Closest)" then return a.MouseDist < b.MouseDist
+                elseif sortMethod == "Mouse (Farthest)" then return a.MouseDist > b.MouseDist
+                else return a.WorldDist < b.WorldDist end
+            end)
+            return validTargets[1].Player, validTargets[1].Root, validTargets[1].Head
+        end
+
+        return nil, nil, nil
     end
 
     runS.Heartbeat:Connect(function()
@@ -1598,6 +1825,7 @@ task.spawn(function()
         end
 
         local canAttack = getgenv().RageBotConfig.Enabled
+            and myRoot ~= nil
             and (not isReloading)
             and (not myFF)
             and (not targetFF)
@@ -1623,14 +1851,15 @@ task.spawn(function()
         local oldCF     = myRoot.CFrame
         local oldVel    = myRoot.Velocity
         local oldRotVel = myRoot.RotVelocity
+        local _stepName = "__rb_" .. tostring(math.random(100000, 999999))
         myRoot.CFrame = desyncCF
-        runS:BindToRenderStep("__restore", 101, function()
+        runS:BindToRenderStep(_stepName, 101, function()
             if myRoot then
-                myRoot.CFrame    = oldCF
-                myRoot.Velocity  = oldVel
+                myRoot.CFrame      = oldCF
+                myRoot.Velocity    = oldVel
                 myRoot.RotVelocity = oldRotVel
             end
-            runS:UnbindFromRenderStep("__restore")
+            runS:UnbindFromRenderStep(_stepName)
         end)
 
         if not canAttack then return end
