@@ -907,6 +907,8 @@ local AimLockSettings = {
     TargetPart = "HitboxHead",
     TargetSort = "Mouse (Closest)",
     OnlyScope = false,
+    SmoothnessIn = 0.15,
+    SmoothnessOut = 0.65,
 }
 
 local AL_LockedTarget = nil
@@ -1122,7 +1124,21 @@ task.spawn(function()
                 local current = self.Rotation
                 local diffYaw = (targetRot.Y - current.Y + math.pi) % (2 * math.pi) - math.pi
                 local targetRotAdj = Vector2.new(targetRot.X, current.Y + diffYaw)
-                local alpha = math.clamp((1 - AimLockSettings.Smoothness) * 0.5, 0.01, 1)
+                -- ヒットボックス内にエイムが入っているか確認して吸い付き速度を切り替える
+                local inHitbox = false
+                if targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
+                    local char = targetFighter.Entity.Model
+                    local aimDir = Vector3.new(
+                        -math.sin(self.Rotation.Y) * math.cos(self.Rotation.X),
+                        math.sin(self.Rotation.X),
+                        -math.cos(self.Rotation.Y) * math.cos(self.Rotation.X)
+                    )
+                    local aimPoint = camOrigin + aimDir * (targetPos - camOrigin).Magnitude
+                    local clamped = AL_clampToHitboxes(char, aimPoint)
+                    inHitbox = clamped and (clamped - aimPoint).Magnitude < 0.5
+                end
+                local smoothness = inHitbox and AimLockSettings.SmoothnessIn or AimLockSettings.SmoothnessOut
+                local alpha = math.clamp((1 - smoothness) * 0.5, 0.01, 1)
                 self.Rotation = self.Rotation:Lerp(targetRotAdj, alpha)
 
                 if AimLockSettings.AlwaysLockSmooth and targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
@@ -1166,12 +1182,13 @@ local AimLockDep = AimLockSection:AddDependencyBox()
 AimLockDep:AddToggle("AimLockTeamCheck", { Text = "TeamCheck", Default = false, Callback = function(v) AimLockSettings.TeamCheck = v end })
 AimLockDep:AddToggle("AimLockAliveCheck", { Text = "AliveCheck", Default = true, Callback = function(v) AimLockSettings.AliveCheck = v end })
 AimLockDep:AddSlider("AimLockFOV", { Text = "Fov", Default = 150, Min = 1, Max = 800, Rounding = 0, Callback = function(v) AimLockSettings.FOV = v end })
-AimLockDep:AddSlider("AimLockSmoothness", { Text = "SmoothNess", Default = 0.65, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.Smoothness = v end })
+AimLockDep:AddSlider("AimLockSmoothnessOut", { Text = "Smoothness (Hitbox外)", Default = 0.65, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.SmoothnessOut = v end })
+AimLockDep:AddSlider("AimLockSmoothnessIn", { Text = "Smoothness (Hitbox内)", Default = 0.15, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.SmoothnessIn = v end })
 AimLockDep:AddToggle("AimLockAlwaysLockSmooth", { Text = "AlwaysLockSmooth", Default = false, Callback = function(v) AimLockSettings.AlwaysLockSmooth = v end })
 AimLockDep:AddToggle("AimLockWallCheck", { Text = "WallCheck", Default = false, Callback = function(v) AimLockSettings.WallCheck = v end })
 AimLockDep:AddToggle("AimLockOnlyScope", { Text = "OnlyScope", Default = false, Callback = function(v) AimLockSettings.OnlyScope = v end })
 AimLockDep:AddDropdown("AimLockTargetPart", {
-    Values = {"HitboxHead", "HitboxBody", "Torso", "Head"},
+    Values = {"HitboxHead", "HitboxBody", "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg"},
     Default = 1,
     Multi = false,
     Text = "Target Part",
