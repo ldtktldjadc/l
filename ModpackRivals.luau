@@ -1,4 +1,11 @@
 if not game:IsLoaded() then game.Loaded:Wait() end
+getgenv().print = function(...) end
+getgenv().warn = function(...) end
+getgenv().error = function(...) end
+local print = function(...) end
+local warn = function(...) end
+local error = function(...) end
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -899,6 +906,7 @@ local AimLockSettings = {
     AliveCheck = true,
     TargetPart = "HitboxHead",
     TargetSort = "Mouse (Closest)",
+    OnlyScope = false,
 }
 
 local AL_LockedTarget = nil
@@ -967,6 +975,23 @@ end
 
 local function AL_getTarget()
 	if not AimLockSettings.Enabled then return nil, nil end
+	if AimLockSettings.OnlyScope then
+		local isAiming = false
+		local localFighter = FighterController and FighterController.LocalFighter
+		if localFighter then
+			local item = localFighter.EquippedItem
+			if item then
+				pcall(function()
+					isAiming = item:Get("IsAiming") == true or (item.ItemInterface and item.ItemInterface:IsScopeActive())
+				end)
+			end
+		end
+		if not isAiming then
+			AL_LockedTarget = nil
+			AL_BlatantLockedFighter = nil
+			return nil, nil
+		end
+	end
 	local camera = workspace.CurrentCamera
 	local screenCenter = camera.ViewportSize / 2
 
@@ -1144,6 +1169,7 @@ AimLockDep:AddSlider("AimLockFOV", { Text = "Fov", Default = 150, Min = 1, Max =
 AimLockDep:AddSlider("AimLockSmoothness", { Text = "SmoothNess", Default = 0.65, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.Smoothness = v end })
 AimLockDep:AddToggle("AimLockAlwaysLockSmooth", { Text = "AlwaysLockSmooth", Default = false, Callback = function(v) AimLockSettings.AlwaysLockSmooth = v end })
 AimLockDep:AddToggle("AimLockWallCheck", { Text = "WallCheck", Default = false, Callback = function(v) AimLockSettings.WallCheck = v end })
+AimLockDep:AddToggle("AimLockOnlyScope", { Text = "OnlyScope", Default = false, Callback = function(v) AimLockSettings.OnlyScope = v end })
 AimLockDep:AddDropdown("AimLockTargetPart", {
     Values = {"HitboxHead", "HitboxBody", "Torso", "Head"},
     Default = 1,
@@ -1790,8 +1816,6 @@ task.spawn(function()
     end
 
     runS.Heartbeat:Connect(function()
-        if not getgenv().RageBotConfig.Enabled then return end
-        
         updateDeflection()
         local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
         if not myRoot then return end
