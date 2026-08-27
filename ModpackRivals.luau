@@ -2623,6 +2623,197 @@ end
         end
     end
 })
+-- ========== CHARM SPOOFER ==========
+local CharmSpoofSection = Tabs.Misc:AddRightGroupbox("Charm Spoofer")
+
+local charm_spoof_state = {
+    s0_charm = false,
+    s1_charm = false,
+    s2_charm = false,
+    s3_charm = false,
+    charm_rank = "Use Spoofed ELO",
+    arch_rank = 1,
+    elo_value = 3600
+}
+
+local kSeasonNameMap = {
+    [0] = "Zero",
+    [1] = "Warp",
+    [2] = "Polar",
+    [3] = "Fame",
+    ["Zero"] = 0,
+    ["Warp"] = 1,
+    ["Polar"] = 2,
+    ["Fame"] = 3,
+}
+
+local kSeasonToggleMap = {
+    [0] = "s0_charm",
+    [1] = "s1_charm",
+    [2] = "s2_charm",
+    [3] = "s3_charm",
+}
+
+local kCharmEloMap = {
+    ["Unranked"] = -1,
+    ["Bronze 1"] = 0,
+    ["Bronze 2"] = 200,
+    ["Bronze 3"] = 400,
+    ["Silver 1"] = 600,
+    ["Silver 2"] = 800,
+    ["Silver 3"] = 1000,
+    ["Gold 1"] = 1200,
+    ["Gold 2"] = 1400,
+    ["Gold 3"] = 1600,
+    ["Platinum 1"] = 1800,
+    ["Platinum 2"] = 2000,
+    ["Platinum 3"] = 2200,
+    ["Diamond 1"] = 2400,
+    ["Diamond 2"] = 2600,
+    ["Diamond 3"] = 2800,
+    ["Onyx 1"] = 3000,
+    ["Onyx 2"] = 3200,
+    ["Onyx 3"] = 3400,
+    ["Nemesis"] = 3600,
+    ["Archnemesis"] = 3600,
+}
+
+local kCharmRanks = {
+    "Use Spoofed ELO",
+    "Unranked",
+    "Bronze 1",
+    "Bronze 2",
+    "Bronze 3",
+    "Silver 1",
+    "Silver 2",
+    "Silver 3",
+    "Gold 1",
+    "Gold 2",
+    "Gold 3",
+    "Platinum 1",
+    "Platinum 2",
+    "Platinum 3",
+    "Diamond 1",
+    "Diamond 2",
+    "Diamond 3",
+    "Onyx 1",
+    "Onyx 2",
+    "Onyx 3",
+    "Nemesis",
+    "Archnemesis",
+}
+
+local original_fsrc = nil
+
+local function UpdateCharmOptions()
+    if not SeasonLibrary then return end
+    for _, descendant in ipairs(workspace:GetDescendants()) do
+        if not descendant:IsA("Model") then continue end
+        if not descendant:FindFirstChild("Extra") then continue end
+        
+        local name = descendant.Name
+        if string.sub(name, 1, 7) ~= "Season " then continue end
+        
+        local season_num = tonumber(string.sub(name, 8))
+        if not season_num then continue end
+        if not kSeasonToggleMap[season_num] then continue end
+        if not charm_spoof_state[kSeasonToggleMap[season_num]] then continue end
+        
+        local season_name = kSeasonNameMap[season_num]
+        if not season_name then continue end
+        
+        local elo = kCharmEloMap[charm_spoof_state.charm_rank] or charm_spoof_state.elo_value
+        local rank = charm_spoof_state.arch_rank
+        
+        pcall(function()
+            SeasonLibrary:FormatSeasonRankCharm(
+                descendant,
+                season_name,
+                elo,
+                rank
+            )
+        end)
+    end
+end
+
+task.spawn(function()
+    while not SeasonLibrary do task.wait(0.5) end
+    if not original_fsrc then
+        original_fsrc = SeasonLibrary.FormatSeasonRankCharm
+        SeasonLibrary.FormatSeasonRankCharm = function(self, p2, p3, p4, p5)
+            local season_num = kSeasonNameMap[p3]
+            local elo = kCharmEloMap[charm_spoof_state.charm_rank] or charm_spoof_state.elo_value
+            
+            if season_num and kSeasonToggleMap[season_num] and charm_spoof_state[kSeasonToggleMap[season_num]] then
+                p4 = elo or p4
+                p5 = charm_spoof_state.arch_rank
+            end
+            
+            return original_fsrc(self, p2, p3, p4, p5)
+        end
+    end
+end)
+
+CharmSpoofSection:AddDropdown("CharmRankDrop", {
+    Values = kCharmRanks,
+    Default = 1,
+    Multi = false,
+    Text = "Charm Rank",
+    Callback = function(v)
+        charm_spoof_state.charm_rank = v
+        UpdateCharmOptions()
+    end
+})
+
+CharmSpoofSection:AddSlider("CharmArchRank", {
+    Text = "Arch Rank",
+    Default = 1,
+    Min = 1,
+    Max = 100,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(v)
+        charm_spoof_state.arch_rank = tonumber(v)
+        UpdateCharmOptions()
+    end
+})
+
+CharmSpoofSection:AddToggle("CharmS0Toggle", {
+    Text = "Season 0 Charm",
+    Default = false,
+    Callback = function(v)
+        charm_spoof_state.s0_charm = v
+        UpdateCharmOptions()
+    end
+})
+
+CharmSpoofSection:AddToggle("CharmS1Toggle", {
+    Text = "Season 1 Charm",
+    Default = false,
+    Callback = function(v)
+        charm_spoof_state.s1_charm = v
+        UpdateCharmOptions()
+    end
+})
+
+CharmSpoofSection:AddToggle("CharmS2Toggle", {
+    Text = "Season 2 Charm",
+    Default = false,
+    Callback = function(v)
+        charm_spoof_state.s2_charm = v
+        UpdateCharmOptions()
+    end
+})
+
+CharmSpoofSection:AddToggle("CharmS3Toggle", {
+    Text = "Season 3 Charm",
+    Default = false,
+    Callback = function(v)
+        charm_spoof_state.s3_charm = v
+        UpdateCharmOptions()
+    end
+})
+
 -- ========== DEVICE SPOOFER ==========
 local DeviceSpoofSection = Tabs.Misc:AddLeftGroupbox("Device Spoofer")
 
