@@ -2737,8 +2737,8 @@ local function UpdateCharmOptions()
 end
 
 task.spawn(function()
-    while not SeasonLibrary do task.wait(0.5) end
-    while not SeasonLibrary.FormatSeasonRankCharm do task.wait(0.5) end
+    while type(SeasonLibrary) ~= "table" do task.wait(0.5) end
+    while type(SeasonLibrary.FormatSeasonRankCharm) ~= "function" do task.wait(0.5) end
     if not original_fsrc then
         original_fsrc = SeasonLibrary.FormatSeasonRankCharm
         SeasonLibrary.FormatSeasonRankCharm = function(self, p2, p3, p4, p5)
@@ -2750,7 +2750,7 @@ task.spawn(function()
                 p5 = charm_spoof_state.arch_rank
             end
             
-            if original_fsrc then
+            if type(original_fsrc) == "function" then
                 return original_fsrc(self, p2, p3, p4, p5)
             end
         end
