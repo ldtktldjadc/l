@@ -2706,7 +2706,7 @@ local kCharmRanks = {
 local original_fsrc = nil
 
 local function UpdateCharmOptions()
-    if not SeasonLibrary then return end
+    if not SeasonLibrary or not SeasonLibrary.FormatSeasonRankCharm then return end
     for _, descendant in ipairs(workspace:GetDescendants()) do
         if not descendant:IsA("Model") then continue end
         if not descendant:FindFirstChild("Extra") then continue end
@@ -2738,6 +2738,7 @@ end
 
 task.spawn(function()
     while not SeasonLibrary do task.wait(0.5) end
+    while not SeasonLibrary.FormatSeasonRankCharm do task.wait(0.5) end
     if not original_fsrc then
         original_fsrc = SeasonLibrary.FormatSeasonRankCharm
         SeasonLibrary.FormatSeasonRankCharm = function(self, p2, p3, p4, p5)
@@ -2749,7 +2750,9 @@ task.spawn(function()
                 p5 = charm_spoof_state.arch_rank
             end
             
-            return original_fsrc(self, p2, p3, p4, p5)
+            if original_fsrc then
+                return original_fsrc(self, p2, p3, p4, p5)
+            end
         end
     end
 end)
