@@ -2719,14 +2719,16 @@ local function UpdateCharmOptions()
         if not kSeasonToggleMap[season_num] then continue end
         if not charm_spoof_state[kSeasonToggleMap[season_num]] then continue end
         
-        local game_season_name = "Season " .. season_num
+        local season_name = kSeasonNameMap[season_num]
+        if not season_name then continue end
+        
         local elo = kCharmEloMap[charm_spoof_state.charm_rank] or charm_spoof_state.elo_value
         local rank = charm_spoof_state.arch_rank
         
         pcall(function()
             SeasonLibrary:FormatSeasonRankCharm(
                 descendant,
-                game_season_name,
+                season_name,
                 elo,
                 rank
             )
@@ -2742,7 +2744,7 @@ task.spawn(function()
         if not original_fsrc then
             original_fsrc = SeasonLibrary.FormatSeasonRankCharm
             SeasonLibrary.FormatSeasonRankCharm = function(self, p2, p3, p4, p5)
-                local season_num = tonumber(string.match(tostring(p3), "%d+"))
+                local season_num = kSeasonNameMap[p3]
                 local elo = kCharmEloMap[charm_spoof_state.charm_rank] or charm_spoof_state.elo_value
                 
                 if season_num and kSeasonToggleMap[season_num] and charm_spoof_state[kSeasonToggleMap[season_num]] then
@@ -2750,9 +2752,7 @@ task.spawn(function()
                     p5 = charm_spoof_state.arch_rank
                 end
                 
-                if original_fsrc then
-                    return original_fsrc(self, p2, p3, p4, p5)
-                end
+                return original_fsrc(self, p2, p3, p4, p5)
             end
         end
     end)
