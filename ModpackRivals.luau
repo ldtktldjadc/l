@@ -2706,7 +2706,7 @@ local kCharmRanks = {
 local original_fsrc = nil
 
 local function UpdateCharmOptions()
-    if not SeasonLibrary or not SeasonLibrary.FormatSeasonRankCharm then return end
+    if not SeasonLibrary then return end
     for _, descendant in ipairs(workspace:GetDescendants()) do
         if not descendant:IsA("Model") then continue end
         if not descendant:FindFirstChild("Extra") then continue end
@@ -2737,8 +2737,7 @@ local function UpdateCharmOptions()
 end
 
 task.spawn(function()
-    while type(SeasonLibrary) ~= "table" do task.wait(0.5) end
-    while type(SeasonLibrary.FormatSeasonRankCharm) ~= "function" do task.wait(0.5) end
+    while not SeasonLibrary do task.wait(0.5) end
     if not original_fsrc then
         original_fsrc = SeasonLibrary.FormatSeasonRankCharm
         SeasonLibrary.FormatSeasonRankCharm = function(self, p2, p3, p4, p5)
@@ -2750,9 +2749,7 @@ task.spawn(function()
                 p5 = charm_spoof_state.arch_rank
             end
             
-            if type(original_fsrc) == "function" then
-                return original_fsrc(self, p2, p3, p4, p5)
-            end
+            return original_fsrc(self, p2, p3, p4, p5)
         end
     end
 end)
@@ -2768,15 +2765,13 @@ CharmSpoofSection:AddDropdown("CharmRankDrop", {
     end
 })
 
-CharmSpoofSection:AddSlider("CharmArchRank", {
-    Text = "Arch Rank",
-    Default = 1,
-    Min = 1,
-    Max = 100,
-    Rounding = 0,
-    Compact = false,
+CharmSpoofSection:AddInput("CharmArchRank", {
+    Text = "Arch Rank (1-200)",
+    Default = "1",
+    Numeric = true,
+    Finished = false,
     Callback = function(v)
-        charm_spoof_state.arch_rank = tonumber(v)
+        charm_spoof_state.arch_rank = tonumber(v) or 1
         UpdateCharmOptions()
     end
 })
