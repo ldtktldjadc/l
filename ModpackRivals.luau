@@ -1,4 +1,3 @@
-if not game:IsLoaded() then game.Loaded:Wait() end
 getgenv().print = function(...) end
 getgenv().warn = function(...) end
 getgenv().error = function(...) end
