@@ -2706,55 +2706,60 @@ local kCharmRanks = {
 local original_fsrc = nil
 
 local function UpdateCharmOptions()
-    if not SeasonLibrary then return end
-    for _, descendant in ipairs(workspace:GetDescendants()) do
-        if not descendant:IsA("Model") then continue end
-        if not descendant:FindFirstChild("Extra") then continue end
-        
-        local name = descendant.Name
-        if string.sub(name, 1, 7) ~= "Season " then continue end
-        
-        local season_num = tonumber(string.sub(name, 8))
-        if not season_num then continue end
-        if not kSeasonToggleMap[season_num] then continue end
-        if not charm_spoof_state[kSeasonToggleMap[season_num]] then continue end
-        
-        local season_name = kSeasonNameMap[season_num]
-        if not season_name then continue end
-        
-        local elo = kCharmEloMap[charm_spoof_state.charm_rank] or charm_spoof_state.elo_value
-        local rank = charm_spoof_state.arch_rank
-        
-        pcall(function()
-            SeasonLibrary:FormatSeasonRankCharm(
-                descendant,
-                season_name,
-                elo,
-                rank
-            )
-        end)
-    end
+    pcall(function()
+        if not SeasonLibrary then return end
+        for _, descendant in ipairs(workspace:GetDescendants()) do
+            if not descendant:IsA("Model") then continue end
+            if not descendant:FindFirstChild("Extra") then continue end
+            
+            local name = descendant.Name
+            if string.sub(name, 1, 7) ~= "Season " then continue end
+            
+            local season_num = tonumber(string.sub(name, 8))
+            if not season_num then continue end
+            if not kSeasonToggleMap[season_num] then continue end
+            if not charm_spoof_state[kSeasonToggleMap[season_num]] then continue end
+            
+            local season_name = kSeasonNameMap[season_num]
+            if not season_name then continue end
+            
+            local elo = kCharmEloMap[charm_spoof_state.charm_rank] or charm_spoof_state.elo_value
+            local rank = charm_spoof_state.arch_rank
+            
+            pcall(function()
+                SeasonLibrary:FormatSeasonRankCharm(
+                    descendant,
+                    season_name,
+                    elo,
+                    rank
+                )
+            end)
+        end
+    end)
 end
 
 task.spawn(function()
-    while not SeasonLibrary do task.wait(0.5) end
-    if not SeasonLibrary.FormatSeasonRankCharm then return end
-    if not original_fsrc then
-        original_fsrc = SeasonLibrary.FormatSeasonRankCharm
-        SeasonLibrary.FormatSeasonRankCharm = function(self, p2, p3, p4, p5)
-            local season_num = kSeasonNameMap[p3]
-            local elo = kCharmEloMap[charm_spoof_state.charm_rank] or charm_spoof_state.elo_value
-
-            if season_num and kSeasonToggleMap[season_num] and charm_spoof_state[kSeasonToggleMap[season_num]] then
-                p4 = elo or p4
-                p5 = charm_spoof_state.arch_rank
-            end
-
-            if original_fsrc then
-                return original_fsrc(self, p2, p3, p4, p5)
+    pcall(function()
+        while not SeasonLibrary do task.wait(0.5) end
+        if type(SeasonLibrary) ~= "table" then return end
+        if not SeasonLibrary.FormatSeasonRankCharm then return end
+        if not original_fsrc then
+            original_fsrc = SeasonLibrary.FormatSeasonRankCharm
+            SeasonLibrary.FormatSeasonRankCharm = function(self, p2, p3, p4, p5)
+                local season_num = kSeasonNameMap[p3]
+                local elo = kCharmEloMap[charm_spoof_state.charm_rank] or charm_spoof_state.elo_value
+                
+                if season_num and kSeasonToggleMap[season_num] and charm_spoof_state[kSeasonToggleMap[season_num]] then
+                    p4 = elo or p4
+                    p5 = charm_spoof_state.arch_rank
+                end
+                
+                if original_fsrc then
+                    return original_fsrc(self, p2, p3, p4, p5)
+                end
             end
         end
-    end
+    end)
 end)
 
 CharmSpoofSection:AddDropdown("CharmRankDrop", {
