@@ -1,3 +1,4 @@
+if not game:IsLoaded() then game.Loaded:Wait() end
 getgenv().print = function(...) end
 getgenv().warn = function(...) end
 getgenv().error = function(...) end
@@ -2623,226 +2624,420 @@ end
     end
 })
 -- ========== CHARM SPOOFER ==========
+print("[CHARM DEBUG] Executing line 2626")
 local CharmSpoofSection = Tabs.Misc:AddRightGroupbox("Charm Spoofer")
 
+print("[CHARM DEBUG] Executing line 2628")
 local charm_spoof_state = {
+print("[CHARM DEBUG] Executing line 2629")
     s0_charm = false,
+print("[CHARM DEBUG] Executing line 2630")
     s1_charm = false,
+print("[CHARM DEBUG] Executing line 2631")
     s2_charm = false,
+print("[CHARM DEBUG] Executing line 2632")
     s3_charm = false,
+print("[CHARM DEBUG] Executing line 2633")
     charm_rank = "Use Spoofed ELO",
+print("[CHARM DEBUG] Executing line 2634")
     arch_rank = 1,
+print("[CHARM DEBUG] Executing line 2635")
     elo_value = 3600
+print("[CHARM DEBUG] Executing line 2636")
 }
 
+print("[CHARM DEBUG] Executing line 2638")
 local kSeasonNameMap = {
+print("[CHARM DEBUG] Executing line 2639")
     [0] = "Zero",
+print("[CHARM DEBUG] Executing line 2640")
     [1] = "Warp",
+print("[CHARM DEBUG] Executing line 2641")
     [2] = "Polar",
+print("[CHARM DEBUG] Executing line 2642")
     [3] = "Fame",
+print("[CHARM DEBUG] Executing line 2643")
     ["Zero"] = 0,
+print("[CHARM DEBUG] Executing line 2644")
     ["Warp"] = 1,
+print("[CHARM DEBUG] Executing line 2645")
     ["Polar"] = 2,
+print("[CHARM DEBUG] Executing line 2646")
     ["Fame"] = 3,
+print("[CHARM DEBUG] Executing line 2647")
 }
 
+print("[CHARM DEBUG] Executing line 2649")
 local kSeasonToggleMap = {
+print("[CHARM DEBUG] Executing line 2650")
     [0] = "s0_charm",
+print("[CHARM DEBUG] Executing line 2651")
     [1] = "s1_charm",
+print("[CHARM DEBUG] Executing line 2652")
     [2] = "s2_charm",
+print("[CHARM DEBUG] Executing line 2653")
     [3] = "s3_charm",
+print("[CHARM DEBUG] Executing line 2654")
 }
 
+print("[CHARM DEBUG] Executing line 2656")
 local kCharmEloMap = {
+print("[CHARM DEBUG] Executing line 2657")
     ["Unranked"] = -1,
+print("[CHARM DEBUG] Executing line 2658")
     ["Bronze 1"] = 0,
+print("[CHARM DEBUG] Executing line 2659")
     ["Bronze 2"] = 200,
+print("[CHARM DEBUG] Executing line 2660")
     ["Bronze 3"] = 400,
+print("[CHARM DEBUG] Executing line 2661")
     ["Silver 1"] = 600,
+print("[CHARM DEBUG] Executing line 2662")
     ["Silver 2"] = 800,
+print("[CHARM DEBUG] Executing line 2663")
     ["Silver 3"] = 1000,
+print("[CHARM DEBUG] Executing line 2664")
     ["Gold 1"] = 1200,
+print("[CHARM DEBUG] Executing line 2665")
     ["Gold 2"] = 1400,
+print("[CHARM DEBUG] Executing line 2666")
     ["Gold 3"] = 1600,
+print("[CHARM DEBUG] Executing line 2667")
     ["Platinum 1"] = 1800,
+print("[CHARM DEBUG] Executing line 2668")
     ["Platinum 2"] = 2000,
+print("[CHARM DEBUG] Executing line 2669")
     ["Platinum 3"] = 2200,
+print("[CHARM DEBUG] Executing line 2670")
     ["Diamond 1"] = 2400,
+print("[CHARM DEBUG] Executing line 2671")
     ["Diamond 2"] = 2600,
+print("[CHARM DEBUG] Executing line 2672")
     ["Diamond 3"] = 2800,
+print("[CHARM DEBUG] Executing line 2673")
     ["Onyx 1"] = 3000,
+print("[CHARM DEBUG] Executing line 2674")
     ["Onyx 2"] = 3200,
+print("[CHARM DEBUG] Executing line 2675")
     ["Onyx 3"] = 3400,
+print("[CHARM DEBUG] Executing line 2676")
     ["Nemesis"] = 3600,
+print("[CHARM DEBUG] Executing line 2677")
     ["Archnemesis"] = 3600,
+print("[CHARM DEBUG] Executing line 2678")
 }
 
+print("[CHARM DEBUG] Executing line 2680")
 local kCharmRanks = {
+print("[CHARM DEBUG] Executing line 2681")
     "Use Spoofed ELO",
+print("[CHARM DEBUG] Executing line 2682")
     "Unranked",
+print("[CHARM DEBUG] Executing line 2683")
     "Bronze 1",
+print("[CHARM DEBUG] Executing line 2684")
     "Bronze 2",
+print("[CHARM DEBUG] Executing line 2685")
     "Bronze 3",
+print("[CHARM DEBUG] Executing line 2686")
     "Silver 1",
+print("[CHARM DEBUG] Executing line 2687")
     "Silver 2",
+print("[CHARM DEBUG] Executing line 2688")
     "Silver 3",
+print("[CHARM DEBUG] Executing line 2689")
     "Gold 1",
+print("[CHARM DEBUG] Executing line 2690")
     "Gold 2",
+print("[CHARM DEBUG] Executing line 2691")
     "Gold 3",
+print("[CHARM DEBUG] Executing line 2692")
     "Platinum 1",
+print("[CHARM DEBUG] Executing line 2693")
     "Platinum 2",
+print("[CHARM DEBUG] Executing line 2694")
     "Platinum 3",
+print("[CHARM DEBUG] Executing line 2695")
     "Diamond 1",
+print("[CHARM DEBUG] Executing line 2696")
     "Diamond 2",
+print("[CHARM DEBUG] Executing line 2697")
     "Diamond 3",
+print("[CHARM DEBUG] Executing line 2698")
     "Onyx 1",
+print("[CHARM DEBUG] Executing line 2699")
     "Onyx 2",
+print("[CHARM DEBUG] Executing line 2700")
     "Onyx 3",
+print("[CHARM DEBUG] Executing line 2701")
     "Nemesis",
+print("[CHARM DEBUG] Executing line 2702")
     "Archnemesis",
+print("[CHARM DEBUG] Executing line 2703")
 }
 
+print("[CHARM DEBUG] Executing line 2705")
 local original_fsrc = nil
 
+print("[CHARM DEBUG] Executing line 2707")
 local function UpdateCharmOptions()
+print("[CHARM DEBUG] Executing line 2708")
     if not SeasonLibrary or not SeasonLibrary.FormatSeasonRankCharm then return end
+print("[CHARM DEBUG] Executing line 2709")
     for _, descendant in ipairs(workspace:GetDescendants()) do
+print("[CHARM DEBUG] Executing line 2710")
         if not descendant:IsA("Model") then continue end
+print("[CHARM DEBUG] Executing line 2711")
         if not descendant:FindFirstChild("Extra") then continue end
         
+print("[CHARM DEBUG] Executing line 2713")
         local name = descendant.Name
+print("[CHARM DEBUG] Executing line 2714")
         if string.sub(name, 1, 7) ~= "Season " then continue end
         
+print("[CHARM DEBUG] Executing line 2716")
         local season_num = tonumber(string.sub(name, 8))
+print("[CHARM DEBUG] Executing line 2717")
         if not season_num then continue end
+print("[CHARM DEBUG] Executing line 2718")
         if not kSeasonToggleMap[season_num] then continue end
+print("[CHARM DEBUG] Executing line 2719")
         if not charm_spoof_state[kSeasonToggleMap[season_num]] then continue end
         
+print("[CHARM DEBUG] Executing line 2721")
         local season_name = kSeasonNameMap[season_num]
+print("[CHARM DEBUG] Executing line 2722")
         if not season_name then continue end
         
+print("[CHARM DEBUG] Executing line 2724")
         local elo = kCharmEloMap[charm_spoof_state.charm_rank] or charm_spoof_state.elo_value
+print("[CHARM DEBUG] Executing line 2725")
         local rank = charm_spoof_state.arch_rank
         
+print("[CHARM DEBUG] Executing line 2727")
         pcall(function()
+print("[CHARM DEBUG] Executing line 2728")
             SeasonLibrary:FormatSeasonRankCharm(
+print("[CHARM DEBUG] Executing line 2729")
                 descendant,
+print("[CHARM DEBUG] Executing line 2730")
                 season_name,
+print("[CHARM DEBUG] Executing line 2731")
                 elo,
+print("[CHARM DEBUG] Executing line 2732")
                 rank
+print("[CHARM DEBUG] Executing line 2733")
             )
+print("[CHARM DEBUG] Executing line 2734")
         end)
+print("[CHARM DEBUG] Executing line 2735")
     end
+print("[CHARM DEBUG] Executing line 2736")
 end
 
+print("[CHARM DEBUG] Executing line 2738")
 task.spawn(function()
+print("[CHARM DEBUG] Executing line 2739")
     pcall(function()
+print("[CHARM DEBUG] Executing line 2740")
         while not SeasonLibrary do task.wait(0.5) end
+print("[CHARM DEBUG] Executing line 2741")
         if type(SeasonLibrary) ~= "table" then return end
+print("[CHARM DEBUG] Executing line 2742")
         if not SeasonLibrary.FormatSeasonRankCharm then return end
+print("[CHARM DEBUG] Executing line 2743")
         if not original_fsrc then
+print("[CHARM DEBUG] Executing line 2744")
             original_fsrc = SeasonLibrary.FormatSeasonRankCharm
+print("[CHARM DEBUG] Executing line 2745")
             SeasonLibrary.FormatSeasonRankCharm = function(self, p2, p3, p4, p5)
+print("[CHARM DEBUG] Executing line 2746")
                 local season_num = kSeasonNameMap[p3]
+print("[CHARM DEBUG] Executing line 2747")
                 local elo = kCharmEloMap[charm_spoof_state.charm_rank] or charm_spoof_state.elo_value
                 
+print("[CHARM DEBUG] Executing line 2749")
                 if season_num and kSeasonToggleMap[season_num] and charm_spoof_state[kSeasonToggleMap[season_num]] then
+print("[CHARM DEBUG] Executing line 2750")
                     p4 = elo or p4
+print("[CHARM DEBUG] Executing line 2751")
                     p5 = charm_spoof_state.arch_rank
+print("[CHARM DEBUG] Executing line 2752")
                 end
                 
+print("[CHARM DEBUG] Executing line 2754")
                 return original_fsrc(self, p2, p3, p4, p5)
+print("[CHARM DEBUG] Executing line 2755")
             end
+print("[CHARM DEBUG] Executing line 2756")
         end
+print("[CHARM DEBUG] Executing line 2757")
     end)
+print("[CHARM DEBUG] Executing line 2758")
 end)
 
+print("[CHARM DEBUG] Executing line 2760")
 CharmSpoofSection:AddDropdown("CharmRankDrop", {
+print("[CHARM DEBUG] Executing line 2761")
     Values = kCharmRanks,
+print("[CHARM DEBUG] Executing line 2762")
     Default = 1,
+print("[CHARM DEBUG] Executing line 2763")
     Multi = false,
+print("[CHARM DEBUG] Executing line 2764")
     Text = "Charm Rank",
+print("[CHARM DEBUG] Executing line 2765")
     Callback = function(v)
+print("[CHARM DEBUG] Executing line 2766")
         charm_spoof_state.charm_rank = v
+print("[CHARM DEBUG] Executing line 2767")
         UpdateCharmOptions()
+print("[CHARM DEBUG] Executing line 2768")
     end
+print("[CHARM DEBUG] Executing line 2769")
 })
 
+print("[CHARM DEBUG] Executing line 2771")
 CharmSpoofSection:AddInput("CharmArchRank", {
+print("[CHARM DEBUG] Executing line 2772")
     Text = "Arch Rank (1-200)",
+print("[CHARM DEBUG] Executing line 2773")
     Default = "1",
+print("[CHARM DEBUG] Executing line 2774")
     Numeric = true,
+print("[CHARM DEBUG] Executing line 2775")
     Finished = false,
+print("[CHARM DEBUG] Executing line 2776")
     Callback = function(v)
+print("[CHARM DEBUG] Executing line 2777")
         charm_spoof_state.arch_rank = tonumber(v) or 1
+print("[CHARM DEBUG] Executing line 2778")
         UpdateCharmOptions()
+print("[CHARM DEBUG] Executing line 2779")
     end
+print("[CHARM DEBUG] Executing line 2780")
 })
 
+print("[CHARM DEBUG] Executing line 2782")
 CharmSpoofSection:AddToggle("CharmS0Toggle", {
+print("[CHARM DEBUG] Executing line 2783")
     Text = "Season 0 Charm",
+print("[CHARM DEBUG] Executing line 2784")
     Default = false,
+print("[CHARM DEBUG] Executing line 2785")
     Callback = function(v)
+print("[CHARM DEBUG] Executing line 2786")
         charm_spoof_state.s0_charm = v
+print("[CHARM DEBUG] Executing line 2787")
         UpdateCharmOptions()
+print("[CHARM DEBUG] Executing line 2788")
     end
+print("[CHARM DEBUG] Executing line 2789")
 })
 
+print("[CHARM DEBUG] Executing line 2791")
 CharmSpoofSection:AddToggle("CharmS1Toggle", {
+print("[CHARM DEBUG] Executing line 2792")
     Text = "Season 1 Charm",
+print("[CHARM DEBUG] Executing line 2793")
     Default = false,
+print("[CHARM DEBUG] Executing line 2794")
     Callback = function(v)
+print("[CHARM DEBUG] Executing line 2795")
         charm_spoof_state.s1_charm = v
+print("[CHARM DEBUG] Executing line 2796")
         UpdateCharmOptions()
+print("[CHARM DEBUG] Executing line 2797")
     end
+print("[CHARM DEBUG] Executing line 2798")
 })
 
+print("[CHARM DEBUG] Executing line 2800")
 CharmSpoofSection:AddToggle("CharmS2Toggle", {
+print("[CHARM DEBUG] Executing line 2801")
     Text = "Season 2 Charm",
+print("[CHARM DEBUG] Executing line 2802")
     Default = false,
+print("[CHARM DEBUG] Executing line 2803")
     Callback = function(v)
+print("[CHARM DEBUG] Executing line 2804")
         charm_spoof_state.s2_charm = v
+print("[CHARM DEBUG] Executing line 2805")
         UpdateCharmOptions()
+print("[CHARM DEBUG] Executing line 2806")
     end
+print("[CHARM DEBUG] Executing line 2807")
 })
 
+print("[CHARM DEBUG] Executing line 2809")
 CharmSpoofSection:AddToggle("CharmS3Toggle", {
+print("[CHARM DEBUG] Executing line 2810")
     Text = "Season 3 Charm",
+print("[CHARM DEBUG] Executing line 2811")
     Default = false,
+print("[CHARM DEBUG] Executing line 2812")
     Callback = function(v)
+print("[CHARM DEBUG] Executing line 2813")
         charm_spoof_state.s3_charm = v
+print("[CHARM DEBUG] Executing line 2814")
         UpdateCharmOptions()
+print("[CHARM DEBUG] Executing line 2815")
     end
+print("[CHARM DEBUG] Executing line 2816")
 })
 
 -- ========== DEVICE SPOOFER ==========
+print("[CHARM DEBUG] Executing line 2819")
 local DeviceSpoofSection = Tabs.Misc:AddLeftGroupbox("Device Spoofer")
 
+print("[CHARM DEBUG] Executing line 2821")
 local DeviceSpooferToggle, DeviceSpoofDropdownObj
 
+print("[CHARM DEBUG] Executing line 2823")
 DeviceSpooferToggle = DeviceSpoofSection:AddToggle("DeviceSpoofToggle", {
+print("[CHARM DEBUG] Executing line 2824")
     Text = "Enable Device Spoofer",
+print("[CHARM DEBUG] Executing line 2825")
     Default = false,
+print("[CHARM DEBUG] Executing line 2826")
     Callback = function(value)
+print("[CHARM DEBUG] Executing line 2827")
         if value and DeviceSpoofDropdownObj then
+print("[CHARM DEBUG] Executing line 2828")
             task.defer(function()
+print("[CHARM DEBUG] Executing line 2829")
                 pcall(function()
+print("[CHARM DEBUG] Executing line 2830")
                     ReplicatedStorage.Remotes.Replication.Fighter.SetControls:FireServer(DeviceSpoofDropdownObj.Value)
+print("[CHARM DEBUG] Executing line 2831")
                 end)
+print("[CHARM DEBUG] Executing line 2832")
             end)
+print("[CHARM DEBUG] Executing line 2833")
         end
+print("[CHARM DEBUG] Executing line 2834")
     end
+print("[CHARM DEBUG] Executing line 2835")
 })
 
+print("[CHARM DEBUG] Executing line 2837")
 local DeviceSpoofDep = DeviceSpoofSection:AddDependencyBox()
+print("[CHARM DEBUG] Executing line 2838")
 DeviceSpoofDropdownObj = DeviceSpoofDep:AddDropdown("DeviceSpoofDropdown", {
+print("[CHARM DEBUG] Executing line 2839")
     Values = {"Touch", "MouseKeyboard", "Gamepad", "VR"},
+print("[CHARM DEBUG] Executing line 2840")
     Multi = false,
+print("[CHARM DEBUG] Executing line 2841")
     Text = "Select Device",
+print("[CHARM DEBUG] Executing line 2842")
     Callback = function(value)
         -- 螟画峩縺励◆縺縺代〒縺ｯ襍ｰ繧峨↑縺・ｈ縺・↓縺吶ｋ・医が繝ｳ縺ｫ縺励◆譎ゅ・縺ｿ・・
+print("[CHARM DEBUG] Executing line 2844")
     end
+print("[CHARM DEBUG] Executing line 2845")
 })
+print("[CHARM DEBUG] Executing line 2846")
 DeviceSpoofDep:SetupDependencies({ { DeviceSpooferToggle, true } })
 
 -- ========== ANTI BAN ==========
