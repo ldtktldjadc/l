@@ -2738,18 +2738,21 @@ end
 
 task.spawn(function()
     while not SeasonLibrary do task.wait(0.5) end
+    if not SeasonLibrary.FormatSeasonRankCharm then return end
     if not original_fsrc then
         original_fsrc = SeasonLibrary.FormatSeasonRankCharm
         SeasonLibrary.FormatSeasonRankCharm = function(self, p2, p3, p4, p5)
             local season_num = kSeasonNameMap[p3]
             local elo = kCharmEloMap[charm_spoof_state.charm_rank] or charm_spoof_state.elo_value
-            
+
             if season_num and kSeasonToggleMap[season_num] and charm_spoof_state[kSeasonToggleMap[season_num]] then
                 p4 = elo or p4
                 p5 = charm_spoof_state.arch_rank
             end
-            
-            return original_fsrc(self, p2, p3, p4, p5)
+
+            if original_fsrc then
+                return original_fsrc(self, p2, p3, p4, p5)
+            end
         end
     end
 end)
