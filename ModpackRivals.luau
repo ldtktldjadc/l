@@ -1,10 +1,19 @@
 if not game:IsLoaded() then game.Loaded:Wait() end
-getgenv().print = function(...) end
-getgenv().warn = function(...) end
-getgenv().error = function(...) end
-local print = function(...) end
-local warn = function(...) end
-local error = function(...) end
+pcall(function() if clearconsole then clearconsole() end end)
+pcall(function() if rconsoleclear then rconsoleclear() end end)
+pcall(function()
+    local LogService = game:GetService("LogService")
+    if LogService and LogService.Clear then LogService:Clear() end
+end)
+
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
+local PlayerGui = lp:WaitForChild("PlayerGui")
+
+if PlayerGui:FindFirstChild("LoadingScreen") then
+    repeat task.wait(0.5) until not PlayerGui:FindFirstChild("LoadingScreen")
+    task.wait(1)
+end
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
