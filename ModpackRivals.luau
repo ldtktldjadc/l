@@ -6,7 +6,12 @@ pcall(function()
     if LogService and LogService.Clear then LogService:Clear() end
 end)
 
+
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+
 local lp = Players.LocalPlayer
 local PlayerGui = lp:WaitForChild("PlayerGui")
 
@@ -14,11 +19,6 @@ if PlayerGui:FindFirstChild("LoadingScreen") then
     repeat task.wait(0.5) until not PlayerGui:FindFirstChild("LoadingScreen")
     task.wait(1)
 end
-
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local CoreGui = game:GetService("CoreGui")
 
 local boundRenderSteps = {}
 local function safeBindToRenderStep(rs, name, priority, func)
@@ -54,13 +54,9 @@ task.delay(5, function() getgenv().ModpackRivals_Executing = false end)
 
 
 --===========
-local lp = Players.LocalPlayer
+
 local cam = workspace.CurrentCamera
-local PlayerGui = lp:WaitForChild("PlayerGui")
-if PlayerGui:FindFirstChild("LoadingScreen") then
-    repeat task.wait(0.5) until not PlayerGui:FindFirstChild("LoadingScreen")
-    task.wait(1)
-end
+
 
 -- Cleanup old instances for re-execution
 if getgenv().MyLinoriaLibrary then
@@ -69,47 +65,6 @@ end
 if getgenv().MyModpackESP then
     pcall(function() getgenv().MyModpackESP:Destroy() end)
 end
-
---=============================================================================
--- Emit/Clear繝輔ャ繧ｯ縺ｫ繧医ｋKatana繝代Μ繝ｼ蛻､螳・(AntiKatana)
---=============================================================================
-local DeflectingPlayers = {}
-getgenv().DeflectingPlayers = DeflectingPlayers
-local function isPlayerParrying(player)
-    if not player then return false end
-    local endTime = DeflectingPlayers[player]
-    return endTime and tick() < endTime
-end
-local function getPlayerFromObj(obj)
-    local char = obj:FindFirstAncestorOfClass("Model")
-    return char and Players:GetPlayerFromCharacter(char)
-end
-
-pcall(function()
-    local _tempPE = Instance.new("ParticleEmitter")
-    local oldEmit; oldEmit = hookfunction(_tempPE.Emit, function(self, count)
-        if self.Name == "bigstar" then
-            local p = getPlayerFromObj(self)
-            if p then
-                if not getgenv().DeflectingStartTimes then getgenv().DeflectingStartTimes = {} end
-                if not DeflectingPlayers[p] or DeflectingPlayers[p] <= tick() then
-                    getgenv().DeflectingStartTimes[p] = tick()
-                end
-                DeflectingPlayers[p] = tick() + 1
-            end
-        end
-        return oldEmit(self, count)
-    end)
-
-    local oldClear; oldClear = hookfunction(_tempPE.Clear, function(self)
-        if self.Name == "bigstar" then
-            local p = getPlayerFromObj(self)
-            if p then DeflectingPlayers[p] = 0 end
-        end
-        return oldClear(self)
-    end)
-    _tempPE:Destroy()
-end)
 
 -- ========== SILENT AIM ==========
 local silentAimEnabled = false
@@ -3466,6 +3421,7 @@ lp.CharacterAdded:Connect(function()
 end)
 
 -- ========== AUTO LOADOUT ==========
+do
 local autoLoadoutEnabled = false
 local ChosenWeapons = {}
 local WeaponLists = {}
@@ -3483,6 +3439,7 @@ local UtiDropObj = LoadSlotsBox:AddDropdown("UtiDrop", { Values = {"None"}, Defa
 local AutoLoadout_ItemLibrary = nil
 local AutoLoadout_FighterController = nil
 local AutoLoadout_DuelController = nil
+
 
 local function getSavedWeaponSelections()
     local saved = {}
@@ -3678,6 +3635,7 @@ lp.CharacterAdded:Connect(function()
         triggerAutoLoadout()
     end
 end)
+end -- do AutoLoadout
 
 -- ========== AUTO EXECUTE ==========
 local AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
