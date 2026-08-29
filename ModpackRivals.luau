@@ -2440,8 +2440,129 @@ do
     end)
 end
 
+-- ========== CHARM SPOOFER ==========
+do
+local charmRankList = {
+    "Use Spoofed ELO",
+    "Unranked",
+    "Bronze 1", "Bronze 2", "Bronze 3",
+    "Silver 1", "Silver 2", "Silver 3",
+    "Gold 1", "Gold 2", "Gold 3",
+    "Platinum 1", "Platinum 2", "Platinum 3",
+    "Diamond 1", "Diamond 2", "Diamond 3",
+    "Onyx 1", "Onyx 2", "Onyx 3",
+    "Nemesis", "Archnemesis",
+}
+local charmEloMap = {
+    ["Unranked"] = -1,
+    ["Bronze 1"] = 0,   ["Bronze 2"] = 200,  ["Bronze 3"] = 400,
+    ["Silver 1"] = 600, ["Silver 2"] = 800,  ["Silver 3"] = 1000,
+    ["Gold 1"] = 1200,  ["Gold 2"] = 1400,   ["Gold 3"] = 1600,
+    ["Platinum 1"] = 1800, ["Platinum 2"] = 2000, ["Platinum 3"] = 2200,
+    ["Diamond 1"] = 2400,  ["Diamond 2"] = 2600,  ["Diamond 3"] = 2800,
+    ["Onyx 1"] = 3000,  ["Onyx 2"] = 3200,   ["Onyx 3"] = 3400,
+    ["Nemesis"] = 3600, ["Archnemesis"] = 3600,
+}
+local charmSeasonNameMap = {
+    [0] = "Zero", [1] = "Warp", [2] = "Polar", [3] = "Fame",
+    ["Zero"] = 0, ["Warp"] = 1, ["Polar"] = 2, ["Fame"] = 3,
+}
+local charmSeasonToggleMap = {
+    [0] = "s0", [1] = "s1", [2] = "s2", [3] = "s3",
+}
+
+local charmState = {
+    charm_rank = "Use Spoofed ELO",
+    arch_rank = 1,
+    s0 = false, s1 = false, s2 = false, s3 = false,
+}
+
+local charmHooked = false
+
+local function applyCharmHook()
+    if charmHooked then return end
+    local sl = nil
+    pcall(function()
+        sl = require(ReplicatedStorage:WaitForChild("Modules", 5):WaitForChild("SeasonLibrary", 5))
+    end)
+    if not sl or not sl.FormatSeasonRankCharm then return end
+    charmHooked = true
+
+    local original_fsrc = sl.FormatSeasonRankCharm
+    sl.FormatSeasonRankCharm = function(self, p2, p3, p4, p5)
+        local season_num = charmSeasonNameMap[p3]
+        local toggleKey = season_num and charmSeasonToggleMap[season_num]
+        if toggleKey and charmState[toggleKey] then
+            local elo = charmEloMap[charmState.charm_rank]
+            if not elo then
+                -- "Use Spoofed ELO" → そのままp4を使う
+                elo = p4
+            end
+            p4 = elo
+            p5 = charmState.arch_rank
+        end
+        return original_fsrc(self, p2, p3, p4, p5)
+    end
+end
+
+local function refreshCharms()
+    task.spawn(function()
+        task.wait(1)
+        for _, desc in ipairs(workspace:GetDescendants()) do
+            if not desc:IsA("Model") then continue end
+            if not desc:FindFirstChild("Extra") then continue end
+            local name = desc.Name
+            if string.sub(name, 1, 7) ~= "Season " then continue end
+            local season_num = tonumber(string.sub(name, 8))
+            if not season_num then continue end
+            local toggleKey = charmSeasonToggleMap[season_num]
+            if not toggleKey or not charmState[toggleKey] then continue end
+            local season_name = charmSeasonNameMap[season_num]
+            if not season_name then continue end
+            local elo = charmEloMap[charmState.charm_rank] or lp:GetAttribute("ELO") or 0
+            pcall(function()
+                local sl = require(ReplicatedStorage:WaitForChild("Modules", 5):WaitForChild("SeasonLibrary", 5))
+                sl:FormatSeasonRankCharm(desc, season_name, elo, charmState.arch_rank)
+            end)
+        end
+    end)
+end
+
+local CharmSection = Tabs.Misc:AddRightGroupbox("Charm Spoofer")
+
+CharmSection:AddDropdown("Charm_Rank", {
+    Text = "Charm Rank",
+    Values = charmRankList,
+    Default = 1,
+    Multi = false,
+    Callback = function(v)
+        charmState.charm_rank = v
+        applyCharmHook()
+        refreshCharms()
+    end,
+})
+
+CharmSection:AddSlider("Charm_ArchRank", {
+    Text = "Arch Rank",
+    Default = 1, Min = 1, Max = 100, Rounding = 0,
+    Callback = function(v)
+        charmState.arch_rank = v
+        refreshCharms()
+    end,
+})
+
+CharmSection:AddToggle("Charm_S0", { Text = "Season 0 Charm", Default = false,
+    Callback = function(v) charmState.s0 = v; applyCharmHook(); refreshCharms() end })
+CharmSection:AddToggle("Charm_S1", { Text = "Season 1 Charm", Default = false,
+    Callback = function(v) charmState.s1 = v; applyCharmHook(); refreshCharms() end })
+CharmSection:AddToggle("Charm_S2", { Text = "Season 2 Charm", Default = false,
+    Callback = function(v) charmState.s2 = v; applyCharmHook(); refreshCharms() end })
+CharmSection:AddToggle("Charm_S3", { Text = "Season 3 Charm", Default = false,
+    Callback = function(v) charmState.s3 = v; applyCharmHook(); refreshCharms() end })
+end -- do CharmSpoofer
 
 -- ========== UNLOCK ALL ==========
+
 local UnlockAllSection = Tabs.Misc:AddLeftGroupbox("Unlock All")
 UnlockAllSection:AddToggle("UnlockAllToggle", {
     Text = "Enable Unlock All",
