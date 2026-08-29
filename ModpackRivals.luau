@@ -345,7 +345,7 @@ local espCache = {}
 
 local espSettings = {
     MasterEnabled = false,
-    Box = false, BoxColor = Color3.fromRGB(255, 255, 255),
+    Box = false, BoxColor = Color3.fromRGB(255, 255, 255), BoxType = "Full",
     BoxFill = false, BoxFillColor = Color3.fromRGB(255, 255, 255),
     Distance = false, DistanceColor = Color3.fromRGB(255, 255, 255),
     Weapon = false, WeaponColor = Color3.fromRGB(255, 255, 255),
@@ -363,7 +363,7 @@ getgenv().ESPSettings_TeamCheck = false
 local teamEspCache = {}
 local teamEspSettings = {
     Enabled = false,
-    Box = true,  BoxColor = Color3.fromRGB(0, 200, 255),
+    Box = true,  BoxColor = Color3.fromRGB(0, 200, 255), BoxType = "Full",
     Name = true, NameColor = Color3.fromRGB(0, 200, 255),
     HP = false,  HPColor = Color3.fromRGB(50, 255, 50),
     Tracer = false, TracerColor = Color3.fromRGB(0, 200, 255),
@@ -453,10 +453,10 @@ local function createPlayerEsp(p)
         NameTag = Instance.new("TextLabel"),
         DistanceTag = Instance.new("TextLabel"),
         BoxLines = {
-            Top = createLine(),
-            Bottom = createLine(),
-            Left = createLine(),
-            Right = createLine()
+            TL_H = createLine(), TL_V = createLine(),
+            TR_H = createLine(), TR_V = createLine(),
+            BL_H = createLine(), BL_V = createLine(),
+            BR_H = createLine(), BR_V = createLine()
         },
         BoxFill = Instance.new("Frame"),
         Tracer = createLine(),
@@ -526,8 +526,10 @@ local function createTeamPlayerEsp(p)
     local ns = Instance.new("UIStroke"); ns.Parent = c.NameTag
 
     c.BoxLines = {
-        Top = createLine(), Bottom = createLine(),
-        Left = createLine(), Right = createLine()
+        TL_H = createLine(), TL_V = createLine(),
+        TR_H = createLine(), TR_V = createLine(),
+        BL_H = createLine(), BL_V = createLine(),
+        BR_H = createLine(), BR_V = createLine()
     }
 
     c.BoxFill = Instance.new("Frame")
@@ -751,10 +753,26 @@ RunService.Heartbeat:Connect(function()
                     local bl = Vector2.new(topPos.X - (width/2), botPos.Y)
                     local br = Vector2.new(topPos.X + (width/2), botPos.Y)
 
-                    drawLine(cache.BoxLines.Top, tl, tr, espSettings.BoxColor)
-                    drawLine(cache.BoxLines.Bottom, bl, br, espSettings.BoxColor)
-                    drawLine(cache.BoxLines.Left, tl, bl, espSettings.BoxColor)
-                    drawLine(cache.BoxLines.Right, tr, br, espSettings.BoxColor)
+                    if espSettings.BoxType == "Corner" then
+                        local len = math.min(width, height) / 3
+                        drawLine(cache.BoxLines.TL_H, tl, tl + Vector2.new(len, 0), espSettings.BoxColor)
+                        drawLine(cache.BoxLines.TL_V, tl, tl + Vector2.new(0, len), espSettings.BoxColor)
+                        drawLine(cache.BoxLines.TR_H, tr - Vector2.new(len, 0), tr, espSettings.BoxColor)
+                        drawLine(cache.BoxLines.TR_V, tr, tr + Vector2.new(0, len), espSettings.BoxColor)
+                        drawLine(cache.BoxLines.BL_H, bl, bl + Vector2.new(len, 0), espSettings.BoxColor)
+                        drawLine(cache.BoxLines.BL_V, bl - Vector2.new(0, len), bl, espSettings.BoxColor)
+                        drawLine(cache.BoxLines.BR_H, br - Vector2.new(len, 0), br, espSettings.BoxColor)
+                        drawLine(cache.BoxLines.BR_V, br - Vector2.new(0, len), br, espSettings.BoxColor)
+                    else
+                        drawLine(cache.BoxLines.TL_H, tl, tr, espSettings.BoxColor)
+                        drawLine(cache.BoxLines.BL_H, bl, br, espSettings.BoxColor)
+                        drawLine(cache.BoxLines.TL_V, tl, bl, espSettings.BoxColor)
+                        drawLine(cache.BoxLines.TR_V, tr, br, espSettings.BoxColor)
+                        cache.BoxLines.TR_H.Visible = false
+                        cache.BoxLines.BL_V.Visible = false
+                        cache.BoxLines.BR_H.Visible = false
+                        cache.BoxLines.BR_V.Visible = false
+                    end
                     
                     local strokeColor = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
                     for _, l in pairs(cache.BoxLines) do
@@ -937,10 +955,27 @@ RunService.Heartbeat:Connect(function()
             local tr = Vector2.new(topPos.X + width/2, topPos.Y)
             local bl = Vector2.new(topPos.X - width/2, botPos.Y)
             local br = Vector2.new(topPos.X + width/2, botPos.Y)
-            drawLine(c.BoxLines.Top,    tl, tr, teamEspSettings.BoxColor)
-            drawLine(c.BoxLines.Bottom, bl, br, teamEspSettings.BoxColor)
-            drawLine(c.BoxLines.Left,   tl, bl, teamEspSettings.BoxColor)
-            drawLine(c.BoxLines.Right,  tr, br, teamEspSettings.BoxColor)
+            
+            if teamEspSettings.BoxType == "Corner" then
+                local len = math.min(width, height) / 3
+                drawLine(c.BoxLines.TL_H, tl, tl + Vector2.new(len, 0), teamEspSettings.BoxColor)
+                drawLine(c.BoxLines.TL_V, tl, tl + Vector2.new(0, len), teamEspSettings.BoxColor)
+                drawLine(c.BoxLines.TR_H, tr - Vector2.new(len, 0), tr, teamEspSettings.BoxColor)
+                drawLine(c.BoxLines.TR_V, tr, tr + Vector2.new(0, len), teamEspSettings.BoxColor)
+                drawLine(c.BoxLines.BL_H, bl, bl + Vector2.new(len, 0), teamEspSettings.BoxColor)
+                drawLine(c.BoxLines.BL_V, bl - Vector2.new(0, len), bl, teamEspSettings.BoxColor)
+                drawLine(c.BoxLines.BR_H, br - Vector2.new(len, 0), br, teamEspSettings.BoxColor)
+                drawLine(c.BoxLines.BR_V, br - Vector2.new(0, len), br, teamEspSettings.BoxColor)
+            else
+                drawLine(c.BoxLines.TL_H, tl, tr, teamEspSettings.BoxColor)
+                drawLine(c.BoxLines.BL_H, bl, br, teamEspSettings.BoxColor)
+                drawLine(c.BoxLines.TL_V, tl, bl, teamEspSettings.BoxColor)
+                drawLine(c.BoxLines.TR_V, tr, br, teamEspSettings.BoxColor)
+                c.BoxLines.TR_H.Visible = false
+                c.BoxLines.BL_V.Visible = false
+                c.BoxLines.BR_H.Visible = false
+                c.BoxLines.BR_V.Visible = false
+            end
             c.BoxFill.BackgroundColor3 = teamEspSettings.BoxColor
             c.BoxFill.Size = UDim2.new(0, width, 0, height)
             c.BoxFill.Position = UDim2.new(0, topPos.X - width/2, 0, topPos.Y)
@@ -1472,7 +1507,7 @@ task.spawn(function()
         local reloadCD = item._reload_cooldown or 0
         if (tick() < reloadCD) or (type(ammo) == "number" and ammo <= 0) then return end
         
-        local now = tick()
+                local now = tick()
         local delaySec = getgenv().TriggerBotSettings.Delay / 1000
         if now - lastShot < delaySec then return end
         
@@ -1495,6 +1530,15 @@ local ESPDep = ESPSection:AddDependencyBox()
 
 ESPDep:AddToggle("ESP_Box", { Text = "Box", Default = false, Callback = function(v) espSettings.Box = v end })
     :AddColorPicker("ESP_Box_Color", { Default = espSettings.BoxColor, Callback = function(v) espSettings.BoxColor = v end })
+
+ESPDep:AddDropdown("ESP_Box_Type", {
+    Text = "Box Type",
+    Values = {"Full", "Corner"},
+    Default = 1,
+    Multi = false,
+    Callback = function(v) espSettings.BoxType = v end
+})
+
 
 ESPDep:AddToggle("ESP_BoxFill", { Text = "Box fill", Default = false, Callback = function(v) espSettings.BoxFill = v end })
     :AddColorPicker("ESP_BoxFill_Color", { Default = espSettings.BoxFillColor, Callback = function(v) espSettings.BoxFillColor = v end })
@@ -1544,6 +1588,14 @@ TeamESPDep:AddToggle("TeamESP_Box", { Text = "Box", Default = true,
     Callback = function(v) teamEspSettings.Box = v end })
     :AddColorPicker("TeamESP_Box_Color", { Default = teamEspSettings.BoxColor,
         Callback = function(v) teamEspSettings.BoxColor = v end })
+
+TeamESPDep:AddDropdown("TeamESP_Box_Type", {
+    Text = "Box Type",
+    Values = {"Full", "Corner"},
+    Default = 1,
+    Multi = false,
+    Callback = function(v) teamEspSettings.BoxType = v end
+})
 
 TeamESPDep:AddToggle("TeamESP_Name", { Text = "Name", Default = true,
     Callback = function(v) teamEspSettings.Name = v end })
