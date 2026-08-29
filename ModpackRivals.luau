@@ -614,15 +614,34 @@ RunService.Heartbeat:Connect(function()
         local rootPart = char and char:FindFirstChild("HumanoidRootPart")
         local head = char and (char:FindFirstChild("Head") or char:FindFirstChild("HitboxHead") or rootPart)
 
-        if not char or not hum or hum.Health <= 0 or not rootPart or not head or not checkTeam(p, true) then
+        local myTeamID = lp:GetAttribute("TeamID")
+        local theirTeamID = p:GetAttribute("TeamID")
+        local isTeam = (myTeamID ~= nil and theirTeamID ~= nil and myTeamID == theirTeamID)
+
+        if SpectateController then
+            local duel = SpectateController.CurrentDuelSubject
+            local localDueler = duel and duel:GetDueler(lp)
+            local localTeam = localDueler and localDueler:Get("TeamID") or nil
+            if localTeam and duel and duel.Duelers then
+                for _, dueler in next, duel.Duelers do
+                    if dueler.Player == p then
+                        local team = dueler:Get("TeamID")
+                        isTeam = (team == localTeam)
+                        break
+                    end
+                end
+            end
+        end
+
+        -- 味方はespSettings.TeamESPが無効なら表示しない
+        -- 敵はcheckTeam(p, true)が通らなければ表示しない
+        if isTeam and not espSettings.TeamESP then
             if espCache[p] then
                 local c = espCache[p]
-                c.NameTag.Visible = false
-                c.DistanceTag.Visible = false
+                c.NameTag.Visible = false; c.DistanceTag.Visible = false
                 if c.BoxFill then c.BoxFill.Visible = false end
                 for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
-                c.Tracer.Visible = false
-                c.WeaponBillboard.Enabled = false
+                c.Tracer.Visible = false; c.WeaponBillboard.Enabled = false
                 if c.AmmoText then c.AmmoText.Visible = false end
                 if c.RankIcon then c.RankIcon.Visible = false end
                 if c.HPBarBg then c.HPBarBg.Visible = false end
@@ -630,11 +649,20 @@ RunService.Heartbeat:Connect(function()
             end
             continue
         end
-
-        createPlayerEsp(p)
-        local cache = espCache[p]
-        local isTeam = checkTeam(p, false)
-        if isTeam and not espSettings.TeamESP then continue end
+        if not isTeam and not checkTeam(p, true) then
+            if espCache[p] then
+                local c = espCache[p]
+                c.NameTag.Visible = false; c.DistanceTag.Visible = false
+                if c.BoxFill then c.BoxFill.Visible = false end
+                for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
+                c.Tracer.Visible = false; c.WeaponBillboard.Enabled = false
+                if c.AmmoText then c.AmmoText.Visible = false end
+                if c.RankIcon then c.RankIcon.Visible = false end
+                if c.HPBarBg then c.HPBarBg.Visible = false end
+                for _, b in pairs(c.Bones) do b.Visible = false end
+            end
+            continue
+        end
 
         local rootPos, onScreen = cam:WorldToViewportPoint(rootPart.Position)
         local distance = math.floor((cam.CFrame.Position - rootPart.Position).Magnitude)
