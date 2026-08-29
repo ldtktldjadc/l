@@ -1409,6 +1409,49 @@ ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callba
 
 ESPDep:SetupDependencies({ { ESPToggle, true } })
 
+local TeamESPSection = Tabs.Visuals:AddRightGroupbox("Team ESP")
+local TeamESPToggle = TeamESPSection:AddToggle("TeamESP_Enabled", {
+    Text = "Enabled", Default = false,
+    Callback = function(value) espSettings.TeamESP = value end
+})
+
+local TeamESPDep = TeamESPSection:AddDependencyBox()
+
+TeamESPDep:AddToggle("TeamESP_Box", { Text = "Box", Default = false, Callback = function(v) espSettings.TeamESPBox = v end })
+    :AddColorPicker("TeamESP_Box_Color", { Default = espSettings.TeamESPBoxColor or Color3.fromRGB(0,255,0), Callback = function(v) espSettings.TeamESPBoxColor = v end })
+
+TeamESPDep:AddToggle("TeamESP_BoxFill", { Text = "Box fill", Default = false, Callback = function(v) espSettings.TeamESPBoxFill = v end })
+    :AddColorPicker("TeamESP_BoxFill_Color", { Default = espSettings.TeamESPBoxFillColor or Color3.fromRGB(0,255,0), Callback = function(v) espSettings.TeamESPBoxFillColor = v end })
+
+TeamESPDep:AddToggle("TeamESP_Distance", { Text = "DistanceEsp", Default = false, Callback = function(v) espSettings.TeamESPDistance = v end })
+    :AddColorPicker("TeamESP_Distance_Color", { Default = espSettings.TeamESPDistanceColor or Color3.fromRGB(0,255,0), Callback = function(v) espSettings.TeamESPDistanceColor = v end })
+
+TeamESPDep:AddToggle("TeamESP_Weapon", { Text = "WeaponESP", Default = false, Callback = function(v) espSettings.TeamESPWeapon = v end })
+    :AddColorPicker("TeamESP_Weapon_Color", { Default = espSettings.TeamESPWeaponColor or Color3.fromRGB(0,255,0), Callback = function(v) espSettings.TeamESPWeaponColor = v end })
+
+TeamESPDep:AddToggle("TeamESP_Ammo", { Text = "AmmoESP", Default = false, Callback = function(v) espSettings.TeamESPAmmo = v end })
+    :AddColorPicker("TeamESP_Ammo_Color", { Default = espSettings.TeamESPAmmoColor or Color3.fromRGB(0,255,0), Callback = function(v) espSettings.TeamESPAmmoColor = v end })
+
+TeamESPDep:AddToggle("TeamESP_Rank", { Text = "RankESP", Default = false, Callback = function(v) espSettings.TeamESPRank = v end })
+
+TeamESPDep:AddToggle("TeamESP_Katana", { Text = "KatanaESP", Default = false, Callback = function(v) espSettings.TeamESPKatana = v end })
+    :AddColorPicker("TeamESP_Katana_Color", { Default = espSettings.TeamESPKatanaColor or Color3.fromRGB(0,255,0), Callback = function(v) espSettings.TeamESPKatanaColor = v end })
+
+TeamESPDep:AddToggle("TeamESP_Bone", { Text = "BoneESP", Default = false, Callback = function(v) espSettings.TeamESPBone = v end })
+    :AddColorPicker("TeamESP_Bone_Color", { Default = espSettings.TeamESPBoneColor or Color3.fromRGB(0,255,0), Callback = function(v) espSettings.TeamESPBoneColor = v end })
+
+TeamESPDep:AddToggle("TeamESP_Tracer", { Text = "TracerESP", Default = false, Callback = function(v) espSettings.TeamESPTracer = v end })
+    :AddColorPicker("TeamESP_Tracer_Color", { Default = espSettings.TeamESPTracerColor or Color3.fromRGB(0,255,0), Callback = function(v) espSettings.TeamESPTracerColor = v end })
+
+TeamESPDep:AddToggle("TeamESP_Name", { Text = "NameESP", Default = false, Callback = function(v) espSettings.TeamESPName = v end })
+    :AddColorPicker("TeamESP_Name_Color", { Default = espSettings.TeamESPNameColor or Color3.fromRGB(0,255,0), Callback = function(v) espSettings.TeamESPNameColor = v end })
+    :AddColorPicker("TeamESP_TextStroke_Color", { Title = "Text Stroke", Default = espSettings.TeamESPTextStrokeColor or Color3.fromRGB(0,0,0), Callback = function(v) espSettings.TeamESPTextStrokeColor = v end })
+
+TeamESPDep:AddToggle("TeamESP_HP", { Text = "HP Bar", Default = false, Callback = function(v) espSettings.TeamESPHP = v end })
+    :AddColorPicker("TeamESP_HP_Color", { Default = espSettings.TeamESPHPColor or Color3.fromRGB(50,255,50), Callback = function(v) espSettings.TeamESPHPColor = v end })
+
+TeamESPDep:SetupDependencies({ { TeamESPToggle, true } })
+
 local CrosshairSection = Tabs.Visuals:AddRightGroupbox("Custom Crosshair")
 
 local chEnabled = false
