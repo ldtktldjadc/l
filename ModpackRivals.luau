@@ -402,6 +402,19 @@ local espSettings = {
     Name = false, NameColor = Color3.fromRGB(255, 255, 255),
     HP = false, HPColor = Color3.fromRGB(50, 255, 50),
     TextStrokeColor = Color3.fromRGB(0, 0, 0),
+    TeamESP = false,
+    TeamESPBox = false, TeamESPBoxColor = Color3.fromRGB(0, 255, 0),
+    TeamESPBoxFill = false, TeamESPBoxFillColor = Color3.fromRGB(0, 255, 0),
+    TeamESPDistance = false, TeamESPDistanceColor = Color3.fromRGB(0, 255, 0),
+    TeamESPWeapon = false, TeamESPWeaponColor = Color3.fromRGB(0, 255, 0),
+    TeamESPAmmo = false, TeamESPAmmoColor = Color3.fromRGB(0, 255, 0),
+    TeamESPRank = false,
+    TeamESPKatana = false, TeamESPKatanaColor = Color3.fromRGB(0, 255, 0),
+    TeamESPBone = false, TeamESPBoneColor = Color3.fromRGB(0, 255, 0),
+    TeamESPTracer = false, TeamESPTracerColor = Color3.fromRGB(0, 255, 0),
+    TeamESPName = false, TeamESPNameColor = Color3.fromRGB(0, 255, 0),
+    TeamESPHP = false, TeamESPHPColor = Color3.fromRGB(50, 255, 50),
+    TeamESPTextStrokeColor = Color3.fromRGB(0, 0, 0)
 }
 getgenv().ESPSettings_TeamCheck = false
 
@@ -620,11 +633,13 @@ RunService.Heartbeat:Connect(function()
 
         createPlayerEsp(p)
         local cache = espCache[p]
+        local isTeam = checkTeam(p, false)
+        if isTeam and not espSettings.TeamESP then continue end
 
         local rootPos, onScreen = cam:WorldToViewportPoint(rootPart.Position)
         local distance = math.floor((cam.CFrame.Position - rootPart.Position).Magnitude)
 
-        if espSettings.Weapon or espSettings.Ammo then
+        if (isTeam and (espSettings.TeamESPWeapon or espSettings.TeamESPAmmo)) or (not isTeam and (espSettings.Weapon or espSettings.Ammo)) then
             cache.WeaponBillboard.Adornee = rootPart
             cache.WeaponBillboard.Enabled = true
 
@@ -633,9 +648,10 @@ RunService.Heartbeat:Connect(function()
                 fighter = FighterController:GetFighter(p)
             end
 
-            if espSettings.Weapon then
-                cache.WeaponText.TextColor3 = espSettings.WeaponColor
-                cache.WeaponText.UIStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
+            local wSettings = isTeam and {w=espSettings.TeamESPWeapon, c=espSettings.TeamESPWeaponColor} or {w=espSettings.Weapon, c=espSettings.WeaponColor}
+            if wSettings.w then
+                cache.WeaponText.TextColor3 = wSettings.c
+                cache.WeaponText.UIStroke.Color = isTeam and espSettings.TeamESPTextStrokeColor or (espSettings.TextStrokeColor or Color3.fromRGB(0,0,0))
                 local weaponName = "None"
                 if fighter and fighter.EquippedItem then
                     weaponName = fighter.EquippedItem.Name
@@ -646,9 +662,10 @@ RunService.Heartbeat:Connect(function()
                 cache.WeaponText.Visible = false
             end
 
-            if espSettings.Ammo then
-                cache.AmmoText.TextColor3 = espSettings.AmmoColor
-                cache.AmmoText.UIStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
+            local aSettings = isTeam and {a=espSettings.TeamESPAmmo, c=espSettings.TeamESPAmmoColor} or {a=espSettings.Ammo, c=espSettings.AmmoColor}
+            if aSettings.a then
+                cache.AmmoText.TextColor3 = aSettings.c
+                cache.AmmoText.UIStroke.Color = isTeam and espSettings.TeamESPTextStrokeColor or (espSettings.TextStrokeColor or Color3.fromRGB(0,0,0))
                 local ammoStr = ""
                 if fighter and fighter.EquippedItem then
                     local ammo = fighter.EquippedItem:Get("Ammo")
@@ -680,21 +697,20 @@ RunService.Heartbeat:Connect(function()
             local width = height / 1.7
             local topPos = Vector2.new(rootPos.X, headScreen.Y)
             local botPos = Vector2.new(rootPos.X, feetScreen.Y)
-            local topVis = true
-            local botVis = true
             
             local currentTopY = topPos.Y - 5
 
-            if espSettings.Name then
+            local nSettings = isTeam and {n=espSettings.TeamESPName, c=espSettings.TeamESPNameColor, kt=espSettings.TeamESPKatana, kc=espSettings.TeamESPKatanaColor} or {n=espSettings.Name, c=espSettings.NameColor, kt=espSettings.Katana, kc=espSettings.KatanaColor}
+            if nSettings.n then
                 local text = p.Name
-                local color = espSettings.NameColor
-                if espSettings.Katana and isPlayerParrying(p) then
+                local color = nSettings.c
+                if nSettings.kt and isPlayerParrying(p) then
                     text = text .. " [Parrying]"
-                    color = espSettings.KatanaColor
+                    color = nSettings.kc
                 end
                 cache.NameTag.Text = text
                 cache.NameTag.TextColor3 = color
-                cache.NameTag.UIStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
+                cache.NameTag.UIStroke.Color = isTeam and espSettings.TeamESPTextStrokeColor or (espSettings.TextStrokeColor or Color3.fromRGB(0,0,0))
                 cache.NameTag.Position = UDim2.new(0, topPos.X, 0, currentTopY)
                 cache.NameTag.Visible = true
                 currentTopY = currentTopY - 10
@@ -707,7 +723,8 @@ RunService.Heartbeat:Connect(function()
                 currentTopY = currentTopY - 10
             end
 
-            if espSettings.Rank and SeasonLibrary then
+            local rSettings = isTeam and espSettings.TeamESPRank or espSettings.Rank
+            if rSettings and SeasonLibrary then
                 local eloStat = p:FindFirstChild("CustomLeaderstats") and p.CustomLeaderstats:FindFirstChild("Current ELO")
                 if eloStat and eloStat.Value then
                     local elo = eloStat.Value
@@ -730,81 +747,76 @@ RunService.Heartbeat:Connect(function()
                 cache.RankIcon.Visible = false
             end
 
-            if topVis and botVis then
-                if espSettings.Box then
-                    local tl = Vector2.new(topPos.X - (width/2), topPos.Y)
-                    local tr = Vector2.new(topPos.X + (width/2), topPos.Y)
-                    local bl = Vector2.new(topPos.X - (width/2), botPos.Y)
-                    local br = Vector2.new(topPos.X + (width/2), botPos.Y)
+            local bSettings = isTeam and {b=espSettings.TeamESPBox, c=espSettings.TeamESPBoxColor, bf=espSettings.TeamESPBoxFill, bfc=espSettings.TeamESPBoxFillColor} or {b=espSettings.Box, c=espSettings.BoxColor, bf=espSettings.BoxFill, bfc=espSettings.BoxFillColor}
+            if bSettings.b then
+                local tl = Vector2.new(topPos.X - (width/2), topPos.Y)
+                local tr = Vector2.new(topPos.X + (width/2), topPos.Y)
+                local bl = Vector2.new(topPos.X - (width/2), botPos.Y)
+                local br = Vector2.new(topPos.X + (width/2), botPos.Y)
 
-                    drawLine(cache.BoxLines.Top, tl, tr, espSettings.BoxColor)
-                    drawLine(cache.BoxLines.Bottom, bl, br, espSettings.BoxColor)
-                    drawLine(cache.BoxLines.Left, tl, bl, espSettings.BoxColor)
-                    drawLine(cache.BoxLines.Right, tr, br, espSettings.BoxColor)
-                    
-                    local strokeColor = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
-                    for _, l in pairs(cache.BoxLines) do
-                        local st = l:FindFirstChildOfClass("UIStroke")
-                        if st then st.Color = strokeColor end
-                    end
-
-                    if espSettings.BoxFill then
-                        cache.BoxFill.BackgroundColor3 = espSettings.BoxFillColor
-                        cache.BoxFill.Size = UDim2.new(0, width, 0, height)
-                        cache.BoxFill.Position = UDim2.new(0, topPos.X - (width/2), 0, topPos.Y)
-                        cache.BoxFill.Visible = true
-                    else
-                        cache.BoxFill.Visible = false
-                    end
-                else
-                    for _, line in pairs(cache.BoxLines) do line.Visible = false end
-                    if cache.BoxFill then cache.BoxFill.Visible = false end
-                end
+                local boxColor = bSettings.c
+                drawLine(cache.BoxLines.Top, tl, tr, boxColor)
+                drawLine(cache.BoxLines.Bottom, bl, br, boxColor)
+                drawLine(cache.BoxLines.Left, tl, bl, boxColor)
+                drawLine(cache.BoxLines.Right, tr, br, boxColor)
                 
-                if espSettings.HP and cache.HPBarBg then
-                    local hpW = 2 -- Fixed thin width to 2px
-                    cache.HPBarBg.Size = UDim2.new(0, hpW, 0, height)
-                    cache.HPBarBg.Position = UDim2.new(0, topPos.X - (width / 2) - hpW - 4, 0, topPos.Y)
-                    local hpPct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
-                    cache.HPBarFill.Size = UDim2.new(1, 0, hpPct, 0)
-                    cache.HPBarFill.Position = UDim2.new(0, 0, 1 - hpPct, 0)
-                    cache.HPBarFill.BackgroundColor3 = Color3.new(1 - hpPct, hpPct, 0) -- 邱・0,1,0)縺九ｉ襍､(1,0,0)縺ｸ縺ｮ繧ｰ繝ｩ繝・・繧ｷ繝ｧ繝ｳ
-                    cache.HPBarBg.BorderColor3 = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
-                    cache.HPBarBg.Visible = true
-                    cache.HPBarFill.Visible = true
-                elseif cache.HPBarBg then
-                    cache.HPBarBg.Visible = false
+                local strokeColor = isTeam and espSettings.TeamESPTextStrokeColor or (espSettings.TextStrokeColor or Color3.fromRGB(0,0,0))
+                for _, l in pairs(cache.BoxLines) do
+                    local st = l:FindFirstChildOfClass("UIStroke")
+                    if st then st.Color = strokeColor end
                 end
 
-                if espSettings.Distance then
-                    local hpPctInt = math.floor((hum.Health / hum.MaxHealth) * 100)
-                    cache.DistanceTag.Text = string.format("[ %dm ] [ %d%% ]", distance, hpPctInt)
-                    cache.DistanceTag.TextColor3 = espSettings.DistanceColor
-                    cache.DistanceTag.UIStroke.Color = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
-                    cache.DistanceTag.Position = UDim2.new(0, topPos.X, 0, botPos.Y + 2)
-                    cache.DistanceTag.Visible = true
-                    
-                    if cache.WeaponBillboard.Enabled then
-                        cache.WeaponBillboard.StudsOffset = Vector3.new(0, -4.5 - ((botPos.Y - topPos.Y) / 100), 0) -- Move Billboard further down dynamically to prevent overlap
-                    end
+                if bSettings.bf then
+                    cache.BoxFill.BackgroundColor3 = bSettings.bfc
+                    cache.BoxFill.Size = UDim2.new(0, width, 0, height)
+                    cache.BoxFill.Position = UDim2.new(0, topPos.X - (width/2), 0, topPos.Y)
+                    cache.BoxFill.Visible = true
                 else
-                    cache.DistanceTag.Visible = false
-                end
-
-                if espSettings.Tracer then
-                    local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
-                    drawLine(cache.Tracer, center, botPos, espSettings.TracerColor)
-                else
-                    cache.Tracer.Visible = false
+                    cache.BoxFill.Visible = false
                 end
             else
+                for _, line in pairs(cache.BoxLines) do line.Visible = false end
                 if cache.BoxFill then cache.BoxFill.Visible = false end
-                for _, l in pairs(cache.BoxLines or {}) do l.Visible = false end
+            end
+            
+            local hpSettings = isTeam and espSettings.TeamESPHP or espSettings.HP
+            if hpSettings and cache.HPBarBg then
+                local hpW = 2 -- Fixed thin width to 2px
+                cache.HPBarBg.Size = UDim2.new(0, hpW, 0, height)
+                cache.HPBarBg.Position = UDim2.new(0, topPos.X - (width / 2) - hpW - 4, 0, topPos.Y)
+                local hpPct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+                cache.HPBarFill.Size = UDim2.new(1, 0, hpPct, 0)
+                cache.HPBarFill.Position = UDim2.new(0, 0, 1 - hpPct, 0)
+                cache.HPBarFill.BackgroundColor3 = Color3.new(1 - hpPct, hpPct, 0)
+                cache.HPBarBg.BorderColor3 = isTeam and espSettings.TeamESPTextStrokeColor or (espSettings.TextStrokeColor or Color3.fromRGB(0,0,0))
+                cache.HPBarBg.Visible = true
+                cache.HPBarFill.Visible = true
+            elseif cache.HPBarBg then
+                cache.HPBarBg.Visible = false
+            end
+
+            local dSettings = isTeam and {d=espSettings.TeamESPDistance, c=espSettings.TeamESPDistanceColor} or {d=espSettings.Distance, c=espSettings.DistanceColor}
+            if dSettings.d then
+                local hpPctInt = math.floor((hum.Health / hum.MaxHealth) * 100)
+                cache.DistanceTag.Text = string.format("[ %dm ] [ %d%% ]", distance, hpPctInt)
+                cache.DistanceTag.TextColor3 = dSettings.c
+                cache.DistanceTag.UIStroke.Color = isTeam and espSettings.TeamESPTextStrokeColor or (espSettings.TextStrokeColor or Color3.fromRGB(0,0,0))
+                cache.DistanceTag.Position = UDim2.new(0, topPos.X, 0, botPos.Y + 2)
+                cache.DistanceTag.Visible = true
+                
+                if cache.WeaponBillboard.Enabled then
+                    cache.WeaponBillboard.StudsOffset = Vector3.new(0, -4.5 - ((botPos.Y - topPos.Y) / 100), 0)
+                end
+            else
                 cache.DistanceTag.Visible = false
+            end
+
+            local tSettings = isTeam and {t=espSettings.TeamESPTracer, c=espSettings.TeamESPTracerColor} or {t=espSettings.Tracer, c=espSettings.TracerColor}
+            if tSettings.t then
+                local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
+                drawLine(cache.Tracer, center, botPos, tSettings.c)
+            else
                 cache.Tracer.Visible = false
-                cache.AmmoText.Visible = false
-                cache.RankIcon.Visible = false
-                if cache.HPBarBg then cache.HPBarBg.Visible = false end
             end
 
             if espSettings.Bone then
