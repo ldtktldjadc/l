@@ -3033,6 +3033,27 @@ local dmgNotifCooldown = 0.3
 local _dmgConnections = {}
 local _dmgLastTime = {}
 
+local _lastHitmarkerTime = 0
+local _hitmarkerHooked = false
+
+local function hookHitmarker()
+    if _hitmarkerHooked then return end
+    pcall(function()
+        local cvmModule = lp.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem:FindFirstChild("ClientViewModel")
+        if cvmModule then
+            local cvm = require(cvmModule)
+            if cvm and cvm.PlayHitmarkerSound then
+                local oldPlay = cvm.PlayHitmarkerSound
+                cvm.PlayHitmarkerSound = function(self, ...)
+                    _lastHitmarkerTime = tick()
+                    return oldPlay(self, ...)
+                end
+                _hitmarkerHooked = true
+            end
+        end
+    end)
+end
+
 local function attachDmgNotif(p)
     if _dmgConnections[p] then
         pcall(function() _dmgConnections[p]:Disconnect() end)
@@ -3045,9 +3066,17 @@ local function attachDmgNotif(p)
     local prevHP = hum.Health
     _dmgConnections[p] = hum.HealthChanged:Connect(function(newHP)
         if not dmgNotifEnabled then return end
+        
+        -- フックがまだなら試行
+        if not _hitmarkerHooked then hookHitmarker() end
+        
         local dmg = prevHP - newHP
         prevHP = newHP
         if dmg < dmgNotifMin then return end
+        
+        -- 自分がダメージを与えた（直近0.2秒以内にHitmarkerが鳴った）か判定
+        if tick() - _lastHitmarkerTime > 0.2 then return end
+
         local now = tick()
         if _dmgLastTime[p] and now - _dmgLastTime[p] < dmgNotifCooldown then return end
         _dmgLastTime[p] = now
