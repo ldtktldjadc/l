@@ -346,7 +346,7 @@ local espCache = {}
 local espSettings = {
     MasterEnabled = false,
     Box = false, BoxColor = Color3.fromRGB(255, 255, 255), BoxType = "Full",
-    BoxFill = false, BoxFillColor = Color3.fromRGB(255, 255, 255),
+    BoxFill = false, BoxFillColor = Color3.fromRGB(255, 255, 255), BoxFillImage = false, BoxFillImageID = "",
     Distance = false, DistanceColor = Color3.fromRGB(255, 255, 255),
     Weapon = false, WeaponColor = Color3.fromRGB(255, 255, 255),
     Ammo = false, AmmoColor = Color3.fromRGB(255, 255, 255),
@@ -458,7 +458,7 @@ local function createPlayerEsp(p)
             BL_H = createLine(), BL_V = createLine(),
             BR_H = createLine(), BR_V = createLine()
         },
-        BoxFill = Instance.new("Frame"),
+        BoxFill = Instance.new("ImageLabel"),
         Tracer = createLine(),
         WeaponBillboard = billboard,
         WeaponText = weaponText,
@@ -532,7 +532,7 @@ local function createTeamPlayerEsp(p)
         BR_H = createLine(), BR_V = createLine()
     }
 
-    c.BoxFill = Instance.new("Frame")
+    c.BoxFill = Instance.new("ImageLabel")
     c.BoxFill.BackgroundTransparency = 0.7
     c.BoxFill.BorderSizePixel = 0
     c.BoxFill.Visible = false
@@ -781,7 +781,17 @@ RunService.Heartbeat:Connect(function()
                     end
 
                     if espSettings.BoxFill then
-                        cache.BoxFill.BackgroundColor3 = espSettings.BoxFillColor
+                        if espSettings.BoxFillImage and espSettings.BoxFillImageID ~= "" then
+                            cache.BoxFill.Image = "rbxassetid://" .. espSettings.BoxFillImageID
+                            cache.BoxFill.ImageColor3 = Color3.new(1, 1, 1) -- Keep original image color
+                            cache.BoxFill.BackgroundColor3 = espSettings.BoxFillColor -- Fallback/Tint
+                            cache.BoxFill.BackgroundTransparency = 1 -- Hide frame bg if using image
+                            cache.BoxFill.ImageTransparency = 0.5
+                        else
+                            cache.BoxFill.Image = ""
+                            cache.BoxFill.BackgroundColor3 = espSettings.BoxFillColor
+                            cache.BoxFill.BackgroundTransparency = 0.5
+                        end
                         cache.BoxFill.Size = UDim2.new(0, width, 0, height)
                         cache.BoxFill.Position = UDim2.new(0, topPos.X - (width/2), 0, topPos.Y)
                         cache.BoxFill.Visible = true
@@ -1542,6 +1552,17 @@ ESPDep:AddDropdown("ESP_Box_Type", {
 
 ESPDep:AddToggle("ESP_BoxFill", { Text = "Box fill", Default = false, Callback = function(v) espSettings.BoxFill = v end })
     :AddColorPicker("ESP_BoxFill_Color", { Default = espSettings.BoxFillColor, Callback = function(v) espSettings.BoxFillColor = v end })
+
+ESPDep:AddToggle("ESP_BoxFillImage", { Text = "Use Image Fill", Default = false, Callback = function(v) espSettings.BoxFillImage = v end })
+ESPDep:AddInput("ESP_BoxFillImageID", {
+    Default = "",
+    Numeric = true,
+    Finished = true,
+    Text = "Image ID",
+    Tooltip = "Put the Roblox Decal/Image ID here (Numbers only)",
+    Placeholder = "e.g. 123456789",
+    Callback = function(v) espSettings.BoxFillImageID = v end
+})
 
 ESPDep:AddToggle("ESP_Distance", { Text = "DistanceEsp", Default = false, Callback = function(v) espSettings.Distance = v end })
     :AddColorPicker("ESP_Distance_Color", { Default = espSettings.DistanceColor, Callback = function(v) espSettings.DistanceColor = v end })
