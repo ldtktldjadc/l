@@ -1556,12 +1556,18 @@ ESPDep:AddToggle("ESP_BoxFill", { Text = "Box fill", Default = false, Callback =
 ESPDep:AddToggle("ESP_BoxFillImage", { Text = "Use Image Fill", Default = false, Callback = function(v) espSettings.BoxFillImage = v end })
 ESPDep:AddInput("ESP_BoxFillImageID", {
     Default = "",
-    Numeric = true,
-    Finished = true,
     Text = "Image ID",
     Tooltip = "Put the Roblox Decal/Image ID here (Numbers only)",
     Placeholder = "e.g. 123456789",
-    Callback = function(v) espSettings.BoxFillImageID = v end
+    Callback = function(v)
+        if type(v) == "string" then
+            espSettings.BoxFillImageID = v:gsub("%D", "")
+        elseif type(v) == "number" then
+            espSettings.BoxFillImageID = tostring(v)
+        else
+            espSettings.BoxFillImageID = ""
+        end
+    end
 })
 
 ESPDep:AddToggle("ESP_Distance", { Text = "DistanceEsp", Default = false, Callback = function(v) espSettings.Distance = v end })
