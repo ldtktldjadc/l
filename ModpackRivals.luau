@@ -3025,7 +3025,86 @@ DeviceSpoofDropdownObj = DeviceSpoofDep:AddDropdown("DeviceSpoofDropdown", {
 })
 DeviceSpoofDep:SetupDependencies({ { DeviceSpooferToggle, true } })
 
+-- ========== DAMAGE NOTIFICATION ==========
+do
+local dmgNotifEnabled = false
+local dmgNotifMin = 1
+local dmgNotifCooldown = 0.3
+local _dmgConnections = {}
+local _dmgLastTime = {}
+
+local function attachDmgNotif(p)
+    if _dmgConnections[p] then
+        pcall(function() _dmgConnections[p]:Disconnect() end)
+        _dmgConnections[p] = nil
+    end
+    if not p.Character then return end
+    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+
+    local prevHP = hum.Health
+    _dmgConnections[p] = hum.HealthChanged:Connect(function(newHP)
+        if not dmgNotifEnabled then return end
+        local dmg = prevHP - newHP
+        prevHP = newHP
+        if dmg < dmgNotifMin then return end
+        local now = tick()
+        if _dmgLastTime[p] and now - _dmgLastTime[p] < dmgNotifCooldown then return end
+        _dmgLastTime[p] = now
+        local dmgStr = math.floor(dmg)
+        local hpLeft = math.max(0, math.floor(newHP))
+        Library:Notify(
+            "Hit " .. p.Name .. " for " .. dmgStr .. " damage! (" .. hpLeft .. " HP left)",
+            3
+        )
+    end)
+end
+
+local function refreshDmgConnections()
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= lp then
+            attachDmgNotif(p)
+            p.CharacterAdded:Connect(function()
+                task.wait(0.5)
+                attachDmgNotif(p)
+            end)
+        end
+    end
+end
+
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        attachDmgNotif(p)
+    end)
+end)
+Players.PlayerRemoving:Connect(function(p)
+    if _dmgConnections[p] then
+        pcall(function() _dmgConnections[p]:Disconnect() end)
+        _dmgConnections[p] = nil
+    end
+end)
+
+local DmgNotifSection = Tabs.Misc:AddLeftGroupbox("Damage Notification")
+DmgNotifSection:AddToggle("DmgNotif_Enabled", {
+    Text = "Enabled", Default = false,
+    Callback = function(v)
+        dmgNotifEnabled = v
+        if v then refreshDmgConnections() end
+    end,
+})
+DmgNotifSection:AddSlider("DmgNotif_Min", {
+    Text = "Min Damage", Default = 1, Min = 1, Max = 100, Rounding = 0,
+    Callback = function(v) dmgNotifMin = v end,
+})
+DmgNotifSection:AddSlider("DmgNotif_Cooldown", {
+    Text = "Cooldown (s)", Default = 0.3, Min = 0, Max = 3, Rounding = 1,
+    Callback = function(v) dmgNotifCooldown = v end,
+})
+end -- do DamageNotification
+
 -- ========== ANTI BAN ==========
+
 local AntiBanSection = Tabs.Misc:AddRightGroupbox("Anti Ban")
 
 local StaffDetectorEnabled = false
