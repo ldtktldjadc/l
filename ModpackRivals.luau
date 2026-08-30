@@ -1792,35 +1792,39 @@ local FOVSection = Tabs.Visuals:AddLeftGroupbox("Aimbot FOV")
 
 getgenv().AimbotFOV_Show = false
 getgenv().AimbotFOV_Color = Color3.fromRGB(255, 255, 255)
-getgenv().AimbotFOV_Sides = 64
 getgenv().AimbotFOV_Thickness = 1
 
-local fovCircle = Drawing.new("Circle")
-fovCircle.Visible = false
-fovCircle.Filled = false
-fovCircle.Transparency = 1
+local fovFrame = Instance.new("Frame")
+fovFrame.Name = "FOVCircle"
+fovFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+fovFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+fovFrame.BackgroundTransparency = 1
+fovFrame.Visible = false
+local fovCorner = Instance.new("UICorner")
+fovCorner.CornerRadius = UDim.new(1, 0)
+fovCorner.Parent = fovFrame
+local fovStroke = Instance.new("UIStroke")
+fovStroke.Parent = fovFrame
+
+if getgenv().MyModpackESP then
+    fovFrame.Parent = getgenv().MyModpackESP:FindFirstChild("ESP_Container") or getgenv().MyModpackESP
+else
+    fovFrame.Parent = game:GetService("CoreGui")
+end
 
 FOVSection:AddToggle("FOV_Show", { Text = "Show FOV Circle", Default = false, Callback = function(v) getgenv().AimbotFOV_Show = v end })
     :AddColorPicker("FOV_Color", { Default = getgenv().AimbotFOV_Color, Callback = function(v) getgenv().AimbotFOV_Color = v end })
 FOVSection:AddSlider("FOV_Radius", { Text = "FOV Radius", Default = 150, Min = 10, Max = 1000, Rounding = 0, Callback = function(v) getgenv().AimbotFOV_Radius = v end })
 FOVSection:AddSlider("FOV_Thickness", { Text = "Thickness", Default = 1, Min = 1, Max = 5, Rounding = 0, Callback = function(v) getgenv().AimbotFOV_Thickness = v end })
-FOVSection:AddSlider("FOV_NumSides", { Text = "Smoothness", Default = 64, Min = 12, Max = 128, Rounding = 0, Callback = function(v) getgenv().AimbotFOV_Sides = v end })
 
 RunService.RenderStepped:Connect(function()
     if getgenv().AimbotFOV_Show then
-        local cam = workspace.CurrentCamera
-        if cam then
-            fovCircle.Position = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
-            fovCircle.Radius = getgenv().AimbotFOV_Radius
-            fovCircle.Color = getgenv().AimbotFOV_Color
-            fovCircle.NumSides = getgenv().AimbotFOV_Sides
-            fovCircle.Thickness = getgenv().AimbotFOV_Thickness
-            fovCircle.Visible = true
-        else
-            fovCircle.Visible = false
-        end
+        fovFrame.Size = UDim2.new(0, getgenv().AimbotFOV_Radius * 2, 0, getgenv().AimbotFOV_Radius * 2)
+        fovStroke.Color = getgenv().AimbotFOV_Color
+        fovStroke.Thickness = getgenv().AimbotFOV_Thickness
+        fovFrame.Visible = true
     else
-        fovCircle.Visible = false
+        fovFrame.Visible = false
     end
 end)
 end
