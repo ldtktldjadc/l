@@ -1824,40 +1824,40 @@ FOVSection:AddSlider("FOV_Radius", { Text = "FOV Radius", Default = 150, Min = 1
 FOVSection:AddSlider("FOV_Thickness", { Text = "Thickness", Default = 1, Min = 1, Max = 5, Rounding = 0, Callback = function(v) getgenv().AimbotFOV_Thickness = v end })
 
 getgenv().AimbotFOV_PositionMode = "Center"
+getgenv().AimbotFOV_CachedPos = UDim2.new(0.5, 0, 0.5, 0)
 
+-- Instance操作はHeartbeat（ゲームスレッド）で行う
+RunService.Heartbeat:Connect(function()
+    if not getgenv().AimbotFOV_Show then return end
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local targetUDim2 = UDim2.new(0, cam.ViewportSize.X / 2, 0, cam.ViewportSize.Y / 2)
+
+    if getgenv().AimbotFOV_PositionMode == "Mouse" then
+        local mouseLoc = game:GetService("UserInputService"):GetMouseLocation()
+        targetUDim2 = UDim2.new(0, mouseLoc.X, 0, mouseLoc.Y)
+    elseif getgenv().AimbotFOV_PositionMode == "FollowEnemy" then
+        local tPart = nil
+        if AimLockSettings and AimLockSettings.Enabled and type(AL_getTarget) == "function" then
+            local alPart = AL_getTarget()
+            if alPart then tPart = alPart end
+        end
+        if not tPart and silentAimEnabled and SA_CachedTarget and SA_CachedTarget.Character then
+            tPart = SA_CachedTarget.Character:FindFirstChild(SA_CachedPartName or "HitboxHead") or SA_CachedTarget.Character:FindFirstChild("Head")
+        end
+        if tPart then
+            local sp = cam:WorldToViewportPoint(tPart.Position)
+            targetUDim2 = UDim2.new(0, sp.X, 0, sp.Y)
+        end
+    end
+
+    getgenv().AimbotFOV_CachedPos = targetUDim2
+end)
+
+-- UI適用のみRenderSteppedで行う
 RunService.RenderStepped:Connect(function()
     if getgenv().AimbotFOV_Show then
-        local cam = workspace.CurrentCamera
-        local targetUDim2 = UDim2.new(0.5, 0, 0.5, 0)
-        
-        if cam then
-            if getgenv().AimbotFOV_PositionMode == "Mouse" then
-                local mouseLoc = game:GetService("UserInputService"):GetMouseLocation()
-                targetUDim2 = UDim2.new(0, mouseLoc.X, 0, mouseLoc.Y)
-            elseif getgenv().AimbotFOV_PositionMode == "FollowEnemy" then
-                local tPart = nil
-                
-                if AimLockSettings and AimLockSettings.Enabled and type(AL_getTarget) == "function" then
-                    local alPart = AL_getTarget()
-                    if alPart then tPart = alPart end
-                end
-                
-                if not tPart and silentAimEnabled and SA_CachedTarget and SA_CachedTarget.Character then
-                    tPart = SA_CachedTarget.Character:FindFirstChild(SA_CachedPartName or "HitboxHead") or SA_CachedTarget.Character:FindFirstChild("Head")
-                end
-                
-                if tPart then
-                    local sp, onScreen = cam:WorldToViewportPoint(tPart.Position)
-                    targetUDim2 = UDim2.new(0, sp.X, 0, sp.Y)
-                else
-                    targetUDim2 = UDim2.new(0, cam.ViewportSize.X / 2, 0, cam.ViewportSize.Y / 2)
-                end
-            else
-                targetUDim2 = UDim2.new(0, cam.ViewportSize.X / 2, 0, cam.ViewportSize.Y / 2)
-            end
-        end
-        
-        fovFrame.Position = targetUDim2
+        fovFrame.Position = getgenv().AimbotFOV_CachedPos
         fovFrame.Size = UDim2.new(0, getgenv().AimbotFOV_Radius * 2, 0, getgenv().AimbotFOV_Radius * 2)
         fovStroke.Color = getgenv().AimbotFOV_Color
         fovStroke.Thickness = getgenv().AimbotFOV_Thickness
