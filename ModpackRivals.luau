@@ -1837,7 +1837,7 @@ RunService.RenderStepped:Connect(function()
             elseif getgenv().AimbotFOV_PositionMode == "FollowEnemy" then
                 local tPart = nil
                 
-                if AimLockSettings and AimLockSettings.Enabled and AL_getTarget then
+                if AimLockSettings and AimLockSettings.Enabled and type(AL_getTarget) == "function" then
                     local alPart = AL_getTarget()
                     if alPart then tPart = alPart end
                 end
@@ -1848,11 +1848,7 @@ RunService.RenderStepped:Connect(function()
                 
                 if tPart then
                     local sp, onScreen = cam:WorldToViewportPoint(tPart.Position)
-                    if onScreen then
-                        targetUDim2 = UDim2.new(0, sp.X, 0, sp.Y)
-                    else
-                        targetUDim2 = UDim2.new(0, cam.ViewportSize.X / 2, 0, cam.ViewportSize.Y / 2)
-                    end
+                    targetUDim2 = UDim2.new(0, sp.X, 0, sp.Y)
                 else
                     targetUDim2 = UDim2.new(0, cam.ViewportSize.X / 2, 0, cam.ViewportSize.Y / 2)
                 end
