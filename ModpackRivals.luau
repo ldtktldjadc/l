@@ -69,7 +69,7 @@ end
 -- ========== SILENT AIM ==========
 local silentAimEnabled = false
 local targetPart = "HitboxHead"
-local FOV = 100
+getgenv().AimbotFOV_Radius = 150
 local aim360 = false
 local teamCheck = false
 local hitChance = 100
@@ -139,7 +139,7 @@ local function getClosestPlayerInFOV()
     local bestDist = math.huge
     local bestPartName = nil
 
-    local maxDist = (FOV == 100) and math.huge or (FOV * 5)
+    local maxDist = getgenv().AimbotFOV_Radius
     
     local myHRP = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
     local raycastParams = RaycastParams.new()
@@ -1075,10 +1075,7 @@ AimDep:AddSlider("SAHitChance", {
     Callback = function(value) hitChance = value end,
 })
 
-AimDep:AddSlider("SAIFOV", {
-    Text    = "FOV", Default = 100, Min = 1, Max = 100, Rounding = 0,
-    Callback = function(value) FOV = value end,
-})
+
 
 AimDep:AddToggle("Aim360", {
     Text    = "360", Default = false,
@@ -1098,7 +1095,6 @@ local AimLockSection = Tabs.Combat:AddRightGroupbox("AimLock")
 local AimLockSettings = {
     Enabled = false,
     TeamCheck = false,
-    FOV = 150,
     Smoothness = 0.65,
     AlwaysLockSmooth = false,
     WallCheck = false,
@@ -1247,7 +1243,7 @@ local function AL_getTarget()
 							local sp, onScreen = camera:WorldToViewportPoint(part.Position)
 							if onScreen then
 								local mouseDist = (Vector2.new(sp.X, sp.Y) - screenCenter).Magnitude
-								if mouseDist < AimLockSettings.FOV and not isBehindWall(part, char) then
+								if mouseDist < getgenv().AimbotFOV_Radius and not isBehindWall(part, char) then
 									table.insert(validTargets, {
 										Part = part,
 										Fighter = fighter,
@@ -1383,7 +1379,7 @@ local AimLockToggle = AimLockSection:AddToggle("AimLockEnabled", {
 local AimLockDep = AimLockSection:AddDependencyBox()
 AimLockDep:AddToggle("AimLockTeamCheck", { Text = "TeamCheck", Default = false, Callback = function(v) AimLockSettings.TeamCheck = v end })
 AimLockDep:AddToggle("AimLockAliveCheck", { Text = "AliveCheck", Default = true, Callback = function(v) AimLockSettings.AliveCheck = v end })
-AimLockDep:AddSlider("AimLockFOV", { Text = "Fov", Default = 150, Min = 1, Max = 800, Rounding = 0, Callback = function(v) AimLockSettings.FOV = v end })
+
 AimLockDep:AddSlider("AimLockSmoothnessOut", { Text = "Smoothness (Hitbox外)", Default = 0.65, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.SmoothnessOut = v end })
 AimLockDep:AddSlider("AimLockSmoothnessIn", { Text = "Smoothness (Hitbox内)", Default = 0.15, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.SmoothnessIn = v end })
 AimLockDep:AddToggle("AimLockAlwaysLockSmooth", { Text = "AlwaysLockSmooth", Default = false, Callback = function(v) AimLockSettings.AlwaysLockSmooth = v end })
@@ -1789,6 +1785,45 @@ CrosshairSection:AddToggle("Crosshair_Spin", {
     Default = true,
     Callback = function(v) chSpin = v end
 })
+
+-- ===== AIMBOT FOV =====
+do
+local FOVSection = Tabs.Visuals:AddLeftGroupbox("Aimbot FOV")
+
+getgenv().AimbotFOV_Show = false
+getgenv().AimbotFOV_Color = Color3.fromRGB(255, 255, 255)
+getgenv().AimbotFOV_Sides = 64
+getgenv().AimbotFOV_Thickness = 1
+
+local fovCircle = Drawing.new("Circle")
+fovCircle.Visible = false
+fovCircle.Filled = false
+fovCircle.Transparency = 1
+
+FOVSection:AddToggle("FOV_Show", { Text = "Show FOV Circle", Default = false, Callback = function(v) getgenv().AimbotFOV_Show = v end })
+    :AddColorPicker("FOV_Color", { Default = getgenv().AimbotFOV_Color, Callback = function(v) getgenv().AimbotFOV_Color = v end })
+FOVSection:AddSlider("FOV_Radius", { Text = "FOV Radius", Default = 150, Min = 10, Max = 1000, Rounding = 0, Callback = function(v) getgenv().AimbotFOV_Radius = v end })
+FOVSection:AddSlider("FOV_Thickness", { Text = "Thickness", Default = 1, Min = 1, Max = 5, Rounding = 0, Callback = function(v) getgenv().AimbotFOV_Thickness = v end })
+FOVSection:AddSlider("FOV_NumSides", { Text = "Smoothness", Default = 64, Min = 12, Max = 128, Rounding = 0, Callback = function(v) getgenv().AimbotFOV_Sides = v end })
+
+RunService.RenderStepped:Connect(function()
+    if getgenv().AimbotFOV_Show then
+        local cam = workspace.CurrentCamera
+        if cam then
+            fovCircle.Position = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
+            fovCircle.Radius = getgenv().AimbotFOV_Radius
+            fovCircle.Color = getgenv().AimbotFOV_Color
+            fovCircle.NumSides = getgenv().AimbotFOV_Sides
+            fovCircle.Thickness = getgenv().AimbotFOV_Thickness
+            fovCircle.Visible = true
+        else
+            fovCircle.Visible = false
+        end
+    else
+        fovCircle.Visible = false
+    end
+end)
+end
 
 -- ===== ENVIRONMENT TAB (WORLD) =====
 local EnvSection = Tabs.World:AddLeftGroupbox("Environment")
