@@ -140,6 +140,10 @@ local function getClosestPlayerInFOV()
     local bestPartName = nil
 
     local maxDist = getgenv().AimbotFOV_Radius
+    if getgenv().AimbotFOV_Frame and getgenv().AimbotFOV_Show then
+        center = getgenv().AimbotFOV_Frame.AbsolutePosition + getgenv().AimbotFOV_Frame.AbsoluteSize / 2
+        maxDist = getgenv().AimbotFOV_Frame.AbsoluteSize.X / 2
+    end
     
     local myHRP = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
     local raycastParams = RaycastParams.new()
@@ -1243,7 +1247,7 @@ local function AL_getTarget()
 							local sp, onScreen = camera:WorldToViewportPoint(part.Position)
 							if onScreen then
 								local mouseDist = (Vector2.new(sp.X, sp.Y) - screenCenter).Magnitude
-								if mouseDist < getgenv().AimbotFOV_Radius and not isBehindWall(part, char) then
+								if mouseDist < maxDist and not isBehindWall(part, char) then
 									table.insert(validTargets, {
 										Part = part,
 										Fighter = fighter,
@@ -1800,6 +1804,7 @@ fovFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 fovFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 fovFrame.BackgroundTransparency = 1
 fovFrame.Visible = false
+getgenv().AimbotFOV_Frame = fovFrame
 local fovCorner = Instance.new("UICorner")
 fovCorner.CornerRadius = UDim.new(1, 0)
 fovCorner.Parent = fovFrame
@@ -1814,11 +1819,49 @@ end
 
 FOVSection:AddToggle("FOV_Show", { Text = "Show FOV Circle", Default = false, Callback = function(v) getgenv().AimbotFOV_Show = v end })
     :AddColorPicker("FOV_Color", { Default = getgenv().AimbotFOV_Color, Callback = function(v) getgenv().AimbotFOV_Color = v end })
+FOVSection:AddDropdown("FOV_PositionMode", { Text = "Position Mode", Values = {"Center", "Mouse", "FollowEnemy"}, Default = 1, Multi = false, Callback = function(v) getgenv().AimbotFOV_PositionMode = v end })
 FOVSection:AddSlider("FOV_Radius", { Text = "FOV Radius", Default = 150, Min = 10, Max = 1000, Rounding = 0, Callback = function(v) getgenv().AimbotFOV_Radius = v end })
 FOVSection:AddSlider("FOV_Thickness", { Text = "Thickness", Default = 1, Min = 1, Max = 5, Rounding = 0, Callback = function(v) getgenv().AimbotFOV_Thickness = v end })
 
+getgenv().AimbotFOV_PositionMode = "Center"
+
 RunService.RenderStepped:Connect(function()
     if getgenv().AimbotFOV_Show then
+        local cam = workspace.CurrentCamera
+        local targetUDim2 = UDim2.new(0.5, 0, 0.5, 0)
+        
+        if cam then
+            if getgenv().AimbotFOV_PositionMode == "Mouse" then
+                local mouseLoc = game:GetService("UserInputService"):GetMouseLocation()
+                targetUDim2 = UDim2.new(0, mouseLoc.X, 0, mouseLoc.Y)
+            elseif getgenv().AimbotFOV_PositionMode == "FollowEnemy" then
+                local tPart = nil
+                
+                if AimLockSettings and AimLockSettings.Enabled and AL_getTarget then
+                    local alPart = AL_getTarget()
+                    if alPart then tPart = alPart end
+                end
+                
+                if not tPart and silentAimEnabled and SA_CachedTarget and SA_CachedTarget.Character then
+                    tPart = SA_CachedTarget.Character:FindFirstChild(SA_CachedPartName or "HitboxHead") or SA_CachedTarget.Character:FindFirstChild("Head")
+                end
+                
+                if tPart then
+                    local sp, onScreen = cam:WorldToViewportPoint(tPart.Position)
+                    if onScreen then
+                        targetUDim2 = UDim2.new(0, sp.X, 0, sp.Y)
+                    else
+                        targetUDim2 = UDim2.new(0, cam.ViewportSize.X / 2, 0, cam.ViewportSize.Y / 2)
+                    end
+                else
+                    targetUDim2 = UDim2.new(0, cam.ViewportSize.X / 2, 0, cam.ViewportSize.Y / 2)
+                end
+            else
+                targetUDim2 = UDim2.new(0, cam.ViewportSize.X / 2, 0, cam.ViewportSize.Y / 2)
+            end
+        end
+        
+        fovFrame.Position = targetUDim2
         fovFrame.Size = UDim2.new(0, getgenv().AimbotFOV_Radius * 2, 0, getgenv().AimbotFOV_Radius * 2)
         fovStroke.Color = getgenv().AimbotFOV_Color
         fovStroke.Thickness = getgenv().AimbotFOV_Thickness
