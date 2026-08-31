@@ -3039,17 +3039,15 @@ local _hitmarkerHooked = false
 local function hookHitmarker()
     if _hitmarkerHooked then return end
     pcall(function()
-        local cvmModule = lp.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem:FindFirstChild("ClientViewModel")
-        if cvmModule then
-            local cvm = require(cvmModule)
-            if cvm and cvm.PlayHitmarkerSound then
-                local oldPlay = cvm.PlayHitmarkerSound
-                cvm.PlayHitmarkerSound = function(self, ...)
+        local cvmObj = lp.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem:FindFirstChild("ClientViewModel")
+        if cvmObj then
+            -- SoundChangerと同じ方法でChildAddedを使ってヒット音を検出
+            cvmObj.ChildAdded:Connect(function(v)
+                if v:IsA("Sound") then
                     _lastHitmarkerTime = tick()
-                    return oldPlay(self, ...)
                 end
-                _hitmarkerHooked = true
-            end
+            end)
+            _hitmarkerHooked = true
         end
     end)
 end
@@ -3062,7 +3060,7 @@ local function startHookLoop()
             if not _hitmarkerHooked then
                 hookHitmarker()
             end
-            task.wait(1)
+            task.wait(0.5)
         end
         _hookCoroutine = nil
     end)
