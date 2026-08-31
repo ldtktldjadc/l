@@ -3054,6 +3054,20 @@ local function hookHitmarker()
     end)
 end
 
+local _hookCoroutine = nil
+local function startHookLoop()
+    if _hookCoroutine then return end
+    _hookCoroutine = task.spawn(function()
+        while dmgNotifEnabled do
+            if not _hitmarkerHooked then
+                hookHitmarker()
+            end
+            task.wait(1)
+        end
+        _hookCoroutine = nil
+    end)
+end
+
 local function attachDmgNotif(p)
     if _dmgConnections[p] then
         pcall(function() _dmgConnections[p]:Disconnect() end)
@@ -3119,7 +3133,10 @@ DmgNotifSection:AddToggle("DmgNotif_Enabled", {
     Text = "Enabled", Default = false,
     Callback = function(v)
         dmgNotifEnabled = v
-        if v then refreshDmgConnections() end
+        if v then 
+            refreshDmgConnections() 
+            startHookLoop()
+        end
     end,
 })
 DmgNotifSection:AddSlider("DmgNotif_Min", {
