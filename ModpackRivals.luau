@@ -3081,25 +3081,32 @@ local function attachDmgNotif(p)
     _dmgConnections[p] = hum.HealthChanged:Connect(function(newHP)
         if not dmgNotifEnabled then return end
         
-        -- フックがまだなら試行
-        if not _hitmarkerHooked then hookHitmarker() end
-        
         local dmg = prevHP - newHP
         prevHP = newHP
         if dmg < dmgNotifMin then return end
         
-        -- 自分がダメージを与えた（直近0.2秒以内にHitmarkerが鳴った）か判定
-        if tick() - _lastHitmarkerTime > 0.2 then return end
+        -- HealthChangedがHitmarker再生よりも先に届く場合（PropertyReplicationの方が早い場合）があるため、
+        -- 少し待ってから判定する
+        task.spawn(function()
+            task.wait(0.15)
+            
+            -- フックがまだなら試行
+            if not _hitmarkerHooked then hookHitmarker() end
+            
+            -- 自分がダメージを与えた（直近0.8秒以内にHitmarkerが鳴った）か判定
+            -- pingによる遅延を考慮して0.8秒の猶予を持たせる
+            if tick() - _lastHitmarkerTime > 0.8 then return end
 
-        local now = tick()
-        if _dmgLastTime[p] and now - _dmgLastTime[p] < dmgNotifCooldown then return end
-        _dmgLastTime[p] = now
-        local dmgStr = math.floor(dmg)
-        local hpLeft = math.max(0, math.floor(newHP))
-        Library:Notify(
-            "Hit " .. p.Name .. " for " .. dmgStr .. " damage! (" .. hpLeft .. " HP left)",
-            3
-        )
+            local now = tick()
+            if _dmgLastTime[p] and now - _dmgLastTime[p] < dmgNotifCooldown then return end
+            _dmgLastTime[p] = now
+            local dmgStr = math.floor(dmg)
+            local hpLeft = math.max(0, math.floor(newHP))
+            Library:Notify(
+                "Hit " .. p.Name .. " for " .. dmgStr .. " damage! (" .. hpLeft .. " HP left)",
+                3
+            )
+        end)
     end)
 end
 
