@@ -1790,167 +1790,132 @@ CrosshairSection:AddToggle("Crosshair_Spin", {
     Callback = function(v) chSpin = v end
 })
 
--- ===== BULLET TRACER TAB (VISUALS) =====
-local BulletTracerSection = Tabs.Visuals:AddRightGroupbox("Bullet Tracer")
+-- ===== BULLET TRACER (VISUALS) =====
+do
+    local BulletTracerSection = Tabs.Visuals:AddRightGroupbox("Bullet Tracer")
 
-local btEnabled = false
-local btWidth = 2
-local btFadeTime = 4
+    getgenv()._bt = { enabled = false, width = 2, fadeTime = 4 }
 
-BulletTracerSection:AddToggle("BulletTracerToggle", {
-    Text = "Enable Bullet Tracer",
-    Default = false,
-    Callback = function(v) btEnabled = v end
-})
+    BulletTracerSection:AddToggle("BulletTracerToggle", {
+        Text = "Enable Bullet Tracer",
+        Default = false,
+        Callback = function(v) getgenv()._bt.enabled = v end
+    })
 
-BulletTracerSection:AddSlider("BulletTracerWidth", {
-    Text = "Thickness",
-    Default = 2,
-    Min = 0.1,
-    Max = 10,
-    Rounding = 1,
-    Compact = false,
-    Callback = function(v) btWidth = v end
-})
+    BulletTracerSection:AddSlider("BulletTracerWidth", {
+        Text = "Thickness",
+        Default = 2,
+        Min = 0.1,
+        Max = 10,
+        Rounding = 1,
+        Compact = false,
+        Callback = function(v) getgenv()._bt.width = v end
+    })
 
-BulletTracerSection:AddSlider("BulletTracerFade", {
-    Text = "Fade Time",
-    Default = 4,
-    Min = 0.1,
-    Max = 10,
-    Rounding = 1,
-    Compact = false,
-    Callback = function(v) btFadeTime = v end
-})
+    BulletTracerSection:AddSlider("BulletTracerFade", {
+        Text = "Fade Time",
+        Default = 4,
+        Min = 0.1,
+        Max = 10,
+        Rounding = 1,
+        Compact = false,
+        Callback = function(v) getgenv()._bt.fadeTime = v end
+    })
 
-task.spawn(function()
-    local function findModule(parent, name)
-        local found = parent:FindFirstChild(name, true)
-        if found and found:IsA("ModuleScript") then return found end
-        return nil
-    end
+    task.spawn(function()
+        local function findModule(parent, name)
+            local found = parent:FindFirstChild(name, true)
+            if found and found:IsA("ModuleScript") then return found end
+            return nil
+        end
 
-    local GunModule = nil
-    while not GunModule do
-        GunModule = findModule(lp:WaitForChild("PlayerScripts"), "Gun") or findModule(game:GetService("ReplicatedStorage"), "Gun")
-        task.wait(1)
-    end
-    
-    local Gun = require(GunModule)
-    
-    local tracerColor      = Color3.fromRGB(190, 40, 255)
-    local tracerStayTime   = 0
-    local tracerFadeStyle  = Enum.EasingStyle.Quart
+        local GunModule = nil
+        while not GunModule do
+            GunModule = findModule(lp:WaitForChild("PlayerScripts"), "Gun") or findModule(game:GetService("ReplicatedStorage"), "Gun")
+            task.wait(1)
+        end
 
-    local BEAM_CONFIGS = {
-        { Name = "Beam2", Texture = "rbxassetid://84577820022939", Speed = 1, Length = 1, LightInf = 0 },
-        { Name = "Beam3", Texture = "rbxassetid://15253860988",    Speed = 1, Length = 3, LightInf = 1 },
-        { Name = "Beam",  Texture = "rbxassetid://18664874807",    Speed = 3, Length = 3, LightInf = 1 },
-        { Name = "Beam1", Texture = "rbxassetid://12251459424",    Speed = 1, Length = 1, LightInf = 1 },
-    }
+        local Gun = require(GunModule)
+        local TweenService = game:GetService("TweenService")
+        local tracerColor = Color3.fromRGB(190, 40, 255)
+        local tracerFadeStyle = Enum.EasingStyle.Quart
+        local BEAM_CONFIGS = {
+            { Texture = "rbxassetid://84577820022939", Speed = 1, Length = 1, LightInf = 0 },
+            { Texture = "rbxassetid://15253860988",    Speed = 1, Length = 3, LightInf = 1 },
+            { Texture = "rbxassetid://18664874807",    Speed = 3, Length = 3, LightInf = 1 },
+            { Texture = "rbxassetid://12251459424",    Speed = 1, Length = 1, LightInf = 1 },
+        }
 
-    local TweenService = game:GetService("TweenService")
-    local function drawRichTracers(self, data)
-        if not (data and data.IsLocal) then return end
-        local ok, muzzle = pcall(function() return self.ViewModel:GetMuzzlePosition() end)
-        if not ok or typeof(muzzle) ~= "Vector3" then return end
-        local cam = workspace.CurrentCamera
-        if not cam then return end
-        
-        local colorSeq = ColorSequence.new(tracerColor)
-        local initTrans = NumberSequence.new(0.5)
-
-        for _, res in ipairs(data.RaycastResults or {}) do
-            if not res or typeof(res.Position) ~= "Vector3" then continue end
-            pcall(function()
-                local container = Instance.new("Part")
-                container.Anchored = true
-                container.CanCollide = false
-                container.Transparency = 1
-                container.CFrame = CFrame.new()
-                container.Parent = cam
-                
-                local attStart = Instance.new("Attachment", container)
-                attStart.Name = "start"
-                attStart.WorldPosition = muzzle
-                
-                local attHit = Instance.new("Attachment", container)
-                attHit.Name = "Hit"
-                attHit.WorldPosition = res.Position
-                
-                local beams = {}
-                for _, cfg in ipairs(BEAM_CONFIGS) do
-                    local b = Instance.new("Beam")
-                    b.Name = cfg.Name
-                    b.Attachment0 = attStart
-                    b.Attachment1 = attHit
-                    b.Texture = cfg.Texture
-                    b.TextureSpeed = cfg.Speed
-                    b.TextureLength = cfg.Length
-                    b.Color = colorSeq
-                    b.LightEmission = 1
-                    b.LightInfluence = cfg.LightInf
-                    b.Brightness = 1
-                    b.Width0 = btWidth
-                    b.Width1 = btWidth
-                    b.FaceCamera = true
-                    b.Transparency = initTrans
-                    b.Parent = container
-                    table.insert(beams, b)
-                end
-                
-                local alive = true
-                local fadeVal = Instance.new("NumberValue", container)
-                fadeVal.Value = 0
-                
-                local tw = TweenService:Create(
-                    fadeVal,
-                    TweenInfo.new(btFadeTime, tracerFadeStyle, Enum.EasingDirection.Out),
-                    { Value = 1 }
-                )
-                
-                local conn = fadeVal:GetPropertyChangedSignal("Value"):Connect(function()
-                    if not alive then return end
-                    local v = fadeVal.Value
-                    if type(v) ~= "number" then return end
-                    local trans = 0.5 + (0.5 * v)
-                    local width = btWidth * (1 - v)
-                    local seq = NumberSequence.new(math.clamp(trans, 0, 1))
-                    for _, b in ipairs(beams) do
-                        pcall(function()
-                            b.Transparency = seq
-                            b.Width0 = width
-                            b.Width1 = width
-                        end)
+        local function drawTracers(self, data)
+            if not (data and data.IsLocal) then return end
+            local ok, muzzle = pcall(function() return self.ViewModel:GetMuzzlePosition() end)
+            if not ok or typeof(muzzle) ~= "Vector3" then return end
+            local cam = workspace.CurrentCamera
+            if not cam then return end
+            local bt = getgenv()._bt
+            local colorSeq = ColorSequence.new(tracerColor)
+            local initTrans = NumberSequence.new(0.5)
+            for _, res in ipairs(data.RaycastResults or {}) do
+                if not res or typeof(res.Position) ~= "Vector3" then continue end
+                pcall(function()
+                    local container = Instance.new("Part")
+                    container.Anchored = true
+                    container.CanCollide = false
+                    container.Transparency = 1
+                    container.CFrame = CFrame.new()
+                    container.Parent = cam
+                    local a0 = Instance.new("Attachment", container)
+                    a0.WorldPosition = muzzle
+                    local a1 = Instance.new("Attachment", container)
+                    a1.WorldPosition = res.Position
+                    local beams = {}
+                    for _, cfg in ipairs(BEAM_CONFIGS) do
+                        local b = Instance.new("Beam")
+                        b.Attachment0 = a0; b.Attachment1 = a1
+                        b.Texture = cfg.Texture; b.TextureSpeed = cfg.Speed; b.TextureLength = cfg.Length
+                        b.Color = colorSeq; b.LightEmission = 1; b.LightInfluence = cfg.LightInf
+                        b.Brightness = 1; b.Width0 = bt.width; b.Width1 = bt.width
+                        b.FaceCamera = true; b.Transparency = initTrans
+                        b.Parent = container
+                        table.insert(beams, b)
                     end
-                end)
-                
-                task.delay(math.max(tracerStayTime, 0), function()
-                    if not alive then return end
-                    tw:Play()
-                    task.delay(btFadeTime + 0.2, function()
-                        alive = false
-                        if conn then pcall(function() conn:Disconnect() end) end
-                        pcall(function()
-                            if container.Parent then container:Destroy() end
+                    local alive = true
+                    local fv = Instance.new("NumberValue", container)
+                    fv.Value = 0
+                    local tw = TweenService:Create(fv, TweenInfo.new(bt.fadeTime, tracerFadeStyle, Enum.EasingDirection.Out), { Value = 1 })
+                    local conn = fv:GetPropertyChangedSignal("Value"):Connect(function()
+                        if not alive then return end
+                        local pct = fv.Value
+                        if type(pct) ~= "number" then return end
+                        local seq = NumberSequence.new(math.clamp(0.5 + 0.5 * pct, 0, 1))
+                        local w = bt.width * (1 - pct)
+                        for _, bm in ipairs(beams) do
+                            pcall(function() bm.Transparency = seq; bm.Width0 = w; bm.Width1 = w end)
+                        end
+                    end)
+                    task.delay(0, function()
+                        if not alive then return end
+                        tw:Play()
+                        task.delay(bt.fadeTime + 0.2, function()
+                            alive = false
+                            pcall(function() conn:Disconnect() end)
+                            pcall(function() if container.Parent then container:Destroy() end end)
                         end)
                     end)
                 end)
-            end)
-        end
-    end
-
-    if not getgenv()._bulletTracerHooked_Rich then
-        local oldTracers = Gun._Tracers
-        Gun._Tracers = function(self, data, p2, p3)
-            if btEnabled then
-                drawRichTracers(self, data)
             end
-            return oldTracers(self, data, p2, p3)
         end
-        getgenv()._bulletTracerHooked_Rich = true
-    end
-end)
+
+        if not getgenv()._bulletTracerHooked_Rich then
+            local oldTracers = Gun._Tracers
+            Gun._Tracers = function(self, data, p2, p3)
+                if getgenv()._bt.enabled then drawTracers(self, data) end
+                return oldTracers(self, data, p2, p3)
+            end
+            getgenv()._bulletTracerHooked_Rich = true
+        end
+    end)
+end
 
 -- ===== ENVIRONMENT TAB (WORLD) =====
 local EnvSection = Tabs.World:AddLeftGroupbox("Environment")
@@ -3907,34 +3872,32 @@ MovementSection:AddToggle("HideDesyncToggle", {
     end
 })
 
-local infJumpEnabled = false
-local fighterControllerCache = nil
-local maxDoubleJumpsOriginals = {}
+do
+    local infJumpEnabled = false
+    local fighterControllerCache = nil
+    local maxDoubleJumpsOriginals = {}
 
-MovementSection:AddToggle("InfJumpToggle", {
-    Text = "Infinite Jump",
-    Default = false,
-    Callback = function(value)
-        infJumpEnabled = value
-        
-        -- OFFにした時元に戻す
-        if not value and fighterControllerCache and fighterControllerCache.LocalFighter then
-            local item = fighterControllerCache.LocalFighter.EquippedItem
-            if item and item.Info and item.Name and maxDoubleJumpsOriginals[item.Name] then
-                item.Info.MaxDoubleJumps = maxDoubleJumpsOriginals[item.Name]
+    MovementSection:AddToggle("InfJumpToggle", {
+        Text = "Infinite Jump",
+        Default = false,
+        Callback = function(value)
+            infJumpEnabled = value
+            if not value and fighterControllerCache and fighterControllerCache.LocalFighter then
+                local item = fighterControllerCache.LocalFighter.EquippedItem
+                if item and item.Info and item.Name and maxDoubleJumpsOriginals[item.Name] then
+                    item.Info.MaxDoubleJumps = maxDoubleJumpsOriginals[item.Name]
+                end
             end
         end
-    end
-})
+    })
 
-RunService.RenderStepped:Connect(function()
-    if infJumpEnabled then
+    RunService.RenderStepped:Connect(function()
+        if not infJumpEnabled then return end
         if not fighterControllerCache then
             pcall(function()
                 fighterControllerCache = require(lp.PlayerScripts:WaitForChild("Controllers"):WaitForChild("FighterController"))
             end)
         end
-        
         if fighterControllerCache and fighterControllerCache.LocalFighter then
             local item = fighterControllerCache.LocalFighter.EquippedItem
             if item and type(item.Info) == "table" and item.Name then
@@ -3944,8 +3907,8 @@ RunService.RenderStepped:Connect(function()
                 item.Info.MaxDoubleJumps = math.huge
             end
         end
-    end
-end)
+    end)
+end
 
 lp.CharacterAdded:Connect(function()
     if flyEnabled then task.wait(0.5) startFly() end
