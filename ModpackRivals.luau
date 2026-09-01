@@ -3745,6 +3745,46 @@ MovementSection:AddToggle("HideDesyncToggle", {
     end
 })
 
+local infJumpEnabled = false
+local fighterControllerCache = nil
+local maxDoubleJumpsOriginals = {}
+
+MovementSection:AddToggle("InfJumpToggle", {
+    Text = "Infinite Jump",
+    Default = false,
+    Callback = function(value)
+        infJumpEnabled = value
+        
+        -- OFFにした時元に戻す
+        if not value and fighterControllerCache and fighterControllerCache.LocalFighter then
+            local item = fighterControllerCache.LocalFighter.EquippedItem
+            if item and item.Info and item.Name and maxDoubleJumpsOriginals[item.Name] then
+                item.Info.MaxDoubleJumps = maxDoubleJumpsOriginals[item.Name]
+            end
+        end
+    end
+})
+
+RunService.RenderStepped:Connect(function()
+    if infJumpEnabled then
+        if not fighterControllerCache then
+            pcall(function()
+                fighterControllerCache = require(lp.PlayerScripts:WaitForChild("Controllers"):WaitForChild("FighterController"))
+            end)
+        end
+        
+        if fighterControllerCache and fighterControllerCache.LocalFighter then
+            local item = fighterControllerCache.LocalFighter.EquippedItem
+            if item and type(item.Info) == "table" and item.Name then
+                if maxDoubleJumpsOriginals[item.Name] == nil then
+                    maxDoubleJumpsOriginals[item.Name] = item.Info.MaxDoubleJumps or 1
+                end
+                item.Info.MaxDoubleJumps = math.huge
+            end
+        end
+    end
+end)
+
 lp.CharacterAdded:Connect(function()
     if flyEnabled then task.wait(0.5) startFly() end
     if noclipEnabled then task.wait(0.5) startNoclip() end
