@@ -2327,32 +2327,6 @@ task.spawn(function()
 end)
 local GunModsSection = Tabs.Rage:AddLeftGroupbox("Gun Mods")
 
-GunModsSection:AddButton({
-    Text = "Enable Instant Scope",
-    Func = function()
-        local CameraController = nil
-        pcall(function()
-            CameraController = require(lp.PlayerScripts.Controllers.CameraController)
-        end)
-        
-        if not CameraController then return end
-
-        RunService.RenderStepped:Connect(function()
-            if CameraController and type(CameraController) == "table" then
-                local wSpring = CameraController._fov_weapons_spring
-                local gSpring = CameraController._fov_gameplay_spring
-                if wSpring and gSpring then
-                    wSpring.Speed = 9999
-                    wSpring.Value = wSpring.Target
-                    gSpring.Speed = 9999
-                    gSpring.Value = gSpring.Target
-                end
-            end
-        end)
-    end,
-    DoubleClick = false
-})
-
 getgenv().RageSettings = {
     Enabled = false,
     NoRecoil = false,
@@ -2360,6 +2334,7 @@ getgenv().RageSettings = {
     RapidFire = false,
     AntiKatana = false,
     AntiKatanaDelay = 0.0,
+    InstantScope = false,
 }
 
 task.spawn(function()
@@ -2546,7 +2521,38 @@ GunModsDep:AddSlider("GunMods_AntiKatanaDelay", {
     end
 })
 
+GunModsDep:AddToggle("GunMods_InstantScope", {
+    Text = "Instant Scope",
+    Default = false,
+    Callback = function(value)
+        getgenv().RageSettings.InstantScope = value
+    end
+})
+
 GunModsDep:SetupDependencies({ { GunModsToggle, true } })
+
+task.spawn(function()
+    local cameraControllerCache = nil
+    RunService.RenderStepped:Connect(function()
+        if getgenv().RageSettings and getgenv().RageSettings.Enabled and getgenv().RageSettings.InstantScope then
+            if not cameraControllerCache then
+                pcall(function()
+                    cameraControllerCache = require(lp.PlayerScripts:WaitForChild("Controllers", 5):WaitForChild("CameraController", 5))
+                end)
+            end
+            if cameraControllerCache and type(cameraControllerCache) == "table" then
+                local wSpring = cameraControllerCache._fov_weapons_spring
+                local gSpring = cameraControllerCache._fov_gameplay_spring
+                if wSpring and gSpring then
+                    wSpring.Speed = 9999
+                    wSpring.Value = wSpring.Target
+                    gSpring.Speed = 9999
+                    gSpring.Value = gSpring.Target
+                end
+            end
+        end
+    end)
+end)
 
 
 
