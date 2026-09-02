@@ -2553,8 +2553,141 @@ task.spawn(function()
         end
     end)
 end)
+-- ========== ANTI AIM ==========
+do
+    local AntiAimSection = Tabs.Rage:AddRightGroupbox("AntiAim")
 
+    local aaEnabled = false
+    local pitchMode = "Glitch Pitch"
+    local yawMode   = "Random Yaw"
+    local customPitch = 179
+    local customYaw   = 360
+    local pitchOverride = 1150
+    local yawOverride   = 0
+    local toggleVal     = 4999
 
+    local function encodeUnclamped(pitchDeg, yawDeg)
+        local pitchRad = math.rad(pitchDeg)
+        local yawRad   = math.rad(yawDeg)
+        local pVal = math.floor(pitchRad / (2 * math.pi) * 256 + 0.5)
+        local yVal = math.floor(yawRad   / (2 * math.pi) * 256 + 0.5)
+        pVal = math.clamp(pVal, 0, 1114111)
+        yVal = math.clamp(yVal, 0, 1114111)
+        return utf8.char(pVal) .. utf8.char(yVal)
+    end
+
+    local AntiAimToggle = AntiAimSection:AddToggle("AntiAim_Enabled", {
+        Text = "Enabled",
+        Default = false,
+        Callback = function(value) aaEnabled = value end
+    })
+
+    local AntiAimDep = AntiAimSection:AddDependencyBox()
+
+    local PitchDropdown = AntiAimDep:AddDropdown("AntiAim_PitchMode", {
+        Values = {"Glitch Pitch", "Random Pitch", "Custom Pitch"},
+        Default = 1,
+        Multi = false,
+        Text = "Pitch Mode",
+        Callback = function(value) pitchMode = value end
+    })
+
+    local PitchCustomDep = AntiAimSection:AddDependencyBox()
+    PitchCustomDep:AddSlider("AntiAim_CustomPitch", {
+        Text = "Custom Pitch",
+        Default = 179,
+        Min = 1,
+        Max = 179,
+        Rounding = 0,
+        Callback = function(value) customPitch = value end
+    })
+    PitchCustomDep:SetupDependencies({ { PitchDropdown, "Custom Pitch" } })
+
+    local AntiAimDep2 = AntiAimSection:AddDependencyBox()
+
+    local YawDropdown = AntiAimDep2:AddDropdown("AntiAim_YawMode", {
+        Values = {"Random Yaw", "Custom Yaw"},
+        Default = 1,
+        Multi = false,
+        Text = "Yaw Mode",
+        Callback = function(value) yawMode = value end
+    })
+
+    local YawCustomDep = AntiAimSection:AddDependencyBox()
+    YawCustomDep:AddSlider("AntiAim_CustomYaw", {
+        Text = "Custom Yaw",
+        Default = 360,
+        Min = 1,
+        Max = 360,
+        Rounding = 0,
+        Callback = function(value) customYaw = value end
+    })
+    YawCustomDep:SetupDependencies({ { YawDropdown, "Custom Yaw" } })
+
+    AntiAimDep:SetupDependencies({ { AntiAimToggle, true } })
+    AntiAimDep2:SetupDependencies({ { AntiAimToggle, true } })
+
+    local camRemote = nil
+    task.spawn(function()
+        local ok1, remote = pcall(function()
+            return ReplicatedStorage
+                :WaitForChild("Remotes", 10)
+                :WaitForChild("Replication", 10)
+                :WaitForChild("Fighter", 10)
+                :WaitForChild("UpdateCameraRotation", 10)
+        end)
+        if ok1 and remote then camRemote = remote end
+    end)
+
+    if not getgenv()._antiAimHooked then
+        local oldNamecall
+        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            local method = getnamecallmethod()
+            if not checkcaller()
+                and aaEnabled
+                and camRemote ~= nil
+                and method == "FireServer"
+            then
+                local ok, isCam = pcall(function() return self == camRemote end)
+                if ok and isCam then
+                    local encoded = encodeUnclamped(pitchOverride, yawOverride)
+                    return oldNamecall(self, encoded, nil)
+                end
+            end
+            return oldNamecall(self, ...)
+        end)
+        getgenv()._antiAimHooked = true
+    end
+
+    local lastSend = 0
+    RunService.Heartbeat:Connect(function()
+        if pitchMode == "Glitch Pitch" then
+            pitchOverride = 1150
+        elseif pitchMode == "Random Pitch" then
+            pitchOverride = toggleVal
+        elseif pitchMode == "Custom Pitch" then
+            pitchOverride = customPitch
+        end
+
+        if yawMode == "Random Yaw" then
+            yawOverride = toggleVal
+        elseif yawMode == "Custom Yaw" then
+            yawOverride = customYaw
+        end
+
+        local now = tick()
+        if now - lastSend < 0.1 then return end
+        lastSend = now
+
+        toggleVal = (toggleVal == 4999) and 0 or 4999
+
+        if not aaEnabled or not camRemote then return end
+        pcall(function()
+            local encoded = encodeUnclamped(pitchOverride, yawOverride)
+            camRemote:FireServer(encoded, nil)
+        end)
+    end)
+end
 
 
 do
