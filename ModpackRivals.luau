@@ -225,18 +225,15 @@ local function getClosestPlayerInFOV()
 end
 
 local function setupSilentAim()
-    local utilityModule = nil
-    for _, module in pairs(ReplicatedStorage:GetDescendants()) do
-        if module:IsA("ModuleScript") and module.Name == "Utility" then
-            utilityModule = module
-            break
-        end
-    end
-
     local utility = nil
-    if utilityModule then
-        local success, u = pcall(function() return require(utilityModule) end)
-        if success then utility = u end
+    pcall(function() utility = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Utility")) end)
+    if not utility then
+        for _, module in pairs(ReplicatedStorage:GetDescendants()) do
+            if module:IsA("ModuleScript") and module.Name == "Utility" then
+                pcall(function() utility = require(module) end)
+                if utility then break end
+            end
+        end
     end
 
     if utility and utility.Raycast then
@@ -258,56 +255,116 @@ local function setupSilentAim()
         end
     end
 
+    local function createTargetPayload()
+        if not (silentAimEnabled and math.random(1, 100) <= hitChance) then return nil end
+        local closest, selectedPartName = getClosestPlayerInFOV()
+        if not (closest and closest.Character and selectedPartName and closest.Character:FindFirstChild(selectedPartName)) then
+            return nil
+        end
+        local targetPart = closest.Character[selectedPartName]
+        local cam = workspace.CurrentCamera
+        local originPos = cam and cam.CFrame.Position or (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and lp.Character.HumanoidRootPart.Position)
+        if not (originPos and targetPart and utility and utility.EncodeCFrame) then return nil end
+
+        local targetPos = targetPart.Position
+        local aimCF = CFrame.lookAt(originPos, targetPos)
+        local randomOffset = Vector3.new((math.random() - 0.5) * 0.1, (math.random() - 0.5) * 0.1, (math.random() - 0.5) * 0.1)
+        local aimedPos = targetPos + randomOffset
+        local objSpaceOffset = targetPart.CFrame:ToObjectSpace(CFrame.new(aimedPos))
+        local encAim = utility:EncodeCFrame(aimCF)
+
+        return {
+            [utf8.char(0)] = encAim,
+            [utf8.char(1)] = encAim,
+            [utf8.char(2)] = targetPart,
+            [utf8.char(3)] = utility:EncodeCFrame(objSpaceOffset)
+        }, targetPart, aimCF, objSpaceOffset, cam and cam.CFrame
+    end
+
+    local function patchCameraDataArgs(args)
+        local payload = createTargetPayload()
+        if not payload then return false end
+        local cameradata = args[3]
+        if typeof(cameradata) == "table" then
+            for k in pairs(cameradata) do
+                cameradata[k] = payload
+            end
+            if not next(cameradata) then
+                cameradata[utf8.char(1)] = payload
+            end
+        else
+            args[3] = { [utf8.char(1)] = payload }
+        end
+        return true
+    end
+
     if hookmetamethod and not getgenv()._SilentAimUseItemHooked then
         getgenv()._SilentAimUseItemHooked = true
         local oldNamecall
         oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
             local method = getnamecallmethod()
-            if (not checkcaller or not checkcaller()) and method == "FireServer" and self.Name == "UseItem" then
-                if silentAimEnabled and math.random(1, 100) <= hitChance then
-                    local closest, selectedPartName = getClosestPlayerInFOV()
-                    if closest and closest.Character and selectedPartName and closest.Character:FindFirstChild(selectedPartName) then
-                        local targetPart = closest.Character[selectedPartName]
-                        local cam = workspace.CurrentCamera
-                        local originPos = cam and cam.CFrame.Position
-                        if originPos and targetPart and utility and utility.EncodeCFrame then
-                            local targetPos = targetPart.Position
-                            local aimCF = CFrame.lookAt(originPos, targetPos)
-                            local randomOffset = Vector3.new(
-                                (math.random() - 0.5) * 0.1,
-                                (math.random() - 0.5) * 0.1,
-                                (math.random() - 0.5) * 0.1
-                            )
-                            local aimedPos = targetPos + randomOffset
-                            local objSpaceHeadOffset = targetPart.CFrame:ToObjectSpace(CFrame.new(aimedPos))
-
-                            local shotPayload = {
-                                [utf8.char(0)] = utility:EncodeCFrame(aimCF),
-                                [utf8.char(1)] = utility:EncodeCFrame(targetPart.CFrame),
-                                [utf8.char(2)] = targetPart,
-                                [utf8.char(3)] = utility:EncodeCFrame(objSpaceHeadOffset)
-                            }
-
-                            local args = {...}
-                            local cameradata = args[3]
-                            if typeof(cameradata) == "table" then
-                                for k in pairs(cameradata) do
-                                    cameradata[k] = shotPayload
-                                end
-                                if not next(cameradata) then
-                                    cameradata[utf8.char(1)] = shotPayload
-                                end
-                            else
-                                args[3] = { [utf8.char(1)] = shotPayload }
-                            end
-                            return oldNamecall(self, unpack(args))
-                        end
-                    end
+            if (method == "FireServer" or method == "fireServer") and tostring(self.Name) == "UseItem" then
+                local args = {...}
+                if patchCameraDataArgs(args) then
+                    return oldNamecall(self, unpack(args))
                 end
             end
             return oldNamecall(self, ...)
         end)
     end
+
+    if hookfunction and not getgenv()._SilentAimFireServerHooked then
+        getgenv()._SilentAimFireServerHooked = true
+        local dummyRemote = Instance.new("RemoteEvent")
+        local oldFireServer
+        oldFireServer = hookfunction(dummyRemote.FireServer, function(self, ...)
+            if tostring(self.Name) == "UseItem" then
+                local args = {...}
+                if patchCameraDataArgs(args) then
+                    return oldFireServer(self, unpack(args))
+                end
+            end
+            return oldFireServer(self, ...)
+        end)
+        dummyRemote:Destroy()
+    end
+
+    task.spawn(function()
+        local function tryHookGun()
+            local gunModule = nil
+            pcall(function()
+                gunModule = require(lp.PlayerScripts.Modules.ItemTypes.Gun)
+            end)
+            if not gunModule then
+                for _, m in pairs(lp.PlayerScripts:GetDescendants()) do
+                    if m:IsA("ModuleScript") and m.Name == "Gun" then
+                        pcall(function() gunModule = require(m) end)
+                        if gunModule and gunModule.StartShooting then break end
+                    end
+                end
+            end
+            if gunModule and gunModule.StartShooting and not gunModule._SilentAimHooked then
+                gunModule._SilentAimHooked = true
+                local oldShoot = gunModule.StartShooting
+                gunModule.StartShooting = function(self, ...)
+                    local results = { oldShoot(self, ...) }
+                    if results[1] == true and results[2] == "StartShooting" then
+                        local payload, targetPart, aimCF, objSpaceOffset, originCF = createTargetPayload()
+                        if targetPart and originCF then
+                            results[3] = {
+                                [utf8.char(0)] = originCF,
+                                [utf8.char(1)] = aimCF,
+                                [utf8.char(2)] = targetPart,
+                                [utf8.char(3)] = objSpaceOffset
+                            }
+                        end
+                    end
+                    return unpack(results)
+                end
+            end
+        end
+        pcall(tryHookGun)
+    end)
 end
 
 task.spawn(setupSilentAim)
