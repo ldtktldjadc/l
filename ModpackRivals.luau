@@ -225,9 +225,6 @@ local function getClosestPlayerInFOV()
 end
 
 local function setupSilentAim()
-    -- Utility:Raycast(self, origin, endPos, maxDist, filterList, filterType, debug)
-    -- 蜀・Κ縺ｧ direction = (endPos - origin).Unit * maxDist 繧定ｨ育ｮ励＠縺ｦ縺・ｋ
-    -- 縺ｪ縺ｮ縺ｧ args[3] (endPos) 繧偵ち繝ｼ繧ｲ繝・ヨ蠎ｧ讓吶↓蟾ｮ縺玲崛縺医ｋ縺縺代〒縺・＞
     local utilityModule = nil
     for _, module in pairs(ReplicatedStorage:GetDescendants()) do
         if module:IsA("ModuleScript") and module.Name == "Utility" then
@@ -236,26 +233,80 @@ local function setupSilentAim()
         end
     end
 
+    local utility = nil
     if utilityModule then
-        local success, utility = pcall(function() return require(utilityModule) end)
-        if success and utility and utility.Raycast then
-            if not getgenv().OriginalRaycast then
-                getgenv().OriginalRaycast = utility.Raycast
-            end
-            local originalFn = getgenv().OriginalRaycast
+        local success, u = pcall(function() return require(utilityModule) end)
+        if success then utility = u end
+    end
 
-            utility.Raycast = function(self, origin, endPos, ...)
+    if utility and utility.Raycast then
+        if not getgenv().OriginalRaycast then
+            getgenv().OriginalRaycast = utility.Raycast
+        end
+        local originalFn = getgenv().OriginalRaycast
+
+        utility.Raycast = function(self, origin, endPos, ...)
+            if silentAimEnabled and math.random(1, 100) <= hitChance then
+                local closest, selectedPartName = getClosestPlayerInFOV()
+                if closest and closest.Character and selectedPartName and closest.Character:FindFirstChild(selectedPartName) then
+                    if typeof(origin) == "Vector3" then
+                        endPos = closest.Character[selectedPartName].Position
+                    end
+                end
+            end
+            return originalFn(self, origin, endPos, ...)
+        end
+    end
+
+    if hookmetamethod and not getgenv()._SilentAimUseItemHooked then
+        getgenv()._SilentAimUseItemHooked = true
+        local oldNamecall
+        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            local method = getnamecallmethod()
+            if (not checkcaller or not checkcaller()) and method == "FireServer" and self.Name == "UseItem" then
                 if silentAimEnabled and math.random(1, 100) <= hitChance then
                     local closest, selectedPartName = getClosestPlayerInFOV()
                     if closest and closest.Character and selectedPartName and closest.Character:FindFirstChild(selectedPartName) then
-                        if typeof(origin) == "Vector3" then
-                            endPos = closest.Character[selectedPartName].Position
+                        local targetPart = closest.Character[selectedPartName]
+                        local cam = workspace.CurrentCamera
+                        local originPos = cam and cam.CFrame.Position
+                        if originPos and targetPart and utility and utility.EncodeCFrame then
+                            local targetPos = targetPart.Position
+                            local aimCF = CFrame.lookAt(originPos, targetPos)
+                            local randomOffset = Vector3.new(
+                                (math.random() - 0.5) * 0.1,
+                                (math.random() - 0.5) * 0.1,
+                                (math.random() - 0.5) * 0.1
+                            )
+                            local aimedPos = targetPos + randomOffset
+                            local objSpaceHeadOffset = targetPart.CFrame:ToObjectSpace(CFrame.new(aimedPos))
+
+                            local shotPayload = {
+                                [utf8.char(0)] = utility:EncodeCFrame(aimCF),
+                                [utf8.char(1)] = utility:EncodeCFrame(targetPart.CFrame),
+                                [utf8.char(2)] = targetPart,
+                                [utf8.char(3)] = utility:EncodeCFrame(objSpaceHeadOffset)
+                            }
+
+                            local args = {...}
+                            local cameradata = args[3]
+                            if typeof(cameradata) == "table" then
+                                for k in pairs(cameradata) do
+                                    cameradata[k] = shotPayload
+                                end
+                                if not next(cameradata) then
+                                    cameradata[utf8.char(1)] = shotPayload
+                                end
+                            else
+                                args[3] = { [utf8.char(1)] = shotPayload }
+                            end
+                            return oldNamecall(self, unpack(args))
                         end
                     end
                 end
-                return originalFn(self, origin, endPos, ...)
             end
-        end
+            return oldNamecall(self, ...)
+        end)
     end
 end
 
