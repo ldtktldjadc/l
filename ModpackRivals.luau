@@ -225,97 +225,37 @@ local function getClosestPlayerInFOV()
 end
 
 local function setupSilentAim()
-    local utility = nil
-    pcall(function() utility = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Utility")) end)
-    if not utility then
-        for _, module in pairs(ReplicatedStorage:GetDescendants()) do
-            if module:IsA("ModuleScript") and module.Name == "Utility" then
-                pcall(function() utility = require(module) end)
-                if utility then break end
-            end
+    -- Utility:Raycast(self, origin, endPos, maxDist, filterList, filterType, debug)
+    -- 蜀・Κ縺ｧ direction = (endPos - origin).Unit * maxDist 繧定ｨ育ｮ励＠縺ｦ縺・ｋ
+    -- 縺ｪ縺ｮ縺ｧ args[3] (endPos) 繧偵ち繝ｼ繧ｲ繝・ヨ蠎ｧ讓吶↓蟾ｮ縺玲崛縺医ｋ縺縺代〒縺・＞
+    local utilityModule = nil
+    for _, module in pairs(ReplicatedStorage:GetDescendants()) do
+        if module:IsA("ModuleScript") and module.Name == "Utility" then
+            utilityModule = module
+            break
         end
     end
 
-    if utility and utility.Raycast then
-        if not getgenv().OriginalRaycast then
-            getgenv().OriginalRaycast = utility.Raycast
-        end
-        local originalFn = getgenv().OriginalRaycast
+    if utilityModule then
+        local success, utility = pcall(function() return require(utilityModule) end)
+        if success and utility and utility.Raycast then
+            if not getgenv().OriginalRaycast then
+                getgenv().OriginalRaycast = utility.Raycast
+            end
+            local originalFn = getgenv().OriginalRaycast
 
-        utility.Raycast = function(self, origin, endPos, ...)
-            if silentAimEnabled and math.random(1, 100) <= hitChance then
-                local closest, selectedPartName = getClosestPlayerInFOV()
-                if closest and closest.Character and selectedPartName and closest.Character:FindFirstChild(selectedPartName) then
-                    if typeof(origin) == "Vector3" then
-                        endPos = closest.Character[selectedPartName].Position
+            utility.Raycast = function(self, origin, endPos, ...)
+                if silentAimEnabled and math.random(1, 100) <= hitChance then
+                    local closest, selectedPartName = getClosestPlayerInFOV()
+                    if closest and closest.Character and selectedPartName and closest.Character:FindFirstChild(selectedPartName) then
+                        if typeof(origin) == "Vector3" then
+                            endPos = closest.Character[selectedPartName].Position
+                        end
                     end
                 end
+                return originalFn(self, origin, endPos, ...)
             end
-            return originalFn(self, origin, endPos, ...)
         end
-    end
-
-    local function patchCameraDataArgs(args)
-        if not (silentAimEnabled and math.random(1, 100) <= hitChance) then return false end
-        local closest, selectedPartName = getClosestPlayerInFOV()
-        if not (closest and closest.Character and selectedPartName and closest.Character:FindFirstChild(selectedPartName)) then
-            return false
-        end
-        local targetHead = closest.Character[selectedPartName]
-        local cam = workspace.CurrentCamera
-        local originPos = cam and cam.CFrame.Position or (lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and lp.Character.HumanoidRootPart.Position)
-        if not (originPos and targetHead and utility and utility.EncodeCFrame) then return false end
-
-        local targetPos = targetHead.Position
-        local aimCF = CFrame.lookAt(originPos, targetPos)
-        local randomOffset = Vector3.new(
-            (math.random() - 0.5) * 0.1,
-            (math.random() - 0.5) * 0.1,
-            (math.random() - 0.5) * 0.1
-        )
-        local aimedPos = targetPos + randomOffset
-        local objSpaceHeadOffset = targetHead.CFrame:ToObjectSpace(CFrame.new(aimedPos))
-        local cameradata = {}
-        cameradata[utf8.char(1)] = {
-            [utf8.char(0)] = utility:EncodeCFrame(aimCF),
-            [utf8.char(1)] = utility:EncodeCFrame(aimCF),
-            [utf8.char(2)] = targetHead,
-            [utf8.char(3)] = utility:EncodeCFrame(objSpaceHeadOffset)
-        }
-
-        args[3] = cameradata
-        return true
-    end
-
-    if hookmetamethod and not getgenv()._SilentAimUseItemHooked then
-        getgenv()._SilentAimUseItemHooked = true
-        local oldNamecall
-        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-            local method = getnamecallmethod()
-            if (method == "FireServer" or method == "fireServer") and tostring(self.Name) == "UseItem" then
-                local args = {...}
-                if patchCameraDataArgs(args) then
-                    return oldNamecall(self, unpack(args))
-                end
-            end
-            return oldNamecall(self, ...)
-        end)
-    end
-
-    if hookfunction and not getgenv()._SilentAimFireServerHooked then
-        getgenv()._SilentAimFireServerHooked = true
-        local dummyRemote = Instance.new("RemoteEvent")
-        local oldFireServer
-        oldFireServer = hookfunction(dummyRemote.FireServer, function(self, ...)
-            if tostring(self.Name) == "UseItem" then
-                local args = {...}
-                if patchCameraDataArgs(args) then
-                    return oldFireServer(self, unpack(args))
-                end
-            end
-            return oldFireServer(self, ...)
-        end)
-        dummyRemote:Destroy()
     end
 end
 
@@ -1176,19 +1116,25 @@ local AimLockSettings = {
     Enabled = false,
     TeamCheck = false,
     FOV = 150,
-    Smoothness = 0.65,
-    AlwaysLockSmooth = false,
+    SmoothnessOut = 0.65,
+    SmoothnessIn = 0.15,
+    ReactionTime = 0,
+    MaxLockTime = 0,
+    LockCooldown = 0.2,
+    Prediction = 2.2,
+    Deadzone = 0,
     WallCheck = false,
     AliveCheck = true,
     TargetPart = "HitboxHead",
     TargetSort = "Mouse (Closest)",
     OnlyScope = false,
-    SmoothnessIn = 0.15,
-    SmoothnessOut = 0.65,
 }
 
 local AL_LockedTarget = nil
 local AL_BlatantLockedFighter = nil
+local AL_TargetStartTime = 0
+local AL_LastTarget = nil
+local AL_CooldownUntil = 0
 local AL_BLATANT_HITBOXES = {"HitboxHead", "HitboxHeadSmall", "HitboxBody", "HitboxBodySmall"}
 
 local function AL_getHealth(entity)
@@ -1208,22 +1154,25 @@ local function AL_isEnemy(fighter)
     
     if SpectateController then
         local duel = SpectateController.CurrentDuelSubject
-        local localDueler = duel and duel:GetDueler(lp)
-        local localTeam = localDueler and localDueler:Get("TeamID") or nil
-        if localTeam and duel and duel.Duelers then
-            for _, dueler in next, duel.Duelers do
-                if dueler.Player == plr then
-                    local team = dueler:Get("TeamID")
-                    return team ~= localTeam
+        if duel and duel.Players then
+            local myTeam = nil
+            local targetTeam = nil
+            for team, players in pairs(duel.Players) do
+                for _, p in ipairs(players) do
+                    if p == lp then myTeam = team end
+                    if p == plr then targetTeam = team end
                 end
+            end
+            if myTeam and targetTeam then
+                return myTeam ~= targetTeam
             end
         end
     end
     
-	local localTeam = lp:GetAttribute("TeamID") or (FighterController and FighterController.LocalFighter and FighterController.LocalFighter:Get("TeamID"))
-	local targetTeam = plr:GetAttribute("TeamID") or (fighter.Get and fighter:Get("TeamID"))
-	if localTeam == nil or targetTeam == nil then return true end
-	return localTeam ~= targetTeam
+    if plr.Team and lp.Team then
+        return plr.Team ~= lp.Team
+    end
+    return true
 end
 
 local function AL_clampToHitboxes(char, worldPos)
@@ -1253,6 +1202,12 @@ end
 
 local function AL_getTarget()
 	if not AimLockSettings.Enabled then return nil, nil end
+	if os.clock() < AL_CooldownUntil then
+		AL_LockedTarget = nil
+		AL_BlatantLockedFighter = nil
+		AL_LastTarget = nil
+		return nil, nil
+	end
 	if AimLockSettings.OnlyScope then
 		local isAiming = false
 		local localFighter = FighterController and FighterController.LocalFighter
@@ -1267,6 +1222,7 @@ local function AL_getTarget()
 		if not isAiming then
 			AL_LockedTarget = nil
 			AL_BlatantLockedFighter = nil
+			AL_LastTarget = nil
 			return nil, nil
 		end
 	end
@@ -1285,6 +1241,14 @@ local function AL_getTarget()
 	end
 
 	if AL_LockedTarget then
+		if AimLockSettings.MaxLockTime > 0 and (os.clock() - AL_TargetStartTime) >= (AimLockSettings.MaxLockTime + (AimLockSettings.ReactionTime or 0)) then
+			AL_CooldownUntil = os.clock() + (AimLockSettings.LockCooldown or 0.2)
+			AL_LockedTarget = nil
+			AL_BlatantLockedFighter = nil
+			AL_LastTarget = nil
+			return nil, nil
+		end
+
 		local fighter = AL_BlatantLockedFighter
 		if not fighter and FighterController and type(FighterController.Objects) == "table" then
 			for _, f in pairs(FighterController.Objects) do
@@ -1296,13 +1260,21 @@ local function AL_getTarget()
 		local isAlive = (AL_getHealth(fighter.Entity) > 0)
 		if not AimLockSettings.AliveCheck then isAlive = true end
 		local ok = fighter and fighter.Player and fighter.Entity and isAlive
-		if not ok or not pcall(function() return not isBehindWall(AL_LockedTarget, fighter.Entity.Model) end) then
-			AL_LockedTarget = nil; AL_BlatantLockedFighter = nil
-		elseif isBehindWall(AL_LockedTarget, fighter.Entity.Model) then
-			AL_LockedTarget = nil; AL_BlatantLockedFighter = nil
+		if not ok or not pcall(function() return not isBehindWall(AL_LockedTarget, fighter.Entity.Model) end) or isBehindWall(AL_LockedTarget, fighter.Entity.Model) then
+			AL_LockedTarget = nil
+			AL_BlatantLockedFighter = nil
+			AL_LastTarget = nil
+			if (AimLockSettings.LockCooldown or 0) > 0 then
+				AL_CooldownUntil = os.clock() + AimLockSettings.LockCooldown
+			end
 		elseif lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and fighter.Entity.Model:FindFirstChild("HumanoidRootPart") then
 			if (fighter.Entity.Model.HumanoidRootPart.Position - lp.Character.HumanoidRootPart.Position).Magnitude > 500 then
-				AL_LockedTarget = nil; AL_BlatantLockedFighter = nil
+				AL_LockedTarget = nil
+				AL_BlatantLockedFighter = nil
+				AL_LastTarget = nil
+				if (AimLockSettings.LockCooldown or 0) > 0 then
+					AL_CooldownUntil = os.clock() + AimLockSettings.LockCooldown
+				end
 			end
 		end
 	end
@@ -1351,11 +1323,17 @@ local function AL_getTarget()
 				elseif sortMethod == "Mouse (Farthest)" then return a.MouseDist > b.MouseDist
 				else return a.MouseDist < b.MouseDist end
 			end)
-			AL_LockedTarget = validTargets[1].Part
-			AL_BlatantLockedFighter = validTargets[1].Fighter
+			local chosen = validTargets[1]
+			if chosen.Part ~= AL_LastTarget then
+				AL_LastTarget = chosen.Part
+				AL_TargetStartTime = os.clock()
+			end
+			AL_LockedTarget = chosen.Part
+			AL_BlatantLockedFighter = chosen.Fighter
 		else
 			AL_LockedTarget = nil
 			AL_BlatantLockedFighter = nil
+			AL_LastTarget = nil
 		end
 	end
 	return AL_LockedTarget, AL_BlatantLockedFighter
@@ -1383,14 +1361,23 @@ task.spawn(function()
             
             local target, targetFighter = AL_getTarget()
             if target then
-                local camera = workspace.CurrentCamera
-                local targetPos = target.Position + ((target.Parent and target.Parent:FindFirstChild("HumanoidRootPart")) and target.Parent.HumanoidRootPart.AssemblyLinearVelocity * dt * 2.2 or Vector3.new(0,0,0))
-                local camOrigin = camera.CFrame.Position + ((lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) and lp.Character.HumanoidRootPart.AssemblyLinearVelocity * dt * 2.2 or Vector3.new(0,0,0))
+                if (AimLockSettings.ReactionTime or 0) > 0 and (os.clock() - AL_TargetStartTime) < AimLockSettings.ReactionTime then
+                    return
+                end
 
-                if AimLockSettings.AlwaysLockSmooth and targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
-                    local char = targetFighter.Entity.Model
-                    local clamped = AL_clampToHitboxes(char, targetPos)
-                    if clamped then targetPos = clamped end
+                local camera = workspace.CurrentCamera
+                local predMult = AimLockSettings.Prediction or 2.2
+                local targetPos = target.Position + ((target.Parent and target.Parent:FindFirstChild("HumanoidRootPart")) and target.Parent.HumanoidRootPart.AssemblyLinearVelocity * dt * predMult or Vector3.new(0,0,0))
+                local camOrigin = camera.CFrame.Position + ((lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) and lp.Character.HumanoidRootPart.AssemblyLinearVelocity * dt * predMult or Vector3.new(0,0,0))
+
+                if (AimLockSettings.Deadzone or 0) > 0 then
+                    local sp, onScreen = camera:WorldToViewportPoint(targetPos)
+                    if onScreen then
+                        local screenDist = (Vector2.new(sp.X, sp.Y) - (camera.ViewportSize / 2)).Magnitude
+                        if screenDist <= AimLockSettings.Deadzone then
+                            return
+                        end
+                    end
                 end
 
                 local dir = (targetPos - camOrigin).Unit
@@ -1400,7 +1387,6 @@ task.spawn(function()
                 local current = self.Rotation
                 local diffYaw = (targetRot.Y - current.Y + math.pi) % (2 * math.pi) - math.pi
                 local targetRotAdj = Vector2.new(targetRot.X, current.Y + diffYaw)
-                -- ヒットボックス内にエイムが入っているか確認して吸い付き速度を切り替える
                 local inHitbox = false
                 if targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
                     local char = targetFighter.Entity.Model
@@ -1416,30 +1402,6 @@ task.spawn(function()
                 local smoothness = inHitbox and AimLockSettings.SmoothnessIn or AimLockSettings.SmoothnessOut
                 local alpha = math.clamp(1 - smoothness, 0.01, 1)
                 self.Rotation = self.Rotation:Lerp(targetRotAdj, alpha)
-
-                if AimLockSettings.AlwaysLockSmooth and targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
-                    local char = targetFighter.Entity.Model
-                    -- lerp後の現在の向きからエイム先を計算
-                    local rot = self.Rotation
-                    local postPitch, postYaw = rot.X, rot.Y
-                    local postDir = Vector3.new(
-                        -math.sin(postYaw) * math.cos(postPitch),
-                        math.sin(postPitch),
-                        -math.cos(postYaw) * math.cos(postPitch)
-                    )
-                    local dist = (targetPos - camOrigin).Magnitude
-                    local aimPoint = camOrigin + postDir * dist
-                    local reclamped = AL_clampToHitboxes(char, aimPoint)
-                    if reclamped then
-                        local rdir = (reclamped - camOrigin).Unit
-                        local finalYaw = math.atan2(-rdir.X, -rdir.Z)
-                        local finalPitch = math.asin(math.clamp(rdir.Y, -1, 1))
-                        local diffYaw2 = (finalYaw - current.Y + math.pi) % (2 * math.pi) - math.pi
-                        local finalRotAdj = Vector2.new(finalPitch, current.Y + diffYaw2)
-                        -- 瞬間移動(Snap)ではなく、元のcurrentからSmoothness(alpha)を適用してLerpする
-                        self.Rotation = current:Lerp(finalRotAdj, alpha)
-                    end
-                end
             end
         end
     end
@@ -1453,6 +1415,8 @@ local AimLockToggle = AimLockSection:AddToggle("AimLockEnabled", {
         if not value then
             AL_LockedTarget = nil
             AL_BlatantLockedFighter = nil
+            AL_LastTarget = nil
+            AL_CooldownUntil = 0
         end
     end
 })
@@ -1460,12 +1424,16 @@ local AimLockToggle = AimLockSection:AddToggle("AimLockEnabled", {
 local AimLockDep = AimLockSection:AddDependencyBox()
 AimLockDep:AddToggle("AimLockTeamCheck", { Text = "TeamCheck", Default = false, Callback = function(v) AimLockSettings.TeamCheck = v end })
 AimLockDep:AddToggle("AimLockAliveCheck", { Text = "AliveCheck", Default = true, Callback = function(v) AimLockSettings.AliveCheck = v end })
+AimLockDep:AddToggle("AimLockWallCheck", { Text = "WallCheck", Default = false, Callback = function(v) AimLockSettings.WallCheck = v end })
+AimLockDep:AddToggle("AimLockOnlyScope", { Text = "OnlyScope", Default = false, Callback = function(v) AimLockSettings.OnlyScope = v end })
 AimLockDep:AddSlider("AimLockFOV", { Text = "Fov", Default = 150, Min = 1, Max = 800, Rounding = 0, Callback = function(v) AimLockSettings.FOV = v end })
 AimLockDep:AddSlider("AimLockSmoothnessOut", { Text = "Smoothness (Hitbox外)", Default = 0.65, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.SmoothnessOut = v end })
 AimLockDep:AddSlider("AimLockSmoothnessIn", { Text = "Smoothness (Hitbox内)", Default = 0.15, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.SmoothnessIn = v end })
-AimLockDep:AddToggle("AimLockAlwaysLockSmooth", { Text = "AlwaysLockSmooth", Default = false, Callback = function(v) AimLockSettings.AlwaysLockSmooth = v end })
-AimLockDep:AddToggle("AimLockWallCheck", { Text = "WallCheck", Default = false, Callback = function(v) AimLockSettings.WallCheck = v end })
-AimLockDep:AddToggle("AimLockOnlyScope", { Text = "OnlyScope", Default = false, Callback = function(v) AimLockSettings.OnlyScope = v end })
+AimLockDep:AddSlider("AimLockReactionTime", { Text = "Reaction Time", Default = 0, Min = 0, Max = 0.5, Rounding = 2, Suffix = "s", Callback = function(v) AimLockSettings.ReactionTime = v end })
+AimLockDep:AddSlider("AimLockMaxLockTime", { Text = "Max Lock Time (0=Off)", Default = 0, Min = 0, Max = 5, Rounding = 1, Suffix = "s", Callback = function(v) AimLockSettings.MaxLockTime = v end })
+AimLockDep:AddSlider("AimLockCooldown", { Text = "Lock Cooldown", Default = 0.2, Min = 0, Max = 2, Rounding = 2, Suffix = "s", Callback = function(v) AimLockSettings.LockCooldown = v end })
+AimLockDep:AddSlider("AimLockPrediction", { Text = "Velocity Prediction", Default = 2.2, Min = 0, Max = 5, Rounding = 1, Callback = function(v) AimLockSettings.Prediction = v end })
+AimLockDep:AddSlider("AimLockDeadzone", { Text = "Deadzone", Default = 0, Min = 0, Max = 50, Rounding = 0, Suffix = "px", Callback = function(v) AimLockSettings.Deadzone = v end })
 AimLockDep:AddDropdown("AimLockTargetPart", {
     Values = {"HitboxHead", "HitboxBody", "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg"},
     Default = 1,
