@@ -1647,7 +1647,7 @@ ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callba
 ESPDep:SetupDependencies({ { ESPToggle, true } })
 
 -- Anti Effects (Anti Smoke & Anti Flashbang)
-do
+;(function()
     local AntiEffectsSection = Tabs.Visuals:AddLeftGroupbox("Anti Effects")
 
     local antiSmokeEnabled = false
@@ -1768,7 +1768,7 @@ do
             end,
         }
     end
-end
+end)();
 
 -- Team ESP
 local TeamESPSection = Tabs.Visuals:AddRightGroupbox("Team ESP")
@@ -1960,7 +1960,7 @@ CrosshairSection:AddToggle("Crosshair_Spin", {
 })
 
 -- ===== BULLET TRACER (VISUALS) =====
-do
+;(function()
     local BulletTracerSection = Tabs.Visuals:AddRightGroupbox("Bullet Tracer")
 
     getgenv()._bt = { enabled = false, width = 2, fadeTime = 4 }
@@ -2084,7 +2084,7 @@ do
             getgenv()._bulletTracerHooked_Rich = true
         end
     end)
-end
+end)();
 
 -- ===== ENVIRONMENT TAB (WORLD) =====
 local EnvSection = Tabs.World:AddLeftGroupbox("Environment")
@@ -2723,7 +2723,7 @@ task.spawn(function()
     end)
 end)
 -- ========== ANTI AIM ==========
-do
+;(function()
     local AntiAimSection = Tabs.Rage:AddRightGroupbox("AntiAim")
 
     local aaEnabled = false
@@ -2856,10 +2856,10 @@ do
             camRemote:FireServer(encoded, nil)
         end)
     end)
-end
+end)();
 
 
-do
+;(function()
     local autoQueueEnabled = false
     local autoQueueName = nil
     local autoQueueDisplayToInternal = {}
@@ -2978,10 +2978,10 @@ do
             end)
         end
     end)
-end
+end)();
 
 -- ========== CHARM SPOOFER ==========
-do
+;(function()
 local charmRankList = {
     "Use Spoofed ELO",
     "Unranked",
@@ -3099,7 +3099,7 @@ CharmSection:AddToggle("Charm_S2", { Text = "Season 2 Charm", Default = false,
     Callback = function(v) charmState.s2 = v; applyCharmHook(); refreshCharms() end })
 CharmSection:AddToggle("Charm_S3", { Text = "Season 3 Charm", Default = false,
     Callback = function(v) charmState.s3 = v; applyCharmHook(); refreshCharms() end })
-end -- do CharmSpoofer
+end)(); -- do CharmSpoofer
 
 -- ========== UNLOCK ALL ==========
 
@@ -3487,7 +3487,7 @@ DeviceSpoofDropdownObj = DeviceSpoofDep:AddDropdown("DeviceSpoofDropdown", {
 DeviceSpoofDep:SetupDependencies({ { DeviceSpooferToggle, true } })
 
 -- ========== DAMAGE NOTIFICATION ==========
-do
+;(function()
 local dmgNotifEnabled = false
 local dmgNotifMin = 1
 local dmgNotifCooldown = 0.3
@@ -3613,7 +3613,7 @@ DmgNotifSection:AddSlider("DmgNotif_Cooldown", {
     Text = "Cooldown (s)", Default = 0.3, Min = 0, Max = 3, Rounding = 1,
     Callback = function(v) dmgNotifCooldown = v end,
 })
-end -- do DamageNotification
+end)(); -- do DamageNotification
 
 -- ========== ANTI BAN ==========
 
@@ -4206,7 +4206,7 @@ MovementSection:AddToggle("HideDesyncToggle", {
     end
 })
 
-do
+;(function()
     local infJumpEnabled = false
     local fighterControllerCache = nil
     local maxDoubleJumpsOriginals = {}
@@ -4242,7 +4242,7 @@ do
             end
         end
     end)
-end
+end)();
 
 lp.CharacterAdded:Connect(function()
     if flyEnabled then task.wait(0.5) startFly() end
@@ -4250,7 +4250,7 @@ lp.CharacterAdded:Connect(function()
 end)
 
 -- ========== AUTO LOADOUT ==========
-do
+;(function()
 local autoLoadoutEnabled = false
 local ChosenWeapons = {}
 local WeaponLists = {}
@@ -4437,7 +4437,7 @@ local function enforceAutoLoadout()
             AutoLoadout_FighterController.FighterAdded:Connect(attachToFighter)
         end
     end
-end
+end)();
 
 task.spawn(function()
     local Modules = ReplicatedStorage:WaitForChild("Modules", 10)
