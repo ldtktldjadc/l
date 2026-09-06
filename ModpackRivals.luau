@@ -1647,125 +1647,127 @@ ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callba
 ESPDep:SetupDependencies({ { ESPToggle, true } })
 
 -- Anti Effects (Anti Smoke & Anti Flashbang)
-local AntiEffectsSection = Tabs.Visuals:AddLeftGroupbox("Anti Effects")
+do
+    local AntiEffectsSection = Tabs.Visuals:AddLeftGroupbox("Anti Effects")
 
-local antiSmokeEnabled = false
-local no_flash = false
+    local antiSmokeEnabled = false
+    local no_flash = false
 
-AntiEffectsSection:AddToggle("Anti_Smoke", {
-    Text = "Anti Smoke",
-    Default = false,
-    Callback = function(v)
-        antiSmokeEnabled = v
-    end
-})
+    AntiEffectsSection:AddToggle("Anti_Smoke", {
+        Text = "Anti Smoke",
+        Default = false,
+        Callback = function(v)
+            antiSmokeEnabled = v
+        end
+    })
 
-AntiEffectsSection:AddToggle("Anti_Flashbang", {
-    Text = "Anti Flashbang",
-    Default = false,
-    Callback = function(v)
-        no_flash = v
-    end
-})
+    AntiEffectsSection:AddToggle("Anti_Flashbang", {
+        Text = "Anti Flashbang",
+        Default = false,
+        Callback = function(v)
+            no_flash = v
+        end
+    })
 
--- AntiSmoke & AntiFlashbang logic & hooks
-task.spawn(function()
-    local ok, FighterController = pcall(function()
-        return require(LocalPlayer.PlayerScripts:WaitForChild("Controllers"):WaitForChild("FighterController"))
+    -- AntiSmoke & AntiFlashbang logic & hooks
+    task.spawn(function()
+        local ok, FighterController = pcall(function()
+            return require(LocalPlayer.PlayerScripts:WaitForChild("Controllers"):WaitForChild("FighterController"))
+        end)
+        if not ok or not FighterController then return end
+
+        local function hookSmokeScreen(fighter)
+            if fighter and fighter.FighterInterface and fighter.FighterInterface.SmokeScreen then
+                local SmokeScreen = fighter.FighterInterface.SmokeScreen
+                if not SmokeScreen._antiSmokeHooked then
+                    local origUpdate = SmokeScreen.Update
+                    SmokeScreen.Update = function(self, ...)
+                        if antiSmokeEnabled then
+                            self:Hide()
+                            return
+                        end
+                        return origUpdate(self, ...)
+                    end
+                    SmokeScreen._antiSmokeHooked = true
+                end
+            end
+        end
+
+        local function hookFlashed(fighter)
+            if fighter and fighter.FighterInterface and fighter.FighterInterface.Flashed then
+                local Flashed = fighter.FighterInterface.Flashed
+                if not Flashed._antiFlashHooked then
+                    local origAttempt = Flashed.AttemptToFlash
+                    local origFlash = Flashed.Flash
+                    Flashed.AttemptToFlash = function(self, ...)
+                        if no_flash then return end
+                        return origAttempt(self, ...)
+                    end
+                    Flashed.Flash = function(self, ...)
+                        if no_flash then return end
+                        return origFlash(self, ...)
+                    end
+                    Flashed._antiFlashHooked = true
+                end
+            end
+        end
+
+        while task.wait(0.5) do
+            pcall(function()
+                local fighter = FighterController:GetFighter(LocalPlayer)
+                if fighter then
+                    hookSmokeScreen(fighter)
+                    hookFlashed(fighter)
+                    if antiSmokeEnabled and fighter.FighterInterface and fighter.FighterInterface.SmokeScreen then
+                        fighter.FighterInterface.SmokeScreen:Hide()
+                    end
+                end
+            end)
+        end
     end)
-    if not ok or not FighterController then return end
 
-    local function hookSmokeScreen(fighter)
-        if fighter and fighter.FighterInterface and fighter.FighterInterface.SmokeScreen then
-            local SmokeScreen = fighter.FighterInterface.SmokeScreen
-            if not SmokeScreen._antiSmokeHooked then
-                local origUpdate = SmokeScreen.Update
-                SmokeScreen.Update = function(self, ...)
-                    if antiSmokeEnabled then
-                        self:Hide()
+    -- AntiFlashbang Item replication hook
+    task.spawn(function()
+        pcall(function()
+            local flashbangMod = LocalPlayer.PlayerScripts:WaitForChild("Modules"):WaitForChild("Items"):WaitForChild("Flashbang", 5)
+                or LocalPlayer.PlayerScripts:WaitForChild("Modules"):WaitForChild("ItemTypes"):WaitForChild("Flashbang", 5)
+            if flashbangMod then
+                local flashbang = require(flashbangMod)
+                local origReplicate = flashbang.ReplicateFromServer
+                flashbang.ReplicateFromServer = function(self, effectName, ...)
+                    if effectName == "BlindEffect" and no_flash then
                         return
                     end
-                    return origUpdate(self, ...)
-                end
-                SmokeScreen._antiSmokeHooked = true
-            end
-        end
-    end
-
-    local function hookFlashed(fighter)
-        if fighter and fighter.FighterInterface and fighter.FighterInterface.Flashed then
-            local Flashed = fighter.FighterInterface.Flashed
-            if not Flashed._antiFlashHooked then
-                local origAttempt = Flashed.AttemptToFlash
-                local origFlash = Flashed.Flash
-                Flashed.AttemptToFlash = function(self, ...)
-                    if no_flash then return end
-                    return origAttempt(self, ...)
-                end
-                Flashed.Flash = function(self, ...)
-                    if no_flash then return end
-                    return origFlash(self, ...)
-                end
-                Flashed._antiFlashHooked = true
-            end
-        end
-    end
-
-    while task.wait(0.5) do
-        pcall(function()
-            local fighter = FighterController:GetFighter(LocalPlayer)
-            if fighter then
-                hookSmokeScreen(fighter)
-                hookFlashed(fighter)
-                if antiSmokeEnabled and fighter.FighterInterface and fighter.FighterInterface.SmokeScreen then
-                    fighter.FighterInterface.SmokeScreen:Hide()
+                    return origReplicate(self, effectName, ...)
                 end
             end
         end)
-    end
-end)
-
--- AntiFlashbang Item replication hook
-task.spawn(function()
-    pcall(function()
-        local flashbangMod = LocalPlayer.PlayerScripts:WaitForChild("Modules"):WaitForChild("Items"):WaitForChild("Flashbang", 5)
-            or LocalPlayer.PlayerScripts:WaitForChild("Modules"):WaitForChild("ItemTypes"):WaitForChild("Flashbang", 5)
-        if flashbangMod then
-            local flashbang = require(flashbangMod)
-            local origReplicate = flashbang.ReplicateFromServer
-            flashbang.ReplicateFromServer = function(self, effectName, ...)
-                if effectName == "BlindEffect" and no_flash then
-                    return
-                end
-                return origReplicate(self, effectName, ...)
-            end
-        end
     end)
-end)
 
-if getgenv then
-    getgenv().AntiSmoke = {
-        Toggle = function()
-            antiSmokeEnabled = not antiSmokeEnabled
-            if Toggles and Toggles.Anti_Smoke then Toggles.Anti_Smoke:SetValue(antiSmokeEnabled) end
-            return antiSmokeEnabled
-        end,
-        SetEnabled = function(val)
-            antiSmokeEnabled = val
-            if Toggles and Toggles.Anti_Smoke then Toggles.Anti_Smoke:SetValue(val) end
-        end,
-    }
-    getgenv().AntiFlash = {
-        Toggle = function()
-            no_flash = not no_flash
-            if Toggles and Toggles.Anti_Flashbang then Toggles.Anti_Flashbang:SetValue(no_flash) end
-            return no_flash
-        end,
-        SetEnabled = function(val)
-            no_flash = val
-            if Toggles and Toggles.Anti_Flashbang then Toggles.Anti_Flashbang:SetValue(val) end
-        end,
-    }
+    if getgenv then
+        getgenv().AntiSmoke = {
+            Toggle = function()
+                antiSmokeEnabled = not antiSmokeEnabled
+                if Toggles and Toggles.Anti_Smoke then Toggles.Anti_Smoke:SetValue(antiSmokeEnabled) end
+                return antiSmokeEnabled
+            end,
+            SetEnabled = function(val)
+                antiSmokeEnabled = val
+                if Toggles and Toggles.Anti_Smoke then Toggles.Anti_Smoke:SetValue(val) end
+            end,
+        }
+        getgenv().AntiFlash = {
+            Toggle = function()
+                no_flash = not no_flash
+                if Toggles and Toggles.Anti_Flashbang then Toggles.Anti_Flashbang:SetValue(no_flash) end
+                return no_flash
+            end,
+            SetEnabled = function(val)
+                no_flash = val
+                if Toggles and Toggles.Anti_Flashbang then Toggles.Anti_Flashbang:SetValue(val) end
+            end,
+        }
+    end
 end
 
 -- Team ESP
