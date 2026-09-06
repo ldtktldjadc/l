@@ -1646,130 +1646,6 @@ ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callba
 
 ESPDep:SetupDependencies({ { ESPToggle, true } })
 
--- Anti Effects (Anti Smoke & Anti Flashbang)
-;(function()
-    local AntiEffectsSection = Tabs.Visuals:AddLeftGroupbox("Anti Effects")
-
-    local antiSmokeEnabled = false
-    local no_flash = false
-
-    AntiEffectsSection:AddToggle("Anti_Smoke", {
-        Text = "Anti Smoke",
-        Default = false,
-        Callback = function(v)
-            antiSmokeEnabled = v
-        end
-    })
-
-    AntiEffectsSection:AddToggle("Anti_Flashbang", {
-        Text = "Anti Flashbang",
-        Default = false,
-        Callback = function(v)
-            no_flash = v
-        end
-    })
-
-    -- AntiSmoke & AntiFlashbang logic & hooks
-    task.spawn(function()
-        local ok, FighterController = pcall(function()
-            return require(LocalPlayer.PlayerScripts:WaitForChild("Controllers"):WaitForChild("FighterController"))
-        end)
-        if not ok or not FighterController then return end
-
-        local function hookSmokeScreen(fighter)
-            if fighter and fighter.FighterInterface and fighter.FighterInterface.SmokeScreen then
-                local SmokeScreen = fighter.FighterInterface.SmokeScreen
-                if not SmokeScreen._antiSmokeHooked then
-                    local origUpdate = SmokeScreen.Update
-                    SmokeScreen.Update = function(self, ...)
-                        if antiSmokeEnabled then
-                            self:Hide()
-                            return
-                        end
-                        return origUpdate(self, ...)
-                    end
-                    SmokeScreen._antiSmokeHooked = true
-                end
-            end
-        end
-
-        local function hookFlashed(fighter)
-            if fighter and fighter.FighterInterface and fighter.FighterInterface.Flashed then
-                local Flashed = fighter.FighterInterface.Flashed
-                if not Flashed._antiFlashHooked then
-                    local origAttempt = Flashed.AttemptToFlash
-                    local origFlash = Flashed.Flash
-                    Flashed.AttemptToFlash = function(self, ...)
-                        if no_flash then return end
-                        return origAttempt(self, ...)
-                    end
-                    Flashed.Flash = function(self, ...)
-                        if no_flash then return end
-                        return origFlash(self, ...)
-                    end
-                    Flashed._antiFlashHooked = true
-                end
-            end
-        end
-
-        while task.wait(0.5) do
-            pcall(function()
-                local fighter = FighterController:GetFighter(LocalPlayer)
-                if fighter then
-                    hookSmokeScreen(fighter)
-                    hookFlashed(fighter)
-                    if antiSmokeEnabled and fighter.FighterInterface and fighter.FighterInterface.SmokeScreen then
-                        fighter.FighterInterface.SmokeScreen:Hide()
-                    end
-                end
-            end)
-        end
-    end)
-
-    -- AntiFlashbang Item replication hook
-    task.spawn(function()
-        pcall(function()
-            local flashbangMod = LocalPlayer.PlayerScripts:WaitForChild("Modules"):WaitForChild("Items"):WaitForChild("Flashbang", 5)
-                or LocalPlayer.PlayerScripts:WaitForChild("Modules"):WaitForChild("ItemTypes"):WaitForChild("Flashbang", 5)
-            if flashbangMod then
-                local flashbang = require(flashbangMod)
-                local origReplicate = flashbang.ReplicateFromServer
-                flashbang.ReplicateFromServer = function(self, effectName, ...)
-                    if effectName == "BlindEffect" and no_flash then
-                        return
-                    end
-                    return origReplicate(self, effectName, ...)
-                end
-            end
-        end)
-    end)
-
-    if getgenv then
-        getgenv().AntiSmoke = {
-            Toggle = function()
-                antiSmokeEnabled = not antiSmokeEnabled
-                if Toggles and Toggles.Anti_Smoke then Toggles.Anti_Smoke:SetValue(antiSmokeEnabled) end
-                return antiSmokeEnabled
-            end,
-            SetEnabled = function(val)
-                antiSmokeEnabled = val
-                if Toggles and Toggles.Anti_Smoke then Toggles.Anti_Smoke:SetValue(val) end
-            end,
-        }
-        getgenv().AntiFlash = {
-            Toggle = function()
-                no_flash = not no_flash
-                if Toggles and Toggles.Anti_Flashbang then Toggles.Anti_Flashbang:SetValue(no_flash) end
-                return no_flash
-            end,
-            SetEnabled = function(val)
-                no_flash = val
-                if Toggles and Toggles.Anti_Flashbang then Toggles.Anti_Flashbang:SetValue(val) end
-            end,
-        }
-    end
-end)();
-
 -- Team ESP
 local TeamESPSection = Tabs.Visuals:AddRightGroupbox("Team ESP")
 
@@ -1960,7 +1836,7 @@ CrosshairSection:AddToggle("Crosshair_Spin", {
 })
 
 -- ===== BULLET TRACER (VISUALS) =====
-;(function()
+do
     local BulletTracerSection = Tabs.Visuals:AddRightGroupbox("Bullet Tracer")
 
     getgenv()._bt = { enabled = false, width = 2, fadeTime = 4 }
@@ -2084,7 +1960,7 @@ CrosshairSection:AddToggle("Crosshair_Spin", {
             getgenv()._bulletTracerHooked_Rich = true
         end
     end)
-end)();
+end
 
 -- ===== ENVIRONMENT TAB (WORLD) =====
 local EnvSection = Tabs.World:AddLeftGroupbox("Environment")
@@ -2723,7 +2599,7 @@ task.spawn(function()
     end)
 end)
 -- ========== ANTI AIM ==========
-;(function()
+do
     local AntiAimSection = Tabs.Rage:AddRightGroupbox("AntiAim")
 
     local aaEnabled = false
@@ -2856,10 +2732,10 @@ end)
             camRemote:FireServer(encoded, nil)
         end)
     end)
-end)();
+end
 
 
-;(function()
+do
     local autoQueueEnabled = false
     local autoQueueName = nil
     local autoQueueDisplayToInternal = {}
@@ -2978,10 +2854,10 @@ end)();
             end)
         end
     end)
-end)();
+end
 
 -- ========== CHARM SPOOFER ==========
-;(function()
+do
 local charmRankList = {
     "Use Spoofed ELO",
     "Unranked",
@@ -3099,7 +2975,7 @@ CharmSection:AddToggle("Charm_S2", { Text = "Season 2 Charm", Default = false,
     Callback = function(v) charmState.s2 = v; applyCharmHook(); refreshCharms() end })
 CharmSection:AddToggle("Charm_S3", { Text = "Season 3 Charm", Default = false,
     Callback = function(v) charmState.s3 = v; applyCharmHook(); refreshCharms() end })
-end)(); -- do CharmSpoofer
+end -- do CharmSpoofer
 
 -- ========== UNLOCK ALL ==========
 
@@ -3487,7 +3363,7 @@ DeviceSpoofDropdownObj = DeviceSpoofDep:AddDropdown("DeviceSpoofDropdown", {
 DeviceSpoofDep:SetupDependencies({ { DeviceSpooferToggle, true } })
 
 -- ========== DAMAGE NOTIFICATION ==========
-;(function()
+do
 local dmgNotifEnabled = false
 local dmgNotifMin = 1
 local dmgNotifCooldown = 0.3
@@ -3613,7 +3489,7 @@ DmgNotifSection:AddSlider("DmgNotif_Cooldown", {
     Text = "Cooldown (s)", Default = 0.3, Min = 0, Max = 3, Rounding = 1,
     Callback = function(v) dmgNotifCooldown = v end,
 })
-end)(); -- do DamageNotification
+end -- do DamageNotification
 
 -- ========== ANTI BAN ==========
 
@@ -4206,7 +4082,7 @@ MovementSection:AddToggle("HideDesyncToggle", {
     end
 })
 
-;(function()
+do
     local infJumpEnabled = false
     local fighterControllerCache = nil
     local maxDoubleJumpsOriginals = {}
@@ -4242,7 +4118,7 @@ MovementSection:AddToggle("HideDesyncToggle", {
             end
         end
     end)
-end)();
+end
 
 lp.CharacterAdded:Connect(function()
     if flyEnabled then task.wait(0.5) startFly() end
@@ -4250,7 +4126,7 @@ lp.CharacterAdded:Connect(function()
 end)
 
 -- ========== AUTO LOADOUT ==========
-;(function()
+do
 local autoLoadoutEnabled = false
 local ChosenWeapons = {}
 local WeaponLists = {}
@@ -4437,7 +4313,7 @@ local function enforceAutoLoadout()
             AutoLoadout_FighterController.FighterAdded:Connect(attachToFighter)
         end
     end
-end)();
+end
 
 task.spawn(function()
     local Modules = ReplicatedStorage:WaitForChild("Modules", 10)
