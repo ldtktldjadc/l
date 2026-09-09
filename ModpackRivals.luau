@@ -1154,21 +1154,24 @@ local function AL_isEnemy(fighter)
     
     if SpectateController then
         local duel = SpectateController.CurrentDuelSubject
-        if duel and duel.Players then
-            local myTeam = nil
-            local targetTeam = nil
-            for team, players in pairs(duel.Players) do
-                for _, p in ipairs(players) do
-                    if p == lp then myTeam = team end
-                    if p == plr then targetTeam = team end
+        local localDueler = duel and duel:GetDueler(lp)
+        local localTeam = localDueler and localDueler:Get("TeamID") or nil
+        if localTeam and duel and duel.Duelers then
+            for _, dueler in next, duel.Duelers do
+                if dueler.Player == plr then
+                    local team = dueler:Get("TeamID")
+                    return team ~= localTeam
                 end
-            end
-            if myTeam and targetTeam then
-                return myTeam ~= targetTeam
             end
         end
     end
     
+    local myID = lp:GetAttribute("TeamID")
+    local theirID = plr:GetAttribute("TeamID")
+    if myID and theirID then
+        return myID ~= theirID
+    end
+
     if plr.Team and lp.Team then
         return plr.Team ~= lp.Team
     end
