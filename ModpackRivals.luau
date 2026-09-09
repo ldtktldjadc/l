@@ -2125,12 +2125,21 @@ getgenv().Config = getgenv().Config or {
 }
 getgenv().RageBotConfig = getgenv().Config
 
+local currentTargetPart = nil
+local currentDesyncCF = nil
+local currentTargetYaw = nil
+
 RageBotSection:AddToggle("RageBot_Enabled", {
     Text = "Enable RageBot",
     Default = false,
     Callback = function(value)
         getgenv().Config.Enabled = value
         getgenv().RageBotConfig.Enabled = value
+        if not value then
+            currentTargetPart = nil
+            currentDesyncCF = nil
+            currentTargetYaw = nil
+        end
     end
 })
 
@@ -2196,10 +2205,6 @@ task.spawn(function()
     local function getSlotNumber()
         return slots[getgenv().Config.WeaponSlot] or 3
     end
-
-    local currentTargetPart = nil
-    local currentDesyncCF = nil
-    local currentTargetYaw = nil
 
     local camRemote = nil
     task.spawn(function()
@@ -2374,6 +2379,7 @@ task.spawn(function()
     end
 
     runS.Heartbeat:Connect(function()
+        if not getgenv().Config.Enabled then return end
         local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
         if not myRoot then return end
 
