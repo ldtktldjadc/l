@@ -2236,10 +2236,12 @@ do
             oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                 local method = getnamecallmethod()
                 if not checkcaller() and method == "FireServer" and (self.Name == "UpdateCameraRotation" or (camRemote and self == camRemote)) then
-                    if currentTargetYaw then
+                    if currentTargetYaw and getgenv().Config and getgenv().Config.Enabled then
                         local pitch = (getgenv().Config.WeaponSlot == "Knife") and 0 or math.rad(-89)
-                        local encoded = util:EncodeCameraRotation(Vector2.new(pitch, currentTargetYaw))
-                        return oldNamecall(self, encoded, nil)
+                        local encoded = util and util:EncodeCameraRotation(Vector2.new(pitch, currentTargetYaw))
+                        if encoded then
+                            return oldNamecall(self, encoded, nil)
+                        end
                     end
                 end
                 return oldNamecall(self, ...)
@@ -2433,13 +2435,14 @@ do
             local oldVel    = myRoot.Velocity
             local oldRotVel = myRoot.RotVelocity
             myRoot.CFrame = desyncCF
+            pcall(function() runS:UnbindFromRenderStep("__restore") end)
             runS:BindToRenderStep("__restore", 101, function()
                 if myRoot then
                     myRoot.CFrame    = oldCF
                     myRoot.Velocity  = oldVel
                     myRoot.RotVelocity = oldRotVel
                 end
-                runS:UnbindFromRenderStep("__restore")
+                pcall(function() runS:UnbindFromRenderStep("__restore") end)
             end)
 
             if not canAttack then
