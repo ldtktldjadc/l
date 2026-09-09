@@ -2118,88 +2118,211 @@ EnvSection:AddSlider("Env_Snow_Speed", {
 
 local RageBotSection = Tabs.Rage:AddRightGroupbox("RageBot")
 
-getgenv().RageBotConfig = {
+getgenv().Config = getgenv().Config or {
     Enabled = false,
     WeaponSlot = "Primary",
     FireRate = 0.0005,
-    TargetSort = "Distance (Closest)"
 }
+getgenv().RageBotConfig = getgenv().Config
 
 RageBotSection:AddToggle("RageBot_Enabled", {
     Text = "Enable RageBot",
     Default = false,
     Callback = function(value)
+        getgenv().Config.Enabled = value
         getgenv().RageBotConfig.Enabled = value
     end
 })
 
 RageBotSection:AddDropdown("RageBot_Slot", {
-    Values = {"Primary", "Secondary", "Melee"},
+    Values = {"Primary", "Secondary", "Melee", "Knife"},
     Default = 1,
     Multi = false,
     Text = "Weapon Slot",
     Callback = function(value)
+        getgenv().Config.WeaponSlot = value
         getgenv().RageBotConfig.WeaponSlot = value
-    end
-})
-
-RageBotSection:AddDropdown("RageBot_TargetSort", {
-    Values = {"Distance (Closest)", "Distance (Farthest)", "Health (Lowest)", "Health (Highest)", "Mouse (Closest)", "Mouse (Farthest)"},
-    Default = 1,
-    Multi = false,
-    Text = "Target Sort",
-    Callback = function(value)
-        getgenv().RageBotConfig.TargetSort = value
+        local FighterController = nil
+        pcall(function()
+            FighterController = require(lp.PlayerScripts:WaitForChild("Controllers"):WaitForChild("FighterController"))
+        end)
+        local localFighter = FighterController and FighterController.LocalFighter
+        if localFighter then
+            pcall(function()
+                local slots = { Primary = 1, Secondary = 2, Melee = 3, Knife = 3 }
+                localFighter:EquipItem(slots[value] or 3)
+            end)
+        end
     end
 })
 
 task.spawn(function()
-    local plrs = cloneref(game:GetService("Players"))
     local repS = cloneref(game:GetService("ReplicatedStorage"))
+    local plrs = cloneref(game:GetService("Players"))
     local runS = cloneref(game:GetService("RunService"))
-    local ws   = cloneref(game:GetService("Workspace"))
+    local ws = cloneref(game:GetService("Workspace"))
     local lplr = plrs.LocalPlayer
+
     local util = nil
     local enum = nil
     pcall(function() util = require(repS.Modules.Utility) end)
     pcall(function() enum = require(repS.Modules.EnumLibrary) end)
-    
-    local slots = { Primary = 1, Secondary = 2, Melee = 3 }
-    local function getSlotNumber() return slots[getgenv().RageBotConfig.WeaponSlot] or 3 end
-    
+
+    local FighterController = nil
+    local SpectateController = nil
+    local MechanicsController = nil
+    local KnifeModule = nil
+
+    pcall(function()
+        FighterController = require(lplr.PlayerScripts.Controllers.FighterController)
+    end)
+    pcall(function()
+        SpectateController = require(lplr.PlayerScripts.Controllers:WaitForChild("SpectateController"))
+    end)
+    pcall(function()
+        MechanicsController = require(lplr.PlayerScripts.Controllers:WaitForChild("MechanicsController"))
+    end)
+    pcall(function()
+        KnifeModule = require(lplr.PlayerScripts:WaitForChild("Modules"):WaitForChild("Items"):WaitForChild("Knife"))
+    end)
+
+    local slots = {
+        Primary = 1,
+        Secondary = 2,
+        Melee = 3,
+        Knife = 3
+    }
+
+    local function getSlotNumber()
+        return slots[getgenv().Config.WeaponSlot] or 3
+    end
+
+    local currentTargetPart = nil
+    local currentDesyncCF = nil
+    local currentTargetYaw = nil
+
+    local camRemote = nil
+    task.spawn(function()
+        pcall(function()
+            camRemote = repS:WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("UpdateCameraRotation")
+        end)
+    end)
+
+    if util and not getgenv()._ragebotUtilHooked then
+        getgenv()._ragebotUtilHooked = true
+        local oldEncode = util.EncodeCameraRotation
+        util.EncodeCameraRotation = function(self, rot)
+            if currentTargetYaw and typeof(rot) == "Vector2" then
+                local pitch = (getgenv().Config.WeaponSlot == "Knife") and 0 or math.rad(-89)
+                rot = Vector2.new(pitch, currentTargetYaw)
+            end
+            return oldEncode(self, rot)
+        end
+    end
+
+    if not getgenv()._ragebotCamHooked then
+        getgenv()._ragebotCamHooked = true
+        local oldNamecall
+        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            local method = getnamecallmethod()
+            if not checkcaller() and method == "FireServer" and (self.Name == "UpdateCameraRotation" or (camRemote and self == camRemote)) then
+                if currentTargetYaw then
+                    local pitch = (getgenv().Config.WeaponSlot == "Knife") and 0 or math.rad(-89)
+                    local encoded = util:EncodeCameraRotation(Vector2.new(pitch, currentTargetYaw))
+                    return oldNamecall(self, encoded, nil)
+                end
+            end
+            return oldNamecall(self, ...)
+        end)
+    end
+
+    local shot_offset_cf = nil
+    if util then
+        pcall(function()
+            shot_offset_cf = util:EncodeCFrame(CFrame.new(0.43, 0.25, 0.42))
+        end)
+    end
+
+    local function BuildShotPayload(origin, target, part)
+        local aim_cf = util:EncodeCFrame(CFrame.new(origin, target))
+        return {
+            [utf8.char(0)] = aim_cf,
+            [utf8.char(1)] = aim_cf,
+            [utf8.char(2)] = part,
+            [utf8.char(3)] = shot_offset_cf,
+        }
+    end
+
+    if KnifeModule and not getgenv().KnifeHooked_RageBot then
+        getgenv().KnifeHooked_RageBot = true
+        local old_knife = KnifeModule.StartAiming
+        KnifeModule.StartAiming = function(self, ...)
+            if getgenv().Config.WeaponSlot == "Knife" and currentTargetPart and currentDesyncCF then
+                local results = {old_knife(self, ...)}
+                if results[1] == true and results[2] == "StartAiming" then
+                    results[3] = BuildShotPayload(currentDesyncCF.Position, currentTargetPart.Position, currentTargetPart)
+                    return unpack(results)
+                end
+                return unpack(results)
+            end
+            return old_knife(self, ...)
+        end
+    end
+
     task.spawn(function()
         while true do
             task.wait(1)
-            if not getgenv().RageBotConfig.Enabled then continue end
+            if not getgenv().Config.Enabled then continue end
             local localFighter = FighterController and FighterController.LocalFighter
             if localFighter then
-                pcall(function() localFighter:EquipItem(getSlotNumber()) end)
+                pcall(function()
+                    localFighter:EquipItem(getSlotNumber())
+                end)
             end
         end
     end)
 
     local lastFire = 0
-    local deflecting = {}
-    plrs.PlayerRemoving:Connect(function(player) deflecting[player] = nil end)
+    local lastTarget = nil
+    local tpStartTime = 0
+    local DeflectingPlayers = {}
 
-    local function updateDeflection()
-        if not FighterController or not FighterController.Objects then return end
-        for _, fighterObj in FighterController.Objects do
-            local player = fighterObj.Player
-            if not player then continue end
-            if not fighterObj.Entity or not fighterObj.Entity:IsAlive() or fighterObj:Get("IsSpectating") then
-                deflecting[player] = false
-                continue
-            end
-            local equipped = fighterObj.EquippedItem
-            local isKatana = equipped and equipped.ViewModel and equipped.ViewModel.Name == "Katana"
-            local isDeflecting = false
-            if isKatana then
-                isDeflecting = (equipped._attack_cooldown and equipped._attack_cooldown > tick()) or false
-            end
-            deflecting[player] = isDeflecting
-        end
+    local function isPlayerParrying(player)
+        if not player then return false end
+        local endTime = DeflectingPlayers[player]
+        return endTime and tick() < endTime
     end
+
+    local function getPlayerFromObj(obj)
+        local char = obj:FindFirstAncestorOfClass("Model")
+        return char and plrs:GetPlayerFromCharacter(char)
+    end
+
+    if not getgenv().ParticleHooked_RageBot then
+        getgenv().ParticleHooked_RageBot = true
+        local _tempPE = Instance.new("ParticleEmitter")
+        local oldEmit; oldEmit = hookfunction(_tempPE.Emit, function(self, count)
+            if self.Name == "bigstar" then
+                local p = getPlayerFromObj(self)
+                if p then
+                    DeflectingPlayers[p] = tick() + 1
+                end
+            end
+            return oldEmit(self, count)
+        end)
+        local oldClear; oldClear = hookfunction(_tempPE.Clear, function(self)
+            if self.Name == "bigstar" then
+                local p = getPlayerFromObj(self)
+                if p then DeflectingPlayers[p] = 0 end
+            end
+            return oldClear(self)
+        end)
+        _tempPE:Destroy()
+    end
+
+    plrs.PlayerRemoving:Connect(function(player)
+        DeflectingPlayers[player] = nil
+    end)
 
     local function isEnemy(player)
         if player == lplr then return false end
@@ -2216,7 +2339,9 @@ task.spawn(function()
         end
         local pTeam = player:GetAttribute("TeamID")
         local lTeam = lplr:GetAttribute("TeamID")
-        if pTeam and lTeam then return pTeam ~= lTeam end
+        if pTeam and lTeam then
+            return pTeam ~= lTeam
+        end
         return true
     end
 
@@ -2225,11 +2350,10 @@ task.spawn(function()
         if not char then return nil, nil, nil end
         local myRoot = char:FindFirstChild("HumanoidRootPart")
         if not myRoot then return nil, nil, nil end
-        
-        local cam = workspace.CurrentCamera
-        local center = cam and Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2) or Vector2.zero
-
-        local validTargets = {}
+        local closestPlayer = nil
+        local closestRoot = nil
+        local closestHead = nil
+        local closestDist = 500
         for _, player in plrs:GetPlayers() do
             if not isEnemy(player) then continue end
             local pChar = player.Character
@@ -2238,48 +2362,18 @@ task.spawn(function()
             local pHead = pChar:FindFirstChild("HitboxHead") or pChar:FindFirstChild("Head")
             local pHum = pChar:FindFirstChildWhichIsA("Humanoid")
             if not (pRoot and pHead and pHum and pHum.Health > 0) then continue end
-            
-            local worldDist = (myRoot.Position - pRoot.Position).Magnitude
-            if worldDist < 500 then
-                local mouseDist = math.huge
-                if cam then
-                    local screenPos, onScreen = cam:WorldToViewportPoint(pRoot.Position)
-                    if onScreen then
-                        mouseDist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-                    end
-                end
-                
-                table.insert(validTargets, {
-                    Player = player,
-                    Root = pRoot,
-                    Head = pHead,
-                    WorldDist = worldDist,
-                    MouseDist = mouseDist,
-                    Health = pHum.Health
-                })
+            local dist = (myRoot.Position - pRoot.Position).Magnitude
+            if dist < closestDist then
+                closestDist = dist
+                closestPlayer = player
+                closestRoot = pRoot
+                closestHead = pHead
             end
         end
-        
-        if #validTargets > 0 then
-            table.sort(validTargets, function(a, b)
-                local sortMethod = getgenv().RageBotConfig.TargetSort or "Distance (Closest)"
-                if sortMethod == "Distance (Closest)" then return a.WorldDist < b.WorldDist
-                elseif sortMethod == "Distance (Farthest)" then return a.WorldDist > b.WorldDist
-                elseif sortMethod == "Health (Lowest)" then return a.Health < b.Health
-                elseif sortMethod == "Health (Highest)" then return a.Health > b.Health
-                elseif sortMethod == "Mouse (Closest)" then return a.MouseDist < b.MouseDist
-                elseif sortMethod == "Mouse (Farthest)" then return a.MouseDist > b.MouseDist
-                else return a.WorldDist < b.WorldDist end
-            end)
-            return validTargets[1].Player, validTargets[1].Root, validTargets[1].Head
-        end
-
-        return nil, nil, nil
+        return closestPlayer, closestRoot, closestHead
     end
 
     runS.Heartbeat:Connect(function()
-        if not getgenv().RageBotConfig.Enabled then return end
-        updateDeflection()
         local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
         if not myRoot then return end
 
@@ -2291,7 +2385,11 @@ task.spawn(function()
                 pcall(function()
                     local ammo = item:Get("Ammo")
                     local reloadCD = item._reload_cooldown or 0
-                    isReloading = (tick() < reloadCD) or (type(ammo) == "number" and ammo <= 0)
+                    local isMeleeOrKnife = (getgenv().Config.WeaponSlot == "Melee" or getgenv().Config.WeaponSlot == "Knife")
+                    if not isMeleeOrKnife then
+                        isReloading = (tick() < reloadCD)
+                            or (type(ammo) == "number" and ammo <= 0)
+                    end
                 end)
             end
         end
@@ -2302,34 +2400,51 @@ task.spawn(function()
         local targetFF = false
         pcall(function()
             local lf = FighterController and FighterController.LocalFighter
-            if lf and lf.Entity then myFF = lf.Entity:Get("IsInvincible") == true end
+            if lf and lf.Entity then
+                myFF = lf.Entity:Get("IsInvincible") == true
+            end
         end)
         if targetPlayer then
             pcall(function()
                 local fighter = FighterController:GetFighter(targetPlayer)
-                if fighter and fighter.Entity then targetFF = fighter.Entity:Get("IsInvincible") == true end
+                if fighter and fighter.Entity then
+                    targetFF = fighter.Entity:Get("IsInvincible") == true
+                end
             end)
         end
 
-        local canAttack = getgenv().RageBotConfig.Enabled
-            and myRoot ~= nil
+        local canAttack = getgenv().Config.Enabled
             and (not isReloading)
             and (not myFF)
             and (not targetFF)
             and targetPlayer ~= nil
             and targetRoot ~= nil
             and targetHead ~= nil
-            and (not deflecting[targetPlayer])
+            and (not isPlayerParrying(targetPlayer))
             and item ~= nil
 
         local desyncCF
         if canAttack then
             local targetLowerTorso = targetPlayer.Character and targetPlayer.Character:FindFirstChild("LowerTorso")
             local baseCFrame = targetLowerTorso and targetLowerTorso.CFrame or targetRoot.CFrame
-            local desyncPos = (baseCFrame * CFrame.new(0, 5, 0)).Position
-            desyncCF = CFrame.lookAt(desyncPos, targetHead.Position)
+            local _, y, _ = baseCFrame:ToOrientation()
+            currentTargetYaw = y
+
+            local desyncPos
+            if getgenv().Config.WeaponSlot == "Knife" then
+                desyncPos = (baseCFrame * CFrame.new(0, 0, 4)).Position
+                desyncCF = CFrame.lookAt(desyncPos, targetHead.Position)
+            else
+                desyncPos = (baseCFrame * CFrame.new(0, 5, 0)).Position
+                desyncCF = CFrame.lookAt(desyncPos, targetHead.Position)
+            end
         else
-            local randomDir = Vector3.new(math.random(-100, 100), math.random(-100, 100), math.random(-100, 100)).Unit
+            currentTargetYaw = nil
+            local randomDir = Vector3.new(
+                math.random(-100, 100),
+                math.random(-100, 100),
+                math.random(-100, 100)
+            ).Unit
             local cam = ws.CurrentCamera
             local camPos = cam and cam.CFrame.Position or Vector3.new(0, 0, 0)
             desyncCF = CFrame.new(camPos + randomDir * 7000000000000)
@@ -2338,40 +2453,78 @@ task.spawn(function()
         local oldCF     = myRoot.CFrame
         local oldVel    = myRoot.Velocity
         local oldRotVel = myRoot.RotVelocity
-        local _stepName = "__rb_" .. tostring(math.random(100000, 999999))
         myRoot.CFrame = desyncCF
-        runS:BindToRenderStep(_stepName, 101, function()
+        runS:BindToRenderStep("__restore", 101, function()
             if myRoot then
-                myRoot.CFrame      = oldCF
-                myRoot.Velocity    = oldVel
+                myRoot.CFrame    = oldCF
+                myRoot.Velocity  = oldVel
                 myRoot.RotVelocity = oldRotVel
             end
-            runS:UnbindFromRenderStep(_stepName)
+            runS:UnbindFromRenderStep("__restore")
         end)
 
-        if not canAttack then return end
-        if tick() - lastFire < getgenv().RageBotConfig.FireRate then return end
+        if not canAttack then
+            lastTarget = nil
+            tpStartTime = 0
+            currentTargetPart = nil
+            currentDesyncCF = nil
+            currentTargetYaw = nil
+            if MechanicsController and getgenv().Config.WeaponSlot == "Knife" then
+                pcall(function()
+                    MechanicsController:EquippedItemInput("FinishAiming")
+                end)
+            end
+            return
+        end
+
+        currentTargetPart = targetHead
+        currentDesyncCF = desyncCF
+
+        if lastTarget ~= targetPlayer then
+            lastTarget = targetPlayer
+            tpStartTime = tick()
+        end
+
+        if tick() - tpStartTime < 0.15 then return end
+        if tick() - lastFire < getgenv().Config.FireRate then return end
         lastFire = tick()
 
-        if not util or not enum then return end
+        local isKnife = (getgenv().Config.WeaponSlot == "Knife")
+
+        if isKnife and MechanicsController then
+            pcall(function()
+                MechanicsController:EquippedItemInput("StartAiming")
+            end)
+        end
 
         local originPos = desyncCF.Position
         local targetPos = targetHead.Position
         local aimCF    = CFrame.lookAt(originPos, targetPos)
-        local targetCF = targetHead.CFrame
-        local randomOffset = Vector3.new((math.random() - 0.5) * 0.1, (math.random() - 0.5) * 0.1, (math.random() - 0.5) * 0.1)
+        local randomOffset = Vector3.new(
+            (math.random() - 0.5) * 0.1,
+            (math.random() - 0.5) * 0.1,
+            (math.random() - 0.5) * 0.1
+        )
         local aimedPos = targetPos + randomOffset
         local objSpaceHeadOffset = targetHead.CFrame:ToObjectSpace(CFrame.new(aimedPos))
         local cameradata = {}
         cameradata[utf8.char(1)] = {
             [utf8.char(0)] = util:EncodeCFrame(aimCF),
-            [utf8.char(1)] = util:EncodeCFrame(targetCF),
+            [utf8.char(1)] = util:EncodeCFrame(aimCF),
             [utf8.char(2)] = targetHead,
             [utf8.char(3)] = util:EncodeCFrame(objSpaceHeadOffset)
         }
+        if camRemote and currentTargetYaw then
+            pcall(function()
+                local pitch = isKnife and 0 or math.rad(-89)
+                local enc = util:EncodeCameraRotation(Vector2.new(pitch, currentTargetYaw))
+                camRemote:FireServer(enc, nil)
+            end)
+        end
+
         repS.Remotes.Replication.Fighter.UseItem:FireServer(
             item:Get("ObjectID"),
-            enum:ToEnum("StartShooting"),
+            enum:ToEnum(isKnife and "StartAiming" or "StartShooting"),
             cameradata,
             nil
         )
