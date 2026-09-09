@@ -1403,8 +1403,12 @@ task.spawn(function()
                     inHitbox = clamped and (clamped - aimPoint).Magnitude < 0.5
                 end
                 local smoothness = inHitbox and AimLockSettings.SmoothnessIn or AimLockSettings.SmoothnessOut
-                local alpha = math.clamp(1 - smoothness, 0.01, 1)
-                self.Rotation = self.Rotation:Lerp(targetRotAdj, alpha)
+                if smoothness <= 0.001 then
+                    self.Rotation = targetRot
+                else
+                    local alpha = math.clamp(1 - smoothness, 0.01, 1)
+                    self.Rotation = self.Rotation:Lerp(targetRotAdj, alpha)
+                end
             end
         end
     end
