@@ -2135,11 +2135,6 @@ RageBotSection:AddToggle("RageBot_Enabled", {
     Callback = function(value)
         getgenv().Config.Enabled = value
         getgenv().RageBotConfig.Enabled = value
-        if not value then
-            currentTargetPart = nil
-            currentDesyncCF = nil
-            currentTargetYaw = nil
-        end
     end
 })
 
@@ -2472,9 +2467,6 @@ task.spawn(function()
         if not canAttack then
             lastTarget = nil
             tpStartTime = 0
-            currentTargetPart = nil
-            currentDesyncCF = nil
-            currentTargetYaw = nil
             if MechanicsController and getgenv().Config.WeaponSlot == "Knife" then
                 pcall(function()
                     MechanicsController:EquippedItemInput("FinishAiming")
