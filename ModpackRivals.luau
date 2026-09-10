@@ -2520,7 +2520,50 @@ getgenv().RageSettings = {
     AntiKatana = false,
     AntiKatanaDelay = 0.0,
     InstantScope = false,
+    EquipFaster = false,
 }
+
+local originalEquipCooldowns = {}
+local function UpdateWeaponMods()
+    pcall(function()
+        local itemModule = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("ItemLibrary")
+        if not itemModule then return end
+        local itemLib = require(itemModule)
+        if not (itemLib and itemLib.Items) then return end
+
+        local isEnabled = getgenv().RageSettings and getgenv().RageSettings.Enabled and getgenv().RageSettings.EquipFaster
+        for name, item in pairs(itemLib.Items) do
+            if type(item) == "table" and item.EquipCooldown ~= nil then
+                if not originalEquipCooldowns[name] then
+                    originalEquipCooldowns[name] = item.EquipCooldown
+                end
+
+                local orig = originalEquipCooldowns[name]
+                if isEnabled then
+                    item.EquipCooldown = 0.01
+                else
+                    item.EquipCooldown = orig
+                end
+            end
+        end
+    end)
+end
+
+local function RestoreWeaponStats()
+    pcall(function()
+        local itemModule = ReplicatedStorage:FindFirstChild("Modules") and ReplicatedStorage.Modules:FindFirstChild("ItemLibrary")
+        if not itemModule then return end
+        local itemLib = require(itemModule)
+        if not (itemLib and itemLib.Items) then return end
+
+        for name, orig in pairs(originalEquipCooldowns) do
+            local item = itemLib.Items[name]
+            if type(item) == "table" then
+                item.EquipCooldown = orig
+            end
+        end
+    end)
+end
 
 task.spawn(function()
     local OriginalStats = {} 
@@ -2658,6 +2701,7 @@ local GunModsToggle = GunModsSection:AddToggle("GunMods_Enabled", {
     Default = false,
     Callback = function(value)
         getgenv().RageSettings.Enabled = value
+        UpdateWeaponMods()
     end
 })
 
@@ -2684,6 +2728,15 @@ GunModsDep:AddToggle("GunMods_RapidFire", {
     Default = false,
     Callback = function(value)
         getgenv().RageSettings.RapidFire = value
+    end
+})
+
+GunModsDep:AddToggle("GunMods_EquipFaster", {
+    Text = "Equip Faster",
+    Default = false,
+    Callback = function(value)
+        getgenv().RageSettings.EquipFaster = value
+        UpdateWeaponMods()
     end
 })
 
