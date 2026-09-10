@@ -74,22 +74,16 @@ if getgenv().MyModpackESP then
     pcall(function() getgenv().MyModpackESP:Destroy() end)
 end
 
--- ========== SILENT AIM ==========
-local silentAimEnabled = false
-local targetPart = "HitboxHead"
-local FOV = 100
-local aim360 = false
-local teamCheck = false
-local hitChance = 100
-local targetPartsList = {"HitboxHead", "Head", "HitboxBody", "LowerTorso"}
-
-local originalRaycast = nil
-
-local function isPlayerAliveSA(plr)
-    if not plr.Character then return false end
-    local hum = plr.Character:FindFirstChildOfClass("Humanoid")
-    return hum and hum.Health > 0
-end
+-- ========== SILENT AIM CONFIG ==========
+getgenv().SilentConfig = {
+    Enabled = false,
+    SilentFOV = 100,
+    SilentHitChance = 100,
+    SilentHeadChance = 80,
+    SilentTargetPart = "HitboxHead",
+    WallCheck = false,
+    TeamCheck = false,
+}
 
 local function getMyTeamID()
     return lp:GetAttribute("TeamID")
@@ -100,9 +94,10 @@ local function getPlayerTeamID(plr)
 end
 
 local function checkTeam(plr, isESP)
-    local tc = isESP and getgenv().ESPSettings_TeamCheck or teamCheck
-    if not tc then return true end
+    if not plr then return false end
     if plr == lp then return false end
+    local tc = isESP and getgenv().ESPSettings_TeamCheck or (getgenv().SilentConfig and getgenv().SilentConfig.TeamCheck)
+    if not tc then return true end
     
     if SpectateController then
         local duel = SpectateController.CurrentDuelSubject
@@ -127,139 +122,125 @@ local function checkTeam(plr, isESP)
     return true
 end
 
-local SA_CachedTarget = nil
-local SA_CachedPartName = nil
-local SA_LastCacheTime = 0
+-- ========== SILENT AIM (Raycast Hook) ==========
+do
+    local UserInputService = game:GetService("UserInputService")
+    local staticRayParams = RaycastParams.new()
+    staticRayParams.FilterType = Enum.RaycastFilterType.Exclude
+    staticRayParams.IgnoreWater = true
 
-local function getClosestPlayerInFOV()
-    if not silentAimEnabled then return nil, nil end
-    local now = tick()
-    if now - SA_LastCacheTime < 0.016 then
-        return SA_CachedTarget, SA_CachedPartName
-    end
-    SA_LastCacheTime = now
+    local wallCheckRayParams = RaycastParams.new()
+    wallCheckRayParams.FilterType = Enum.RaycastFilterType.Exclude
+    wallCheckRayParams.IgnoreWater = true
 
-    local cam = workspace.CurrentCamera
-    if not cam then return nil, nil end
+    local function getClosestTarget(maxFOV, partMode)
+        local cfg = getgenv().SilentConfig
+        local closest, closestDist = nil, (maxFOV == 100 and 500 or (maxFOV or 300))
+        local mousePos = UserInputService:GetMouseLocation()
+        local myChar = lp.Character
+        local curCam = workspace.CurrentCamera
+        if not curCam then return nil end
+        staticRayParams.FilterDescendantsInstances = {myChar, curCam}
 
-    local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
-    local bestTarget = nil
-    local bestDist = math.huge
-    local bestPartName = nil
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= lp and checkTeam(p, false) then
+                local char = p.Character
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                local root = char and char:FindFirstChild("HumanoidRootPart")
 
-    local maxDist = (FOV == 100) and math.huge or (FOV * 5)
-    
-    local myHRP = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-    raycastParams.FilterDescendantsInstances = {lp.Character}
-
-    local validTargets = {}
-
-    for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= lp and isPlayerAliveSA(plr) and checkTeam(plr, false) and plr.Character then
-            local partName = targetPart
-            if partName == "Random" then
-                local validParts = {}
-                for _, name in ipairs(targetPartsList) do
-                    if plr.Character:FindFirstChild(name) then
-                        table.insert(validParts, name)
+                if char and hum and hum.Health > 0 and root then
+                    local head = char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head")
+                    local hitPart = root
+                    if (partMode == "Head" or partMode == "HitboxHead") and head then
+                        hitPart = head
+                    elseif partMode == "Closest" and head then
+                        local hScr, hOn = curCam:WorldToViewportPoint(head.Position)
+                        local bScr, bOn = curCam:WorldToViewportPoint(root.Position)
+                        if hOn and bOn then
+                            local hDist = (Vector2.new(hScr.X, hScr.Y) - mousePos).Magnitude
+                            local bDist = (Vector2.new(bScr.X, bScr.Y) - mousePos).Magnitude
+                            hitPart = (hDist <= bDist) and head or root
+                        else
+                            hitPart = head
+                        end
+                    elseif (partMode == "Body" or partMode == "HitboxBody" or partMode == "LowerTorso") then
+                        hitPart = char:FindFirstChild("HitboxBody") or char:FindFirstChild("LowerTorso") or root
                     end
-                end
-                if #validParts > 0 then
-                    partName = validParts[math.random(1, #validParts)]
-                end
-            end
-            
-            local part = plr.Character:FindFirstChild(partName)
-            if part then
-                local screenPos, onScreen = cam:WorldToViewportPoint(part.Position)
-    
-                if onScreen or aim360 then
-                    local ray = workspace:Raycast(cam.CFrame.Position, (part.Position - cam.CFrame.Position), raycastParams)
-                    local visible = not ray or ray.Instance:IsDescendantOf(plr.Character)
-    
-                    if visible then
-                        local mouseDist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
-                        local worldDist = (aim360 and myHRP) and (part.Position - myHRP.Position).Magnitude or mouseDist
-                        if mouseDist <= maxDist then
-                            local health = 100
-                            local hum = plr.Character:FindFirstChildOfClass("Humanoid")
-                            if hum then health = hum.Health end
-                            table.insert(validTargets, {
-                                Player = plr,
-                                PartName = partName,
-                                MouseDist = mouseDist,
-                                WorldDist = (myHRP) and (part.Position - myHRP.Position).Magnitude or math.huge,
-                                Health = health
-                            })
+
+                    -- WallCheck
+                    if cfg and cfg.WallCheck then
+                        wallCheckRayParams.FilterDescendantsInstances = {myChar, curCam}
+                        local ray = workspace:Raycast(curCam.CFrame.Position, hitPart.Position - curCam.CFrame.Position, wallCheckRayParams)
+                        if ray and ray.Instance and not ray.Instance:IsDescendantOf(char) then
+                            continue
+                        end
+                    end
+
+                    local scrPos, onScreen = curCam:WorldToViewportPoint(hitPart.Position)
+                    if onScreen and scrPos.Z > 0 then
+                        local fovDist = (Vector2.new(scrPos.X, scrPos.Y) - mousePos).Magnitude
+                        if fovDist <= closestDist then
+                            closest = hitPart
+                            closestDist = fovDist
                         end
                     end
                 end
             end
         end
+        return closest
     end
 
-    if #validTargets > 0 then
-        table.sort(validTargets, function(a, b)
-            if silentTargetSort == "Distance (Closest)" then return a.WorldDist < b.WorldDist
-            elseif silentTargetSort == "Distance (Farthest)" then return a.WorldDist > b.WorldDist
-            elseif silentTargetSort == "Health (Lowest)" then return a.Health < b.Health
-            elseif silentTargetSort == "Health (Highest)" then return a.Health > b.Health
-            elseif silentTargetSort == "Mouse (Closest)" then return a.MouseDist < b.MouseDist
-            elseif silentTargetSort == "Mouse (Farthest)" then return a.MouseDist > b.MouseDist
-            else return a.MouseDist < b.MouseDist end
-        end)
-        bestTarget = validTargets[1].Player
-        bestPartName = validTargets[1].PartName
-    end
+    local function getSilentAimDirection(origin, currentDir)
+        local cfg = getgenv().SilentConfig
+        if not cfg or not cfg.Enabled then return currentDir end
+        local target = getClosestTarget(cfg.SilentFOV, cfg.SilentTargetPart)
+        if target then
+            local tModel = target:IsA("Model") and target or target:FindFirstAncestorOfClass("Model")
+            local tPlr = tModel and Players:GetPlayerFromCharacter(tModel)
+            if tPlr and not checkTeam(tPlr, false) then return currentDir end
 
-    if bestTarget then
-        SA_CachedTarget = bestTarget
-        SA_CachedPartName = bestPartName
-        return bestTarget, bestPartName
-    end
-    SA_CachedTarget = nil
-    SA_CachedPartName = nil
-    return nil, nil
-end
-
-local function setupSilentAim()
-    -- Utility:Raycast(self, origin, endPos, maxDist, filterList, filterType, debug)
-    -- 蜀・Κ縺ｧ direction = (endPos - origin).Unit * maxDist 繧定ｨ育ｮ励＠縺ｦ縺・ｋ
-    -- 縺ｪ縺ｮ縺ｧ args[3] (endPos) 繧偵ち繝ｼ繧ｲ繝・ヨ蠎ｧ讓吶↓蟾ｮ縺玲崛縺医ｋ縺縺代〒縺・＞
-    local utilityModule = nil
-    for _, module in pairs(ReplicatedStorage:GetDescendants()) do
-        if module:IsA("ModuleScript") and module.Name == "Utility" then
-            utilityModule = module
-            break
-        end
-    end
-
-    if utilityModule then
-        local success, utility = pcall(function() return require(utilityModule) end)
-        if success and utility and utility.Raycast then
-            if not getgenv().OriginalRaycast then
-                getgenv().OriginalRaycast = utility.Raycast
+            if math.random(1, 100) <= (cfg.SilentHitChance or 100) then
+                local aimPos = target.Position
+                if math.random(1, 100) <= (cfg.SilentHeadChance or 80) then
+                    local head = tModel and (tModel:FindFirstChild("HitboxHead") or tModel:FindFirstChild("Head"))
+                    if head then aimPos = head.Position end
+                end
+                return (aimPos - origin).Unit * currentDir.Magnitude
             end
-            local originalFn = getgenv().OriginalRaycast
+        end
+        return currentDir
+    end
 
-            utility.Raycast = function(self, origin, endPos, ...)
-                if silentAimEnabled and math.random(1, 100) <= hitChance then
-                    local closest, selectedPartName = getClosestPlayerInFOV()
-                    if closest and closest.Character and selectedPartName and closest.Character:FindFirstChild(selectedPartName) then
-                        if typeof(origin) == "Vector3" then
-                            endPos = closest.Character[selectedPartName].Position
-                        end
+    if hookmetamethod and newcclosure and checkcaller then
+        if not getgenv()._OriginalNamecall then
+            getgenv()._OriginalNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+                local method = getnamecallmethod()
+                local cfg = getgenv().SilentConfig
+                if not cfg or not cfg.Enabled or checkcaller() or not method then
+                    if setnamecallmethod then setnamecallmethod(method) end
+                    return getgenv()._OriginalNamecall(self, ...)
+                end
+
+                local m = method:lower()
+
+                -- Workspace:Raycast Hook (Client Raycast deflection)
+                if m == "raycast" and self == workspace then
+                    local args = {...}
+                    local origin = args[1]
+                    local direction = args[2]
+                    if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
+                        args[2] = getSilentAimDirection(origin, direction)
+                        if setnamecallmethod then setnamecallmethod(method) end
+                        return getgenv()._OriginalNamecall(self, unpack(args))
                     end
                 end
-                return originalFn(self, origin, endPos, ...)
-            end
+
+                if setnamecallmethod then setnamecallmethod(method) end
+                return getgenv()._OriginalNamecall(self, ...)
+            end))
         end
     end
 end
-
-task.spawn(setupSilentAim)
 
 -- ========== ESP LOGIC ==========
 local DeflectingPlayers = {}
@@ -1065,46 +1046,42 @@ local AimSection = Tabs.Combat:AddLeftGroupbox("Silent Aim")
 local SilentToggle = AimSection:AddToggle("SilentEnabled", {
     Text    = "Enabled",
     Default = false,
-    Callback = function(value) silentAimEnabled = value end,
+    Callback = function(value) getgenv().SilentConfig.Enabled = value end,
 })
 
 local AimDep = AimSection:AddDependencyBox()
 
 AimDep:AddDropdown("TargetPart", {
-    Values = {"Random", "HitboxHead", "Head", "HitboxBody", "LowerTorso"},
-    Default = 2,
-    Multi = false,
-    Text = "Target Part",
-    Callback = function(value) targetPart = value end,
-})
-
-local silentTargetSort = "Distance (Closest)"
-AimDep:AddDropdown("SilentAimTargetSort", {
-    Values = {"Distance (Closest)", "Distance (Farthest)", "Health (Lowest)", "Health (Highest)", "Mouse (Closest)", "Mouse (Farthest)"},
+    Values = {"HitboxHead", "Head", "Closest", "HitboxBody"},
     Default = 1,
     Multi = false,
-    Text = "Target Sort",
-    Callback = function(value) silentTargetSort = value end,
+    Text = "Target Part",
+    Callback = function(value) getgenv().SilentConfig.SilentTargetPart = value end,
 })
 
 AimDep:AddSlider("SAHitChance", {
     Text    = "Hit Chance (%)", Default = 100, Min = 1, Max = 100, Rounding = 0,
-    Callback = function(value) hitChance = value end,
+    Callback = function(value) getgenv().SilentConfig.SilentHitChance = value end,
+})
+
+AimDep:AddSlider("SAHeadChance", {
+    Text    = "Head Chance (%)", Default = 80, Min = 0, Max = 100, Rounding = 0,
+    Callback = function(value) getgenv().SilentConfig.SilentHeadChance = value end,
 })
 
 AimDep:AddSlider("SAIFOV", {
-    Text    = "FOV", Default = 100, Min = 1, Max = 100, Rounding = 0,
-    Callback = function(value) FOV = value end,
+    Text    = "FOV", Default = 100, Min = 10, Max = 1000, Rounding = 0,
+    Callback = function(value) getgenv().SilentConfig.SilentFOV = value end,
 })
 
-AimDep:AddToggle("Aim360", {
-    Text    = "360", Default = false,
-    Callback = function(value) aim360 = value end,
+AimDep:AddToggle("WallCheck", {
+    Text    = "Wall Check", Default = false,
+    Callback = function(value) getgenv().SilentConfig.WallCheck = value end,
 })
 
 AimDep:AddToggle("TeamCheck", {
     Text    = "Team Check", Default = false,
-    Callback = function(value) teamCheck = value end,
+    Callback = function(value) getgenv().SilentConfig.TeamCheck = value end,
 })
 
 AimDep:SetupDependencies({ { SilentToggle, true } })
