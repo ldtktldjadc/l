@@ -79,7 +79,6 @@ getgenv().SilentConfig = {
     Enabled = false,
     SilentFOV = 100,
     SilentHitChance = 100,
-    SilentHeadChance = 80,
     SilentTargetPart = "HitboxHead",
     WallCheck = false,
     TeamCheck = false,
@@ -133,6 +132,15 @@ do
     wallCheckRayParams.FilterType = Enum.RaycastFilterType.Exclude
     wallCheckRayParams.IgnoreWater = true
 
+    local candidateParts = {
+        "HitboxHead", "HitboxHeadSmall", "HitboxBody", "HitboxBodySmall",
+        "Head", "UpperTorso", "LowerTorso", "HumanoidRootPart",
+        "LeftUpperArm", "LeftLowerArm", "LeftHand",
+        "RightUpperArm", "RightLowerArm", "RightHand",
+        "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
+        "RightUpperLeg", "RightLowerLeg", "RightFoot"
+    }
+
     local function getClosestTarget(maxFOV, partMode)
         local cfg = getgenv().SilentConfig
         local closest, closestDist = nil, (maxFOV == 100 and 500 or (maxFOV or 300))
@@ -149,22 +157,34 @@ do
                 local root = char and char:FindFirstChild("HumanoidRootPart")
 
                 if char and hum and hum.Health > 0 and root then
-                    local head = char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head")
                     local hitPart = root
-                    if (partMode == "Head" or partMode == "HitboxHead") and head then
-                        hitPart = head
-                    elseif partMode == "Closest" and head then
-                        local hScr, hOn = curCam:WorldToViewportPoint(head.Position)
-                        local bScr, bOn = curCam:WorldToViewportPoint(root.Position)
-                        if hOn and bOn then
-                            local hDist = (Vector2.new(hScr.X, hScr.Y) - mousePos).Magnitude
-                            local bDist = (Vector2.new(bScr.X, bScr.Y) - mousePos).Magnitude
-                            hitPart = (hDist <= bDist) and head or root
-                        else
-                            hitPart = head
+
+                    if partMode == "Random" then
+                        local valid = {}
+                        for _, name in ipairs(candidateParts) do
+                            local part = char:FindFirstChild(name)
+                            if part then table.insert(valid, part) end
                         end
-                    elseif (partMode == "Body" or partMode == "HitboxBody" or partMode == "LowerTorso") then
-                        hitPart = char:FindFirstChild("HitboxBody") or char:FindFirstChild("LowerTorso") or root
+                        hitPart = (#valid > 0 and valid[math.random(1, #valid)]) or root
+                    elseif partMode == "Closest" then
+                        local closestPart = root
+                        local closestDistToMouse = math.huge
+                        for _, name in ipairs(candidateParts) do
+                            local part = char:FindFirstChild(name)
+                            if part then
+                                local pScr, pOn = curCam:WorldToViewportPoint(part.Position)
+                                if pOn and pScr.Z > 0 then
+                                    local dist = (Vector2.new(pScr.X, pScr.Y) - mousePos).Magnitude
+                                    if dist < closestDistToMouse then
+                                        closestDistToMouse = dist
+                                        closestPart = part
+                                    end
+                                end
+                            end
+                        end
+                        hitPart = closestPart
+                    else
+                        hitPart = char:FindFirstChild(partMode) or char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head") or root
                     end
 
                     -- WallCheck
@@ -200,12 +220,7 @@ do
             if tPlr and not checkTeam(tPlr, false) then return currentDir end
 
             if math.random(1, 100) <= (cfg.SilentHitChance or 100) then
-                local aimPos = target.Position
-                if math.random(1, 100) <= (cfg.SilentHeadChance or 80) then
-                    local head = tModel and (tModel:FindFirstChild("HitboxHead") or tModel:FindFirstChild("Head"))
-                    if head then aimPos = head.Position end
-                end
-                return (aimPos - origin).Unit * currentDir.Magnitude
+                return (target.Position - origin).Unit * currentDir.Magnitude
             end
         end
         return currentDir
@@ -1052,7 +1067,15 @@ local SilentToggle = AimSection:AddToggle("SilentEnabled", {
 local AimDep = AimSection:AddDependencyBox()
 
 AimDep:AddDropdown("TargetPart", {
-    Values = {"HitboxHead", "Head", "Closest", "HitboxBody"},
+    Values = {
+        "HitboxHead", "HitboxHeadSmall", "HitboxBody", "HitboxBodySmall",
+        "Random", "Closest",
+        "Head", "UpperTorso", "LowerTorso", "HumanoidRootPart",
+        "LeftUpperArm", "LeftLowerArm", "LeftHand",
+        "RightUpperArm", "RightLowerArm", "RightHand",
+        "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
+        "RightUpperLeg", "RightLowerLeg", "RightFoot"
+    },
     Default = 1,
     Multi = false,
     Text = "Target Part",
@@ -1062,11 +1085,6 @@ AimDep:AddDropdown("TargetPart", {
 AimDep:AddSlider("SAHitChance", {
     Text    = "Hit Chance (%)", Default = 100, Min = 1, Max = 100, Rounding = 0,
     Callback = function(value) getgenv().SilentConfig.SilentHitChance = value end,
-})
-
-AimDep:AddSlider("SAHeadChance", {
-    Text    = "Head Chance (%)", Default = 80, Min = 0, Max = 100, Rounding = 0,
-    Callback = function(value) getgenv().SilentConfig.SilentHeadChance = value end,
 })
 
 AimDep:AddSlider("SAIFOV", {
@@ -4270,9 +4288,6 @@ MovementSection:AddToggle("HideDesyncToggle", {
     end
 })
 
-end
-
-do
     local infJumpEnabled = false
     local fighterControllerCache = nil
     local maxDoubleJumpsOriginals = {}
@@ -4308,12 +4323,12 @@ do
             end
         end
     end)
-end
 
-lp.CharacterAdded:Connect(function()
-    if flyEnabled then task.wait(0.5) startFly() end
-    if noclipEnabled then task.wait(0.5) startNoclip() end
-end)
+    lp.CharacterAdded:Connect(function()
+        if flyEnabled then task.wait(0.5) startFly() end
+        if noclipEnabled then task.wait(0.5) startNoclip() end
+    end)
+end
 
 -- ========== AUTO LOADOUT ==========
 do
