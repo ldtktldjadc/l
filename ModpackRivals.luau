@@ -1691,156 +1691,158 @@ TeamESPDep:AddToggle("TeamESP_Tracer", { Text = "Tracer", Default = false,
 
 TeamESPDep:SetupDependencies({ { TeamESPToggle, true } })
 
-local CrosshairSection = Tabs.Visuals:AddRightGroupbox("Custom Crosshair")
+-- ===== CUSTOM CROSSHAIR =====
+do
+    local CrosshairSection = Tabs.Visuals:AddRightGroupbox("Custom Crosshair")
 
-local chEnabled = false
-local chTextStr = "kei.win"
-local chLineColor = Color3.fromRGB(255, 255, 255)
-local chRainbow = true
-local chStretch = true
-local chSpin = true
+    local chEnabled = false
+    local chTextStr = "kei.win"
+    local chLineColor = Color3.fromRGB(255, 255, 255)
+    local chRainbow = true
+    local chStretch = true
+    local chSpin = true
 
+    local chGui = Instance.new("ScreenGui")
+    chGui.Name = "CustomCrosshairGui"
+    chGui.ResetOnSpawn = false
+    chGui.IgnoreGuiInset = true
+    chGui.Parent = getESPContainerParent()
+    chGui.Enabled = false
 
-local chGui = Instance.new("ScreenGui")
-chGui.Name = "CustomCrosshairGui"
-chGui.ResetOnSpawn = false
-chGui.IgnoreGuiInset = true
-chGui.Parent = getESPContainerParent()
-chGui.Enabled = false
+    local chCenter = Instance.new("Frame")
+    chCenter.Name = "CenterFrame"
+    chCenter.Size = UDim2.new(0, 0, 0, 0)
+    chCenter.AnchorPoint = Vector2.new(0.5, 0.5)
+    chCenter.Position = UDim2.new(0.5, 0, 0.5, 0)
+    chCenter.BackgroundTransparency = 1
+    chCenter.Parent = chGui
 
-local chCenter = Instance.new("Frame")
-chCenter.Name = "CenterFrame"
-chCenter.Size = UDim2.new(0, 0, 0, 0)
-chCenter.AnchorPoint = Vector2.new(0.5, 0.5)
-chCenter.Position = UDim2.new(0.5, 0, 0.5, 0)
-chCenter.BackgroundTransparency = 1
-chCenter.Parent = chGui
+    local function makeCHLine(parent)
+        local outer = Instance.new("Frame")
+        outer.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        outer.BackgroundTransparency = 0.2
+        outer.BorderSizePixel = 0
+        outer.Parent = parent
 
-local function makeCHLine(parent)
-    local outer = Instance.new("Frame")
-    outer.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    outer.BackgroundTransparency = 0.2
-    outer.BorderSizePixel = 0
-    outer.Parent = parent
+        local inner = Instance.new("Frame")
+        inner.Name = "MainLine"
+        inner.Size = UDim2.new(1, -2, 1, -2)
+        inner.Position = UDim2.new(0, 1, 0, 1)
+        inner.BackgroundTransparency = 0
+        inner.BorderSizePixel = 0
+        inner.Parent = outer
 
-    local inner = Instance.new("Frame")
-    inner.Name = "MainLine"
-    inner.Size = UDim2.new(1, -2, 1, -2)
-    inner.Position = UDim2.new(0, 1, 0, 1)
-    inner.BackgroundTransparency = 0
-    inner.BorderSizePixel = 0
-    inner.Parent = outer
-
-    return outer, inner
-end
-
-local chUpO, chUpI = makeCHLine(chCenter)
-local chRightO, chRightI = makeCHLine(chCenter)
-local chLeftO, chLeftI = makeCHLine(chCenter)
-local chDownO, chDownI = makeCHLine(chCenter)
-
-local chText = Instance.new("TextLabel")
-chText.Name = "CrosshairText"
-chText.Size = UDim2.new(0, 200, 0, 20)
-chText.AnchorPoint = Vector2.new(0.5, 0)
-chText.Position = UDim2.new(0.5, 0, 0.5, 45)
-chText.BackgroundTransparency = 1
-chText.Text = chTextStr
-chText.TextSize = 16
-chText.Font = Enum.Font.Arcade
-chText.TextColor3 = Color3.fromRGB(255, 255, 255)
-chText.TextStrokeTransparency = 0
-chText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-chText.Parent = chGui
-
-local function chEaseOutQuad(t)
-    return 1 - (1 - t) * (1 - t)
-end
-
-local chConn
-local function updateCrosshair(dt)
-    if not chEnabled then return end
-    local t = tick()
-    
-    local cColor = chLineColor
-    if chRainbow then cColor = Color3.fromHSV((t * 0.5) % 1, 1, 1) end
-
-    local length = 28
-    if chStretch then
-        local raw = math.sin(t * 4)
-        length = 28 + chEaseOutQuad((raw + 1) / 2) * 12
+        return outer, inner
     end
 
-    chUpO.Size = UDim2.new(0, 4, 0, length)
-    chUpO.Position = UDim2.new(0.5, -2, 0.5, -length - 10)
-    chUpI.BackgroundColor3 = cColor
+    local chUpO, chUpI = makeCHLine(chCenter)
+    local chRightO, chRightI = makeCHLine(chCenter)
+    local chLeftO, chLeftI = makeCHLine(chCenter)
+    local chDownO, chDownI = makeCHLine(chCenter)
 
-    chRightO.Size = UDim2.new(0, length, 0, 4)
-    chRightO.Position = UDim2.new(0.5, 10, 0.5, -2)
-    chRightI.BackgroundColor3 = cColor
-
-    chLeftO.Size = UDim2.new(0, length, 0, 4)
-    chLeftO.Position = UDim2.new(0.5, -length - 10, 0.5, -2)
-    chLeftI.BackgroundColor3 = cColor
-
-    chDownO.Size = UDim2.new(0, 4, 0, length)
-    chDownO.Position = UDim2.new(0.5, -2, 0.5, 10)
-    chDownI.BackgroundColor3 = cColor
-
-    chText.TextColor3 = cColor
+    local chText = Instance.new("TextLabel")
+    chText.Name = "CrosshairText"
+    chText.Size = UDim2.new(0, 200, 0, 20)
+    chText.AnchorPoint = Vector2.new(0.5, 0)
+    chText.Position = UDim2.new(0.5, 0, 0.5, 45)
+    chText.BackgroundTransparency = 1
     chText.Text = chTextStr
+    chText.TextSize = 16
+    chText.Font = Enum.Font.Arcade
+    chText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    chText.TextStrokeTransparency = 0
+    chText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    chText.Parent = chGui
 
-    if chSpin then
-        chCenter.Rotation = (chCenter.Rotation + dt * 180) % 360
-    else
-        chCenter.Rotation = 0
+    local function chEaseOutQuad(t)
+        return 1 - (1 - t) * (1 - t)
     end
-end
 
-CrosshairSection:AddToggle("Crosshair_Enable", {
-    Text = "Enable Crosshair",
-    Default = false,
-    Callback = function(v) 
-        chEnabled = v
-        chGui.Enabled = v
-        if v then
-            if chConn then chConn:Disconnect() end
-            chConn = RunService.RenderStepped:Connect(updateCrosshair)
+    local chConn
+    local function updateCrosshair(dt)
+        if not chEnabled then return end
+        local t = tick()
+        
+        local cColor = chLineColor
+        if chRainbow then cColor = Color3.fromHSV((t * 0.5) % 1, 1, 1) end
+
+        local length = 28
+        if chStretch then
+            local raw = math.sin(t * 4)
+            length = 28 + chEaseOutQuad((raw + 1) / 2) * 12
+        end
+
+        chUpO.Size = UDim2.new(0, 4, 0, length)
+        chUpO.Position = UDim2.new(0.5, -2, 0.5, -length - 10)
+        chUpI.BackgroundColor3 = cColor
+
+        chRightO.Size = UDim2.new(0, length, 0, 4)
+        chRightO.Position = UDim2.new(0.5, 10, 0.5, -2)
+        chRightI.BackgroundColor3 = cColor
+
+        chLeftO.Size = UDim2.new(0, length, 0, 4)
+        chLeftO.Position = UDim2.new(0.5, -length - 10, 0.5, -2)
+        chLeftI.BackgroundColor3 = cColor
+
+        chDownO.Size = UDim2.new(0, 4, 0, length)
+        chDownO.Position = UDim2.new(0.5, -2, 0.5, 10)
+        chDownI.BackgroundColor3 = cColor
+
+        chText.TextColor3 = cColor
+        chText.Text = chTextStr
+
+        if chSpin then
+            chCenter.Rotation = (chCenter.Rotation + dt * 180) % 360
         else
-            if chConn then chConn:Disconnect() chConn = nil end
+            chCenter.Rotation = 0
         end
     end
-})
 
-CrosshairSection:AddInput("Crosshair_Text", {
-    Default = "kei.win",
-    Numeric = false,
-    Finished = true,
-    Text = "Crosshair Text",
-    Placeholder = "Enter text...",
-    Callback = function(v) chTextStr = v end
-})
+    CrosshairSection:AddToggle("Crosshair_Enable", {
+        Text = "Enable Crosshair",
+        Default = false,
+        Callback = function(v) 
+            chEnabled = v
+            chGui.Enabled = v
+            if v then
+                if chConn then chConn:Disconnect() end
+                chConn = RunService.RenderStepped:Connect(updateCrosshair)
+            else
+                if chConn then chConn:Disconnect() chConn = nil end
+            end
+        end
+    })
 
-CrosshairSection:AddToggle("Crosshair_Rainbow", {
-    Text = "Rainbow Animation",
-    Default = true,
-    Callback = function(v) chRainbow = v end
-}):AddColorPicker("Crosshair_Color", {
-    Default = Color3.fromRGB(255,255,255),
-    Callback = function(v) chLineColor = v end
-})
+    CrosshairSection:AddInput("Crosshair_Text", {
+        Default = "kei.win",
+        Numeric = false,
+        Finished = true,
+        Text = "Crosshair Text",
+        Placeholder = "Enter text...",
+        Callback = function(v) chTextStr = v end
+    })
 
-CrosshairSection:AddToggle("Crosshair_Stretch", {
-    Text = "Stretch Animation",
-    Default = true,
-    Callback = function(v) chStretch = v end
-})
+    CrosshairSection:AddToggle("Crosshair_Rainbow", {
+        Text = "Rainbow Animation",
+        Default = true,
+        Callback = function(v) chRainbow = v end
+    }):AddColorPicker("Crosshair_Color", {
+        Default = Color3.fromRGB(255,255,255),
+        Callback = function(v) chLineColor = v end
+    })
 
-CrosshairSection:AddToggle("Crosshair_Spin", {
-    Text = "Spin Animation",
-    Default = true,
-    Callback = function(v) chSpin = v end
-})
+    CrosshairSection:AddToggle("Crosshair_Stretch", {
+        Text = "Stretch Animation",
+        Default = true,
+        Callback = function(v) chStretch = v end
+    })
+
+    CrosshairSection:AddToggle("Crosshair_Spin", {
+        Text = "Spin Animation",
+        Default = true,
+        Callback = function(v) chSpin = v end
+    })
+end
 
 -- ===== BULLET TRACER (VISUALS) =====
 do
@@ -1970,7 +1972,8 @@ do
 end
 
 -- ===== ENVIRONMENT TAB (WORLD) =====
-local EnvSection = Tabs.World:AddLeftGroupbox("Environment")
+do
+    local EnvSection = Tabs.World:AddLeftGroupbox("Environment")
 
 local Lighting = game:GetService("Lighting")
 local origAmbient = Lighting.Ambient
@@ -2115,6 +2118,8 @@ EnvSection:AddSlider("Env_Snow_Rate", {
 EnvSection:AddSlider("Env_Snow_Speed", {
     Text = "Snow Speed", Default = 30, Min = 1, Max = 100, Rounding = 0
 })
+end
+
 
 do
     local RageBotSection = Tabs.Rage:AddRightGroupbox("RageBot")
@@ -3689,7 +3694,8 @@ end -- do DamageNotification
 
 -- ========== ANTI BAN ==========
 
-local AntiBanSection = Tabs.Misc:AddRightGroupbox("Anti Ban")
+do
+    local AntiBanSection = Tabs.Misc:AddRightGroupbox("Anti Ban")
 
 local StaffDetectorEnabled = false
 local StaffDetectorAction = "Notify"
@@ -3790,8 +3796,11 @@ Players.PlayerAdded:Connect(function(player)
     CheckPlayerAntiBan(player)
 end)
 
+end
+
 -- ========== SOUND CHANGER ==========
-local SoundChangerSection = Tabs.Misc:AddRightGroupbox("Sound Changer")
+do
+    local SoundChangerSection = Tabs.Misc:AddRightGroupbox("Sound Changer")
 
 -- HitSoundChanger
 local soundChangerEnabled = false
@@ -3905,8 +3914,11 @@ KillSoundDep:AddInput("KillSoundID", {
 })
 KillSoundDep:SetupDependencies({ { KillSoundToggle, true } })
 
+end
+
 -- ========== ANIMATION PLAYER ==========
-local AnimationPlayerSection = Tabs.Misc:AddLeftGroupbox("Animation Player")
+do
+    local AnimationPlayerSection = Tabs.Misc:AddLeftGroupbox("Animation Player")
 
 local animPlayerEnabled = false
 local animPlayerId = "rbxassetid://97893809425239"
@@ -4043,6 +4055,8 @@ AnimationPlayerDep:AddSlider("AnimationPlayerSpeed", {
 
 AnimationPlayerDep:SetupDependencies({ { AnimationPlayerToggle, true } })
 
+end
+
 -- ========== THEME MANAGER ==========
 ThemeManager:SetLibrary(Library)
 ThemeManager:SetFolder("NewModpackRivals")
@@ -4054,7 +4068,8 @@ local ThemeSection = Tabs.Config:AddLeftGroupbox("Theme")
 ThemeManager:ApplyToGroupbox(ThemeSection)
 
 -- ========== FLY & NOCLIP ==========
-local MovementSection = Tabs.Misc:AddRightGroupbox("Movement")
+do
+    local MovementSection = Tabs.Misc:AddRightGroupbox("Movement")
 
 local flyEnabled = false
 local flySpeed = 70
@@ -4277,6 +4292,8 @@ MovementSection:AddToggle("HideDesyncToggle", {
         hideDesyncEnabled = value
     end
 })
+
+end
 
 do
     local infJumpEnabled = false
