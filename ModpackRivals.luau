@@ -2510,7 +2510,9 @@ do
         end)
     end)
 end
-local GunModsSection = Tabs.Rage:AddLeftGroupbox("Gun Mods")
+-- ===== GUN MODS =====
+do
+    local GunModsSection = Tabs.Rage:AddLeftGroupbox("Gun Mods")
 
 getgenv().RageSettings = {
     Enabled = false,
@@ -2791,6 +2793,7 @@ task.spawn(function()
         end
     end)
 end)
+end
 -- ========== ANTI AIM ==========
 do
     local AntiAimSection = Tabs.Rage:AddRightGroupbox("AntiAim")
