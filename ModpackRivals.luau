@@ -67,6 +67,9 @@ local cam = workspace.CurrentCamera
 
 
 -- Cleanup old instances for re-execution
+if getgenv()._TPGui then
+    pcall(function() getgenv()._TPGui:Destroy() end)
+end
 if getgenv().MyLinoriaLibrary then
     pcall(function() getgenv().MyLinoriaLibrary:Unload() end)
 end
@@ -1647,6 +1650,114 @@ ESPDep:AddToggle("ESP_HP", { Text = "HP Bar", Default = false, Callback = functi
 ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callback = function(v) getgenv().ESPSettings_TeamCheck = v end })
 
 ESPDep:SetupDependencies({ { ESPToggle, true } })
+
+-- ===== THIRD PERSON =====
+do
+    local CameraSection = Tabs.Visuals:AddLeftGroupbox("Camera")
+    local tpEnabled = false
+    local cameraControllerCache = nil
+
+    local function getCameraController()
+        if cameraControllerCache then return cameraControllerCache end
+        pcall(function()
+            local controllers = lp:WaitForChild("PlayerScripts", 5):WaitForChild("Controllers", 5)
+            cameraControllerCache = require(controllers:WaitForChild("CameraController", 5))
+        end)
+        return cameraControllerCache
+    end
+
+    local function setThirdPerson(val)
+        tpEnabled = val
+        pcall(function()
+            local cc = getCameraController()
+            if cc then
+                cc:SetThirdPersonOverride(val)
+                if cc.CameraState and cc.CameraState.States then
+                    local targetState = val and cc.CameraState.States.ThirdPerson or cc.CameraState.States.FirstPerson
+                    if cc.CameraState._SetPOVState then
+                        cc.CameraState:_SetPOVState(targetState)
+                    elseif cc.CameraState.VerifyPOV then
+                        cc.CameraState:VerifyPOV()
+                    end
+                end
+            end
+        end)
+    end
+
+    -- Floating Screen Button
+    if getgenv()._TPGui then
+        pcall(function() getgenv()._TPGui:Destroy() end)
+    end
+
+    local tpGui = Instance.new("ScreenGui")
+    tpGui.Name = "GameThirdPersonGui"
+    tpGui.ResetOnSpawn = false
+    tpGui.Enabled = false
+    pcall(function()
+        if gethui then
+            tpGui.Parent = gethui()
+        else
+            tpGui.Parent = CoreGui
+        end
+    end)
+    if not tpGui.Parent then
+        tpGui.Parent = PlayerGui
+    end
+    getgenv()._TPGui = tpGui
+
+    local tpBtn = Instance.new("TextButton", tpGui)
+    tpBtn.Size = UDim2.new(0, 100, 0, 36)
+    tpBtn.Position = UDim2.new(0.05, 0, 0.4, 0)
+    tpBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    tpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    tpBtn.Text = "TP: OFF"
+    tpBtn.Font = Enum.Font.GothamBold
+    tpBtn.TextSize = 12
+    tpBtn.Active = true
+    tpBtn.Draggable = true
+    Instance.new("UICorner", tpBtn).CornerRadius = UDim.new(0, 6)
+
+    local function updateBtnVisual(state)
+        tpBtn.Text = state and "TP: ON" or "TP: OFF"
+        tpBtn.BackgroundColor3 = state and Color3.fromRGB(45, 140, 45) or Color3.fromRGB(30, 30, 30)
+    end
+
+    local ThirdPersonToggle = CameraSection:AddToggle("ThirdPersonToggle", {
+        Text = "Third Person",
+        Default = false,
+        Callback = function(v)
+            setThirdPerson(v)
+            updateBtnVisual(v)
+        end
+    })
+
+    ThirdPersonToggle:AddKeyPicker("ThirdPersonKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Third Person",
+    })
+
+    CameraSection:AddToggle("ThirdPersonScreenBtn", {
+        Text = "Show Screen Button",
+        Default = false,
+        Callback = function(v)
+            tpGui.Enabled = v
+        end
+    })
+
+    tpBtn.MouseButton1Click:Connect(function()
+        local newState = not tpEnabled
+        ThirdPersonToggle:SetValue(newState)
+    end)
+
+    lp.CharacterAdded:Connect(function()
+        if tpEnabled then
+            task.wait(0.5)
+            setThirdPerson(true)
+        end
+    end)
+end
 
 -- Team ESP
 local TeamESPSection = Tabs.Visuals:AddRightGroupbox("Team ESP")
