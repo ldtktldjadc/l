@@ -67,9 +67,7 @@ local cam = workspace.CurrentCamera
 
 
 -- Cleanup old instances for re-execution
-if getgenv()._TPGui then
-    pcall(function() getgenv()._TPGui:Destroy() end)
-end
+
 if getgenv().MyLinoriaLibrary then
     pcall(function() getgenv().MyLinoriaLibrary:Unload() end)
 end
@@ -127,6 +125,9 @@ end
 -- ========== SILENT AIM (Raycast Hook) ==========
 do
     local UserInputService = game:GetService("UserInputService")
+    local rawRaycast = workspace.Raycast
+    local isInsideRaycastHook = false
+
     local staticRayParams = RaycastParams.new()
     staticRayParams.FilterType = Enum.RaycastFilterType.Exclude
     staticRayParams.IgnoreWater = true
@@ -151,7 +152,6 @@ do
         local myChar = lp.Character
         local curCam = workspace.CurrentCamera
         if not curCam then return nil end
-        staticRayParams.FilterDescendantsInstances = {myChar, curCam}
 
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= lp and checkTeam(p, false) then
@@ -191,10 +191,17 @@ do
                     end
 
                     -- WallCheck
-                    if cfg and cfg.WallCheck then
-                        wallCheckRayParams.FilterDescendantsInstances = {myChar, curCam}
-                        local ray = workspace:Raycast(curCam.CFrame.Position, hitPart.Position - curCam.CFrame.Position, wallCheckRayParams)
-                        if ray and ray.Instance and not ray.Instance:IsDescendantOf(char) then
+                    if cfg and cfg.WallCheck and hitPart then
+                        local ignoreList = {}
+                        if myChar then table.insert(ignoreList, myChar) end
+                        if curCam then table.insert(ignoreList, curCam) end
+                        wallCheckRayParams.FilterDescendantsInstances = ignoreList
+
+                        local camPos = curCam.CFrame.Position
+                        local hitPos = hitPart.Position
+                        local dir = hitPos - camPos
+                        local raySuccess, rayResult = pcall(rawRaycast, workspace, camPos, dir, wallCheckRayParams)
+                        if raySuccess and rayResult and rayResult.Instance and not rayResult.Instance:IsDescendantOf(char) then
                             continue
                         end
                     end
@@ -234,7 +241,7 @@ do
             getgenv()._OriginalNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                 local method = getnamecallmethod()
                 local cfg = getgenv().SilentConfig
-                if not cfg or not cfg.Enabled or checkcaller() or not method then
+                if not cfg or not cfg.Enabled or checkcaller() or not method or isInsideRaycastHook then
                     if setnamecallmethod then setnamecallmethod(method) end
                     return getgenv()._OriginalNamecall(self, ...)
                 end
@@ -243,11 +250,20 @@ do
 
                 -- Workspace:Raycast Hook (Client Raycast deflection)
                 if m == "raycast" and self == workspace then
+                    isInsideRaycastHook = true
                     local args = {...}
                     local origin = args[1]
                     local direction = args[2]
-                    if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
-                        args[2] = getSilentAimDirection(origin, direction)
+                    local success, resultDir = pcall(function()
+                        if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
+                            return getSilentAimDirection(origin, direction)
+                        end
+                        return direction
+                    end)
+                    isInsideRaycastHook = false
+
+                    if success and typeof(resultDir) == "Vector3" then
+                        args[2] = resultDir
                         if setnamecallmethod then setnamecallmethod(method) end
                         return getgenv()._OriginalNamecall(self, unpack(args))
                     end
@@ -1067,6 +1083,13 @@ local SilentToggle = AimSection:AddToggle("SilentEnabled", {
     Callback = function(value) getgenv().SilentConfig.Enabled = value end,
 })
 
+SilentToggle:AddKeyPicker("SilentKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Silent Aim",
+})
+
 local AimDep = AimSection:AddDependencyBox()
 
 AimDep:AddDropdown("TargetPart", {
@@ -1426,6 +1449,13 @@ local AimLockToggle = AimLockSection:AddToggle("AimLockEnabled", {
     end
 })
 
+AimLockToggle:AddKeyPicker("AimLockKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Aim Lock",
+})
+
 local AimLockDep = AimLockSection:AddDependencyBox()
 AimLockDep:AddToggle("AimLockTeamCheck", { Text = "TeamCheck", Default = false, Callback = function(v) AimLockSettings.TeamCheck = v end })
 AimLockDep:AddToggle("AimLockAliveCheck", { Text = "AliveCheck", Default = true, Callback = function(v) AimLockSettings.AliveCheck = v end })
@@ -1469,6 +1499,13 @@ local TriggerBotToggle = TriggerBotSection:AddToggle("TriggerBotEnabled", {
     Text = "Enabled",
     Default = false,
     Callback = function(value) getgenv().TriggerBotSettings.Enabled = value end
+})
+
+TriggerBotToggle:AddKeyPicker("TriggerBotKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Trigger Bot",
 })
 
 local TriggerBotDep = TriggerBotSection:AddDependencyBox()
@@ -1586,6 +1623,13 @@ local ESPToggle = ESPSection:AddToggle("ESP_Enabled", {
     Callback = function(value) espSettings.MasterEnabled = value end
 })
 
+ESPToggle:AddKeyPicker("ESPKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "ESP",
+})
+
 local ESPDep = ESPSection:AddDependencyBox()
 
 ESPDep:AddToggle("ESP_Box", { Text = "Box", Default = false, Callback = function(v) espSettings.Box = v end })
@@ -1684,50 +1728,11 @@ do
         end)
     end
 
-    -- Floating Screen Button
-    if getgenv()._TPGui then
-        pcall(function() getgenv()._TPGui:Destroy() end)
-    end
-
-    local tpGui = Instance.new("ScreenGui")
-    tpGui.Name = "GameThirdPersonGui"
-    tpGui.ResetOnSpawn = false
-    tpGui.Enabled = false
-    pcall(function()
-        if gethui then
-            tpGui.Parent = gethui()
-        else
-            tpGui.Parent = CoreGui
-        end
-    end)
-    if not tpGui.Parent then
-        tpGui.Parent = PlayerGui
-    end
-    getgenv()._TPGui = tpGui
-
-    local tpBtn = Instance.new("TextButton", tpGui)
-    tpBtn.Size = UDim2.new(0, 100, 0, 36)
-    tpBtn.Position = UDim2.new(0.05, 0, 0.4, 0)
-    tpBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    tpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    tpBtn.Text = "TP: OFF"
-    tpBtn.Font = Enum.Font.GothamBold
-    tpBtn.TextSize = 12
-    tpBtn.Active = true
-    tpBtn.Draggable = true
-    Instance.new("UICorner", tpBtn).CornerRadius = UDim.new(0, 6)
-
-    local function updateBtnVisual(state)
-        tpBtn.Text = state and "TP: ON" or "TP: OFF"
-        tpBtn.BackgroundColor3 = state and Color3.fromRGB(45, 140, 45) or Color3.fromRGB(30, 30, 30)
-    end
-
     local ThirdPersonToggle = CameraSection:AddToggle("ThirdPersonToggle", {
         Text = "Third Person",
         Default = false,
         Callback = function(v)
             setThirdPerson(v)
-            updateBtnVisual(v)
         end
     })
 
@@ -1737,19 +1742,6 @@ do
         Mode = "Toggle",
         Text = "Third Person",
     })
-
-    CameraSection:AddToggle("ThirdPersonScreenBtn", {
-        Text = "Show Screen Button",
-        Default = false,
-        Callback = function(v)
-            tpGui.Enabled = v
-        end
-    })
-
-    tpBtn.MouseButton1Click:Connect(function()
-        local newState = not tpEnabled
-        ThirdPersonToggle:SetValue(newState)
-    end)
 
     lp.CharacterAdded:Connect(function()
         if tpEnabled then
@@ -1765,6 +1757,13 @@ local TeamESPSection = Tabs.Visuals:AddRightGroupbox("Team ESP")
 local TeamESPToggle = TeamESPSection:AddToggle("TeamESP_Enabled", {
     Text = "Enabled", Default = false,
     Callback = function(v) teamEspSettings.Enabled = v end
+})
+
+TeamESPToggle:AddKeyPicker("TeamESPKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Team ESP",
 })
 
 local TeamESPDep = TeamESPSection:AddDependencyBox()
@@ -1904,7 +1903,7 @@ do
         end
     end
 
-    CrosshairSection:AddToggle("Crosshair_Enable", {
+    local CrosshairToggle = CrosshairSection:AddToggle("Crosshair_Enable", {
         Text = "Enable Crosshair",
         Default = false,
         Callback = function(v) 
@@ -1917,6 +1916,13 @@ do
                 if chConn then chConn:Disconnect() chConn = nil end
             end
         end
+    })
+
+    CrosshairToggle:AddKeyPicker("CrosshairKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Crosshair",
     })
 
     CrosshairSection:AddInput("Crosshair_Text", {
@@ -1956,10 +1962,17 @@ do
 
     getgenv()._bt = { enabled = false, width = 2, fadeTime = 4 }
 
-    BulletTracerSection:AddToggle("BulletTracerToggle", {
+    local BulletTracerToggle = BulletTracerSection:AddToggle("BulletTracerToggle", {
         Text = "Enable Bullet Tracer",
         Default = false,
         Callback = function(v) getgenv()._bt.enabled = v end
+    })
+
+    BulletTracerToggle:AddKeyPicker("BulletTracerKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Bullet Tracer",
     })
 
     BulletTracerSection:AddSlider("BulletTracerWidth", {
@@ -2177,12 +2190,19 @@ local function updateSnow()
     end
 end
 
-EnvSection:AddToggle("Env_WorldColor_Enabled", {
+local WorldColorToggle = EnvSection:AddToggle("Env_WorldColor_Enabled", {
     Text = "Enable Custom Lighting", Default = false,
     Callback = function(v) envSettings.WorldColorEnabled = v; updateWorldColor() end
-}):AddColorPicker("Env_Ambient_Color", {
+})
+WorldColorToggle:AddColorPicker("Env_Ambient_Color", {
     Default = envSettings.Ambient, Title = "Ambient Color",
     Callback = function(v) envSettings.Ambient = v; updateWorldColor() end
+})
+WorldColorToggle:AddKeyPicker("WorldColorKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Custom Lighting",
 })
 
 EnvSection:AddSlider("Env_ClockTime", {
@@ -2190,12 +2210,19 @@ EnvSection:AddSlider("Env_ClockTime", {
     Callback = function(v) envSettings.ClockTime = v; updateWorldColor() end
 })
 
-EnvSection:AddToggle("Env_CC_Enabled", {
+local CCToggle = EnvSection:AddToggle("Env_CC_Enabled", {
     Text = "Enable Color Correction", Default = false,
     Callback = function(v) envSettings.CCEnabled = v; updateCC() end
-}):AddColorPicker("Env_CC_Tint", {
+})
+CCToggle:AddColorPicker("Env_CC_Tint", {
     Default = envSettings.CCTint, Title = "Tint Color",
     Callback = function(v) envSettings.CCTint = v; updateCC() end
+})
+CCToggle:AddKeyPicker("CCKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Color Correction",
 })
 
 EnvSection:AddSlider("Env_CC_Saturation", {
@@ -2208,12 +2235,19 @@ EnvSection:AddSlider("Env_CC_Contrast", {
     Callback = function(v) envSettings.CCContrast = v; updateCC() end
 })
 
-EnvSection:AddToggle("Env_Snow_Enabled", {
+local SnowToggle = EnvSection:AddToggle("Env_Snow_Enabled", {
     Text = "Enable Snow", Default = false,
     Callback = function(v) envSettings.SnowEnabled = v; updateSnow() end
-}):AddColorPicker("Env_Snow_Color", {
+})
+SnowToggle:AddColorPicker("Env_Snow_Color", {
     Default = envSettings.SnowColor, Title = "Snow Color",
     Callback = function(v) envSettings.SnowColor = v; updateSnow() end
+})
+SnowToggle:AddKeyPicker("SnowKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Snow Effect",
 })
 
 EnvSection:AddSlider("Env_Snow_Rate", {
@@ -2241,13 +2275,20 @@ do
     local currentDesyncCF = nil
     local currentTargetYaw = nil
 
-    RageBotSection:AddToggle("RageBot_Enabled", {
+    local RageBotToggle = RageBotSection:AddToggle("RageBot_Enabled", {
         Text = "Enable RageBot",
         Default = false,
         Callback = function(value)
             getgenv().Config.Enabled = value
             getgenv().RageBotConfig.Enabled = value
         end
+    })
+
+    RageBotToggle:AddKeyPicker("RageBotKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "RageBot",
     })
 
     RageBotSection:AddDropdown("RageBot_Slot", {
@@ -2818,6 +2859,13 @@ local GunModsToggle = GunModsSection:AddToggle("GunMods_Enabled", {
     end
 })
 
+GunModsToggle:AddKeyPicker("GunModsKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Gun Mods",
+})
+
 local GunModsDep = GunModsSection:AddDependencyBox()
 
 GunModsDep:AddToggle("GunMods_NoSpread", {
@@ -2932,6 +2980,13 @@ do
         Text = "Enabled",
         Default = false,
         Callback = function(value) aaEnabled = value end
+    })
+
+    AntiAimToggle:AddKeyPicker("AntiAimKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Anti Aim",
     })
 
     local AntiAimDep = AntiAimSection:AddDependencyBox()
@@ -3053,7 +3108,7 @@ do
     
     local AutoQueueBox = Tabs.Misc:AddLeftGroupbox("Auto Queue")
     
-    AutoQueueBox:AddToggle("AutoQueueToggle", {
+    local AutoQueueToggle = AutoQueueBox:AddToggle("AutoQueueToggle", {
         Text = "Enabled",
         Default = false,
         Tooltip = "Automatically start matchmaking when not in-game or when match ends.\nWill re-queue if canceled.",
@@ -3063,6 +3118,13 @@ do
                 task.spawn(function() task.wait(0.2); pcall(tryQueueRef) end)
             end
         end,
+    })
+
+    AutoQueueToggle:AddKeyPicker("AutoQueueKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Auto Queue",
     })
     
     local AutoQueueDropObj = AutoQueueBox:AddDropdown("AutoQueueDrop", {
@@ -3287,7 +3349,7 @@ end -- do CharmSpoofer
 -- ========== UNLOCK ALL ==========
 
 local UnlockAllSection = Tabs.Misc:AddLeftGroupbox("Unlock All")
-UnlockAllSection:AddToggle("UnlockAllToggle", {
+local UnlockAllToggle = UnlockAllSection:AddToggle("UnlockAllToggle", {
     Text = "Enable Unlock All",
     Default = false,
     Callback = function(value)
@@ -3639,6 +3701,14 @@ end
         end
     end
 })
+
+UnlockAllToggle:AddKeyPicker("UnlockAllKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Unlock All",
+})
+
 -- ========== DEVICE SPOOFER ==========
 local DeviceSpoofSection = Tabs.Misc:AddLeftGroupbox("Device Spoofer")
 
@@ -3656,6 +3726,13 @@ DeviceSpooferToggle = DeviceSpoofSection:AddToggle("DeviceSpoofToggle", {
             end)
         end
     end
+})
+
+DeviceSpooferToggle:AddKeyPicker("DeviceSpoofKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Device Spoofer",
 })
 
 local DeviceSpoofDep = DeviceSpoofSection:AddDependencyBox()
@@ -3778,7 +3855,7 @@ Players.PlayerRemoving:Connect(function(p)
 end)
 
 local DmgNotifSection = Tabs.Misc:AddLeftGroupbox("Damage Notification")
-DmgNotifSection:AddToggle("DmgNotif_Enabled", {
+local DmgNotifToggle = DmgNotifSection:AddToggle("DmgNotif_Enabled", {
     Text = "Enabled", Default = false,
     Callback = function(v)
         dmgNotifEnabled = v
@@ -3788,6 +3865,14 @@ DmgNotifSection:AddToggle("DmgNotif_Enabled", {
         end
     end,
 })
+
+DmgNotifToggle:AddKeyPicker("DmgNotifKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Damage Notification",
+})
+
 DmgNotifSection:AddSlider("DmgNotif_Min", {
     Text = "Min Damage", Default = 1, Min = 1, Max = 100, Rounding = 0,
     Callback = function(v) dmgNotifMin = v end,
@@ -3864,7 +3949,7 @@ local function CheckPlayerAntiBan(player)
     end)
 end
 
-AntiBanSection:AddToggle("StaffDetectorToggle", {
+local StaffDetectorToggle = AntiBanSection:AddToggle("StaffDetectorToggle", {
     Text = "Staff Detector",
     Default = false,
     Callback = function(value)
@@ -3877,6 +3962,13 @@ AntiBanSection:AddToggle("StaffDetectorToggle", {
     end
 })
 
+StaffDetectorToggle:AddKeyPicker("StaffDetectorKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Staff Detector",
+})
+
 AntiBanSection:AddDropdown("StaffDetectorAction", {
     Values = {"Notify", "Kick"},
     Default = 1,
@@ -3885,7 +3977,7 @@ AntiBanSection:AddDropdown("StaffDetectorAction", {
     Callback = function(value) StaffDetectorAction = value end
 })
 
-AntiBanSection:AddToggle("ArchNemesisToggle", {
+local ArchNemesisToggle = AntiBanSection:AddToggle("ArchNemesisToggle", {
     Text = "ArchNemesis Checker",
     Default = false,
     Callback = function(value)
@@ -3896,6 +3988,13 @@ AntiBanSection:AddToggle("ArchNemesisToggle", {
             end
         end
     end
+})
+
+ArchNemesisToggle:AddKeyPicker("ArchNemesisKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "ArchNemesis Checker",
 })
 
 Players.PlayerAdded:Connect(function(player)
@@ -3942,6 +4041,13 @@ local SoundChangerToggle = SoundChangerSection:AddToggle("SoundChangerToggle", {
         soundChangerEnabled = value
         updateSoundChanger()
     end
+})
+
+SoundChangerToggle:AddKeyPicker("SoundChangerKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Hit Sound Changer",
 })
 
 local SoundChangerDep = SoundChangerSection:AddDependencyBox()
@@ -4001,6 +4107,13 @@ local KillSoundToggle = SoundChangerSection:AddToggle("KillSoundToggle", {
     Callback = function(value)
         killSoundEnabled = value
     end
+})
+
+KillSoundToggle:AddKeyPicker("KillSoundKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Kill Sound Changer",
 })
 
 local KillSoundDep = SoundChangerSection:AddDependencyBox()
@@ -4125,6 +4238,13 @@ local AnimationPlayerToggle = AnimationPlayerSection:AddToggle("AnimationPlayerT
         animPlayerEnabled = value
         updateAnimationPlayer()
     end
+})
+
+AnimationPlayerToggle:AddKeyPicker("AnimationPlayerKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Animation Player",
 })
 
 local AnimationPlayerDep = AnimationPlayerSection:AddDependencyBox()
@@ -4274,12 +4394,19 @@ local function stopNoclip()
     end
 end
 
-MovementSection:AddToggle("FlyToggle", {
+local FlyToggle = MovementSection:AddToggle("FlyToggle", {
     Text = "Fly",
     Default = false,
     Callback = function(value)
         if value then startFly() else stopFly() end
     end
+})
+
+FlyToggle:AddKeyPicker("FlyKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Fly",
 })
 
 MovementSection:AddSlider("FlySpeedSlider", {
@@ -4374,7 +4501,7 @@ local function stopHideInFloor()
     end
 end
 
-MovementSection:AddToggle("NoclipToggle", {
+local NoclipToggle = MovementSection:AddToggle("NoclipToggle", {
     Text = "Noclip",
     Default = false,
     Callback = function(value)
@@ -4382,7 +4509,14 @@ MovementSection:AddToggle("NoclipToggle", {
     end
 })
 
-MovementSection:AddToggle("HideInFloorToggle", {
+NoclipToggle:AddKeyPicker("NoclipKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Noclip",
+})
+
+local HideInFloorToggle = MovementSection:AddToggle("HideInFloorToggle", {
     Text = "Hide In Floor",
     Default = false,
     Callback = function(value)
@@ -4391,7 +4525,14 @@ MovementSection:AddToggle("HideInFloorToggle", {
     end
 })
 
-MovementSection:AddToggle("HideDesyncToggle", {
+HideInFloorToggle:AddKeyPicker("HideInFloorKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Hide In Floor",
+})
+
+local HideDesyncToggle = MovementSection:AddToggle("HideDesyncToggle", {
     Text = "Desync In Floor",
     Default = false,
     Callback = function(value)
@@ -4399,11 +4540,18 @@ MovementSection:AddToggle("HideDesyncToggle", {
     end
 })
 
+HideDesyncToggle:AddKeyPicker("HideDesyncKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Desync In Floor",
+})
+
     local infJumpEnabled = false
     local fighterControllerCache = nil
     local maxDoubleJumpsOriginals = {}
 
-    MovementSection:AddToggle("InfJumpToggle", {
+    local InfJumpToggle = MovementSection:AddToggle("InfJumpToggle", {
         Text = "Infinite Jump",
         Default = false,
         Callback = function(value)
@@ -4415,6 +4563,13 @@ MovementSection:AddToggle("HideDesyncToggle", {
                 end
             end
         end
+    })
+
+    InfJumpToggle:AddKeyPicker("InfJumpKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Infinite Jump",
     })
 
     RunService.RenderStepped:Connect(function()
@@ -4435,6 +4590,92 @@ MovementSection:AddToggle("HideDesyncToggle", {
         end
     end)
 
+    -- Slide Boost
+    local slideBoostEnabled = false
+    local slideBoostMultiplier = 1.0
+
+    local function setupSlideBoost()
+        local MechanicsController
+        local ok = pcall(function()
+            local controllers = lp:WaitForChild("PlayerScripts", 10):WaitForChild("Controllers", 10)
+            MechanicsController = require(controllers:WaitForChild("MechanicsController", 10))
+        end)
+
+        if not ok or type(MechanicsController) ~= "table" then return end
+
+        local oldSlide = MechanicsController.Slide
+        if type(oldSlide) ~= "function" or MechanicsController._isSlideHooked then return end
+        MechanicsController._isSlideHooked = true
+
+        MechanicsController.Slide = function(self)
+            if slideBoostEnabled then
+                local fighter = self.LocalFighter
+                if fighter and fighter.Get then
+                    local oldGet = fighter.Get
+                    fighter.Get = function(f, key)
+                        if key == "SlidingSpeedMax" then
+                            return 3.0 * slideBoostMultiplier
+                        end
+                        return oldGet(f, key)
+                    end
+
+                    task.delay(1.5, function()
+                        if fighter and fighter.Get then
+                            fighter.Get = oldGet
+                        end
+                    end)
+                end
+            end
+            return oldSlide(self)
+        end
+    end
+
+    task.spawn(setupSlideBoost)
+
+    local SlideBoostToggle = MovementSection:AddToggle("SlideBoostToggle", {
+        Text = "Slide Boost",
+        Default = false,
+        Callback = function(v)
+            slideBoostEnabled = v
+        end
+    })
+
+    SlideBoostToggle:AddKeyPicker("SlideBoostKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Slide Boost",
+    })
+
+    MovementSection:AddSlider("SlideBoostMultiplier", {
+        Text = "Slide Boost Multiplier",
+        Default = 1.0,
+        Min = 0,
+        Max = 3,
+        Rounding = 1,
+        Compact = false,
+        Callback = function(v)
+            slideBoostMultiplier = v
+        end
+    })
+
+    if getgenv then
+        getgenv().SlideBoost = {
+            SetEnabled = function(val)
+                slideBoostEnabled = val
+                SlideBoostToggle:SetValue(val)
+            end,
+            SetMultiplier = function(val)
+                slideBoostMultiplier = val
+            end,
+            Toggle = function()
+                slideBoostEnabled = not slideBoostEnabled
+                SlideBoostToggle:SetValue(slideBoostEnabled)
+                return slideBoostEnabled
+            end,
+        }
+    end
+
     lp.CharacterAdded:Connect(function()
         if flyEnabled then task.wait(0.5) startFly() end
         if noclipEnabled then task.wait(0.5) startNoclip() end
@@ -4449,7 +4690,14 @@ local WeaponLists = {}
 local ListIndexes = {1, 1, 1, 1}
 
 local LoadCoreBox = Tabs.Misc:AddLeftGroupbox("Loadout Core")
-LoadCoreBox:AddToggle("AutoLoadToggle", { Text = "Enable Auto Loadout", Default = autoLoadoutEnabled, Callback = function(Value) autoLoadoutEnabled = Value end })
+local AutoLoadToggle = LoadCoreBox:AddToggle("AutoLoadToggle", { Text = "Enable Auto Loadout", Default = autoLoadoutEnabled, Callback = function(Value) autoLoadoutEnabled = Value end })
+
+AutoLoadToggle:AddKeyPicker("AutoLoadKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Auto Loadout",
+})
 
 local LoadSlotsBox = Tabs.Misc:AddRightGroupbox("Weapon Slots")
 local PriDropObj = LoadSlotsBox:AddDropdown("PriDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Primary", Callback = function(Value) ChosenWeapons[1] = Value end })
