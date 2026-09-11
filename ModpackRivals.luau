@@ -2271,7 +2271,9 @@ do
         AntiHit = false,
         AntiHitDuration = 0.5,
     }
+    getgenv().Config.AntiHit = false
     getgenv().RageBotConfig = getgenv().Config
+    getgenv().RageBotConfig.AntiHit = false
 
     local currentTargetPart = nil
     local currentDesyncCF = nil
