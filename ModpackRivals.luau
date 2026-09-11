@@ -2268,6 +2268,8 @@ do
         Enabled = false,
         WeaponSlot = "Primary",
         FireRate = 0.0005,
+        AntiHit = false,
+        AntiHitDuration = 0.5,
     }
     getgenv().RageBotConfig = getgenv().Config
 
@@ -2312,6 +2314,36 @@ do
             end
         end
     })
+
+    local AntiHitToggle = RageBotSection:AddToggle("RageBot_AntiHit", {
+        Text = "AntiHit",
+        Default = false,
+        Callback = function(value)
+            getgenv().Config.AntiHit = value
+            getgenv().RageBotConfig.AntiHit = value
+        end
+    })
+
+    AntiHitToggle:AddKeyPicker("AntiHitKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "AntiHit",
+    })
+
+    local AntiHitDep = RageBotSection:AddDependencyBox()
+    AntiHitDep:AddSlider("RageBot_AntiHitDuration", {
+        Text = "AntiHit Duration (sec)",
+        Default = 0.5,
+        Min = 0.25,
+        Max = 2.0,
+        Rounding = 2,
+        Callback = function(value)
+            getgenv().Config.AntiHitDuration = value
+            getgenv().RageBotConfig.AntiHitDuration = value
+        end
+    })
+    AntiHitDep:SetupDependencies({ { AntiHitToggle, true } })
 
     task.spawn(function()
         local repS = cloneref(game:GetService("ReplicatedStorage"))
@@ -2449,6 +2481,7 @@ do
         local lastFire = 0
         local lastTarget = nil
         local tpStartTime = 0
+        local antiHitUntil = 0
         local DeflectingPlayers = getgenv().DeflectingPlayers or {}
         local function isPlayerParrying(player)
             if not player then return false end
@@ -2546,7 +2579,10 @@ do
                 end)
             end
 
+            local isAntiHit = getgenv().Config and getgenv().Config.AntiHit and (tick() < antiHitUntil)
+
             local canAttack = getgenv().Config.Enabled
+                and (not isAntiHit)
                 and (not isReloading)
                 and (not myFF)
                 and (not targetFF)
@@ -2659,6 +2695,10 @@ do
                 cameradata,
                 nil
             )
+
+            if getgenv().Config and getgenv().Config.AntiHit then
+                antiHitUntil = tick() + (getgenv().Config.AntiHitDuration or 0.5)
+            end
         end)
     end)
 end
