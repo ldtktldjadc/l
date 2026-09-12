@@ -1139,6 +1139,11 @@ local AimLockSettings = {
     FOV = 150,
     SmoothnessOut = 0.65,
     SmoothnessIn = 0.15,
+    ReactionDelay = 0,
+    TargetSwitchDelay = 0,
+    TargetStickiness = 50,
+    AimJitter = 0,
+    AutoSwitch = true,
     WallCheck = false,
     AliveCheck = true,
     TargetPart = "HitboxHead",
@@ -1149,6 +1154,9 @@ local AimLockSettings = {
 local AL_LockedTarget = nil
 local AL_BlatantLockedFighter = nil
 local AL_LastTarget = nil
+local AL_TargetStartTime = 0
+local AL_LastTargetLostTime = 0
+local AL_CanAcquire = true
 local AL_BLATANT_HITBOXES = {"HitboxHead", "HitboxHeadSmall", "HitboxBody", "HitboxBodySmall"}
 
 local function AL_getHealth(entity)
@@ -1219,6 +1227,7 @@ end
 
 local function AL_getTarget()
 	if not AimLockSettings.Enabled then return nil, nil end
+	if not AimLockSettings.AutoSwitch and not AL_CanAcquire and not AL_LockedTarget then return nil, nil end
 	if AimLockSettings.OnlyScope then
 		local isAiming = false
 		local localFighter = FighterController and FighterController.LocalFighter
@@ -1231,6 +1240,12 @@ local function AL_getTarget()
 			end
 		end
 		if not isAiming then
+			if AL_LockedTarget then
+				AL_LastTargetLostTime = os.clock()
+				if not AimLockSettings.AutoSwitch then
+					AL_CanAcquire = false
+				end
+			end
 			AL_LockedTarget = nil
 			AL_BlatantLockedFighter = nil
 			AL_LastTarget = nil
@@ -1263,20 +1278,41 @@ local function AL_getTarget()
 		local isAlive = (AL_getHealth(fighter.Entity) > 0)
 		if not AimLockSettings.AliveCheck then isAlive = true end
 		local ok = fighter and fighter.Player and fighter.Entity and isAlive
-		if not ok or not pcall(function() return not isBehindWall(AL_LockedTarget, fighter.Entity.Model) end) or isBehindWall(AL_LockedTarget, fighter.Entity.Model) then
+		local wallCheckFailed = not pcall(function() return not isBehindWall(AL_LockedTarget, fighter.Entity.Model) end) or isBehindWall(AL_LockedTarget, fighter.Entity.Model)
+
+		local outOfRange = false
+		if lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and fighter and fighter.Entity and fighter.Entity.Model and fighter.Entity.Model:FindFirstChild("HumanoidRootPart") then
+			if (fighter.Entity.Model.HumanoidRootPart.Position - lp.Character.HumanoidRootPart.Position).Magnitude > 500 then
+				outOfRange = true
+			end
+		end
+
+		local outOfFov = false
+		local sp, onScreen = camera:WorldToViewportPoint(AL_LockedTarget.Position)
+		local stickinessMult = 1 + ((AimLockSettings.TargetStickiness or 50) / 25)
+		local maxFov = AimLockSettings.FOV * stickinessMult
+		local mouseDist = onScreen and (Vector2.new(sp.X, sp.Y) - screenCenter).Magnitude or 999999
+		if (not onScreen) or (mouseDist > maxFov) then
+			outOfFov = true
+		end
+
+		if not ok or wallCheckFailed or outOfRange or outOfFov then
 			AL_LockedTarget = nil
 			AL_BlatantLockedFighter = nil
 			AL_LastTarget = nil
-		elseif lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and fighter.Entity.Model:FindFirstChild("HumanoidRootPart") then
-			if (fighter.Entity.Model.HumanoidRootPart.Position - lp.Character.HumanoidRootPart.Position).Magnitude > 500 then
-				AL_LockedTarget = nil
-				AL_BlatantLockedFighter = nil
-				AL_LastTarget = nil
+			AL_LastTargetLostTime = os.clock()
+			if not AimLockSettings.AutoSwitch then
+				AL_CanAcquire = false
 			end
 		end
 	end
 
 	if not AL_LockedTarget then
+		if not AimLockSettings.AutoSwitch and not AL_CanAcquire then return nil, nil end
+		if (AimLockSettings.TargetSwitchDelay or 0) > 0 and (os.clock() - AL_LastTargetLostTime) < AimLockSettings.TargetSwitchDelay then
+			return nil, nil
+		end
+
 		local validTargets = {}
 		if not FighterController or type(FighterController.Objects) ~= "table" then return nil, nil end
 		for _, fighter in pairs(FighterController.Objects or {}) do
@@ -1323,6 +1359,7 @@ local function AL_getTarget()
 			local chosen = validTargets[1]
 			if chosen.Part ~= AL_LastTarget then
 				AL_LastTarget = chosen.Part
+				AL_TargetStartTime = os.clock()
 			end
 			AL_LockedTarget = chosen.Part
 			AL_BlatantLockedFighter = chosen.Fighter
@@ -1357,9 +1394,23 @@ task.spawn(function()
             
             local target, targetFighter = AL_getTarget()
             if target then
+                if (AimLockSettings.ReactionDelay or 0) > 0 and (os.clock() - AL_TargetStartTime) < AimLockSettings.ReactionDelay then
+                    return
+                end
+
                 local camera = workspace.CurrentCamera
                 local targetPos = target.Position
                 local camOrigin = camera.CFrame.Position
+
+                if (AimLockSettings.AimJitter or 0) > 0 then
+                    local jitterMag = AimLockSettings.AimJitter * 0.08
+                    local jitter = Vector3.new(
+                        (math.random() - 0.5) * 2 * jitterMag,
+                        (math.random() - 0.5) * 2 * jitterMag,
+                        (math.random() - 0.5) * 2 * jitterMag
+                    )
+                    targetPos = targetPos + jitter
+                end
 
                 local dir = (targetPos - camOrigin).Unit
                 local yaw = math.atan2(-dir.X, -dir.Z)
@@ -1397,6 +1448,7 @@ local AimLockToggle = AimLockSection:AddToggle("AimLockEnabled", {
     Default = false,
     Callback = function(value)
         AimLockSettings.Enabled = value
+        AL_CanAcquire = true
         if not value then
             AL_LockedTarget = nil
             AL_BlatantLockedFighter = nil
@@ -1417,9 +1469,14 @@ AimLockDep:AddToggle("AimLockTeamCheck", { Text = "TeamCheck", Default = false, 
 AimLockDep:AddToggle("AimLockAliveCheck", { Text = "AliveCheck", Default = true, Callback = function(v) AimLockSettings.AliveCheck = v end })
 AimLockDep:AddToggle("AimLockWallCheck", { Text = "WallCheck", Default = false, Callback = function(v) AimLockSettings.WallCheck = v end })
 AimLockDep:AddToggle("AimLockOnlyScope", { Text = "OnlyScope", Default = false, Callback = function(v) AimLockSettings.OnlyScope = v end })
+AimLockDep:AddToggle("AimLockAutoSwitch", { Text = "AutoSwitch", Default = true, Callback = function(v) AimLockSettings.AutoSwitch = v end })
 AimLockDep:AddSlider("AimLockFOV", { Text = "Fov", Default = 150, Min = 1, Max = 800, Rounding = 0, Callback = function(v) AimLockSettings.FOV = v end })
 AimLockDep:AddSlider("AimLockSmoothnessOut", { Text = "Smoothness (Hitbox外)", Default = 0.65, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.SmoothnessOut = v end })
 AimLockDep:AddSlider("AimLockSmoothnessIn", { Text = "Smoothness (Hitbox内)", Default = 0.15, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.SmoothnessIn = v end })
+AimLockDep:AddSlider("AimLockReactionDelay", { Text = "Reaction Delay", Default = 0, Min = 0, Max = 0.5, Rounding = 2, Suffix = "s", Callback = function(v) AimLockSettings.ReactionDelay = v end })
+AimLockDep:AddSlider("AimLockTargetSwitchDelay", { Text = "Target Switch Delay", Default = 0, Min = 0, Max = 1, Rounding = 2, Suffix = "s", Callback = function(v) AimLockSettings.TargetSwitchDelay = v end })
+AimLockDep:AddSlider("AimLockTargetStickiness", { Text = "Target Stickiness", Default = 50, Min = 0, Max = 100, Rounding = 0, Suffix = "%", Callback = function(v) AimLockSettings.TargetStickiness = v end })
+AimLockDep:AddSlider("AimLockAimJitter", { Text = "Aim Jitter", Default = 0, Min = 0, Max = 10, Rounding = 1, Callback = function(v) AimLockSettings.AimJitter = v end })
 
 AimLockDep:AddDropdown("AimLockTargetPart", {
     Values = {"HitboxHead", "HitboxBody", "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg"},
@@ -2555,7 +2612,7 @@ do
 
                 local desyncPos
                 if getgenv().Config.WeaponSlot == "Knife" then
-                    desyncPos = (baseCFrame * CFrame.new(0, -4, 2)).Position
+                    desyncPos = (baseCFrame * CFrame.new(0, -5, 2)).Position
                     desyncCF = CFrame.lookAt(desyncPos, targetHead.Position)
                 else
                     desyncPos = (baseCFrame * CFrame.new(0, 5, 0)).Position
