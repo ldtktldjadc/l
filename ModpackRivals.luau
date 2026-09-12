@@ -1139,11 +1139,6 @@ local AimLockSettings = {
     FOV = 150,
     SmoothnessOut = 0.65,
     SmoothnessIn = 0.15,
-    ReactionTime = 0,
-    MaxLockTime = 0,
-    LockCooldown = 0.2,
-    Prediction = 2.2,
-    Deadzone = 0,
     WallCheck = false,
     AliveCheck = true,
     TargetPart = "HitboxHead",
@@ -1153,9 +1148,7 @@ local AimLockSettings = {
 
 local AL_LockedTarget = nil
 local AL_BlatantLockedFighter = nil
-local AL_TargetStartTime = 0
 local AL_LastTarget = nil
-local AL_CooldownUntil = 0
 local AL_BLATANT_HITBOXES = {"HitboxHead", "HitboxHeadSmall", "HitboxBody", "HitboxBodySmall"}
 
 local function AL_getHealth(entity)
@@ -1226,12 +1219,6 @@ end
 
 local function AL_getTarget()
 	if not AimLockSettings.Enabled then return nil, nil end
-	if os.clock() < AL_CooldownUntil then
-		AL_LockedTarget = nil
-		AL_BlatantLockedFighter = nil
-		AL_LastTarget = nil
-		return nil, nil
-	end
 	if AimLockSettings.OnlyScope then
 		local isAiming = false
 		local localFighter = FighterController and FighterController.LocalFighter
@@ -1265,14 +1252,6 @@ local function AL_getTarget()
 	end
 
 	if AL_LockedTarget then
-		if AimLockSettings.MaxLockTime > 0 and (os.clock() - AL_TargetStartTime) >= (AimLockSettings.MaxLockTime + (AimLockSettings.ReactionTime or 0)) then
-			AL_CooldownUntil = os.clock() + (AimLockSettings.LockCooldown or 0.2)
-			AL_LockedTarget = nil
-			AL_BlatantLockedFighter = nil
-			AL_LastTarget = nil
-			return nil, nil
-		end
-
 		local fighter = AL_BlatantLockedFighter
 		if not fighter and FighterController and type(FighterController.Objects) == "table" then
 			for _, f in pairs(FighterController.Objects) do
@@ -1288,17 +1267,11 @@ local function AL_getTarget()
 			AL_LockedTarget = nil
 			AL_BlatantLockedFighter = nil
 			AL_LastTarget = nil
-			if (AimLockSettings.LockCooldown or 0) > 0 then
-				AL_CooldownUntil = os.clock() + AimLockSettings.LockCooldown
-			end
 		elseif lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") and fighter.Entity.Model:FindFirstChild("HumanoidRootPart") then
 			if (fighter.Entity.Model.HumanoidRootPart.Position - lp.Character.HumanoidRootPart.Position).Magnitude > 500 then
 				AL_LockedTarget = nil
 				AL_BlatantLockedFighter = nil
 				AL_LastTarget = nil
-				if (AimLockSettings.LockCooldown or 0) > 0 then
-					AL_CooldownUntil = os.clock() + AimLockSettings.LockCooldown
-				end
 			end
 		end
 	end
@@ -1350,7 +1323,6 @@ local function AL_getTarget()
 			local chosen = validTargets[1]
 			if chosen.Part ~= AL_LastTarget then
 				AL_LastTarget = chosen.Part
-				AL_TargetStartTime = os.clock()
 			end
 			AL_LockedTarget = chosen.Part
 			AL_BlatantLockedFighter = chosen.Fighter
@@ -1385,24 +1357,9 @@ task.spawn(function()
             
             local target, targetFighter = AL_getTarget()
             if target then
-                if (AimLockSettings.ReactionTime or 0) > 0 and (os.clock() - AL_TargetStartTime) < AimLockSettings.ReactionTime then
-                    return
-                end
-
                 local camera = workspace.CurrentCamera
-                local predMult = AimLockSettings.Prediction or 2.2
-                local targetPos = target.Position + ((target.Parent and target.Parent:FindFirstChild("HumanoidRootPart")) and target.Parent.HumanoidRootPart.AssemblyLinearVelocity * dt * predMult or Vector3.new(0,0,0))
-                local camOrigin = camera.CFrame.Position + ((lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")) and lp.Character.HumanoidRootPart.AssemblyLinearVelocity * dt * predMult or Vector3.new(0,0,0))
-
-                if (AimLockSettings.Deadzone or 0) > 0 then
-                    local sp, onScreen = camera:WorldToViewportPoint(targetPos)
-                    if onScreen then
-                        local screenDist = (Vector2.new(sp.X, sp.Y) - (camera.ViewportSize / 2)).Magnitude
-                        if screenDist <= AimLockSettings.Deadzone then
-                            return
-                        end
-                    end
-                end
+                local targetPos = target.Position
+                local camOrigin = camera.CFrame.Position
 
                 local dir = (targetPos - camOrigin).Unit
                 local yaw = math.atan2(-dir.X, -dir.Z)
@@ -1444,7 +1401,6 @@ local AimLockToggle = AimLockSection:AddToggle("AimLockEnabled", {
             AL_LockedTarget = nil
             AL_BlatantLockedFighter = nil
             AL_LastTarget = nil
-            AL_CooldownUntil = 0
         end
     end
 })
@@ -1464,11 +1420,7 @@ AimLockDep:AddToggle("AimLockOnlyScope", { Text = "OnlyScope", Default = false, 
 AimLockDep:AddSlider("AimLockFOV", { Text = "Fov", Default = 150, Min = 1, Max = 800, Rounding = 0, Callback = function(v) AimLockSettings.FOV = v end })
 AimLockDep:AddSlider("AimLockSmoothnessOut", { Text = "Smoothness (Hitbox外)", Default = 0.65, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.SmoothnessOut = v end })
 AimLockDep:AddSlider("AimLockSmoothnessIn", { Text = "Smoothness (Hitbox内)", Default = 0.15, Min = 0, Max = 0.99, Rounding = 2, Callback = function(v) AimLockSettings.SmoothnessIn = v end })
-AimLockDep:AddSlider("AimLockReactionTime", { Text = "Reaction Time", Default = 0, Min = 0, Max = 0.5, Rounding = 2, Suffix = "s", Callback = function(v) AimLockSettings.ReactionTime = v end })
-AimLockDep:AddSlider("AimLockMaxLockTime", { Text = "Max Lock Time (0=Off)", Default = 0, Min = 0, Max = 5, Rounding = 1, Suffix = "s", Callback = function(v) AimLockSettings.MaxLockTime = v end })
-AimLockDep:AddSlider("AimLockCooldown", { Text = "Lock Cooldown", Default = 0.2, Min = 0, Max = 2, Rounding = 2, Suffix = "s", Callback = function(v) AimLockSettings.LockCooldown = v end })
-AimLockDep:AddSlider("AimLockPrediction", { Text = "Velocity Prediction", Default = 2.2, Min = 0, Max = 5, Rounding = 1, Callback = function(v) AimLockSettings.Prediction = v end })
-AimLockDep:AddSlider("AimLockDeadzone", { Text = "Deadzone", Default = 0, Min = 0, Max = 50, Rounding = 0, Suffix = "px", Callback = function(v) AimLockSettings.Deadzone = v end })
+
 AimLockDep:AddDropdown("AimLockTargetPart", {
     Values = {"HitboxHead", "HitboxBody", "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg"},
     Default = 1,
