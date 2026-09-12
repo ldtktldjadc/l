@@ -2555,7 +2555,7 @@ do
 
                 local desyncPos
                 if getgenv().Config.WeaponSlot == "Knife" then
-                    desyncPos = (baseCFrame * CFrame.new(0, -5, 2)).Position
+                    desyncPos = (baseCFrame * CFrame.new(0, -4, 2)).Position
                     desyncCF = CFrame.lookAt(desyncPos, targetHead.Position)
                 else
                     desyncPos = (baseCFrame * CFrame.new(0, 5, 0)).Position
