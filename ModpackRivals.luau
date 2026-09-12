@@ -2612,7 +2612,7 @@ do
 
                 local desyncPos
                 if getgenv().Config.WeaponSlot == "Knife" then
-                    desyncPos = (baseCFrame * CFrame.new(0, -5, 1)).Position
+                    desyncPos = (baseCFrame * CFrame.new(0, -5, 2)).Position
                     desyncCF = CFrame.lookAt(desyncPos, targetHead.Position)
                 else
                     desyncPos = (baseCFrame * CFrame.new(0, 5, 0)).Position
@@ -3013,6 +3013,8 @@ do
     local yawMode   = "Random Yaw"
     local customPitch = 179
     local customYaw   = 360
+    local extendedPitch = 0
+    local extendedYaw   = 0
     local pitchOverride = 1150
     local yawOverride   = 0
     local toggleVal     = 4999
@@ -3043,7 +3045,7 @@ do
     local AntiAimDep = AntiAimSection:AddDependencyBox()
 
     local PitchDropdown = AntiAimDep:AddDropdown("AntiAim_PitchMode", {
-        Values = {"Glitch Pitch", "Random Pitch", "Custom Pitch"},
+        Values = {"Glitch Pitch", "Random Pitch", "Custom Pitch", "Extended Pitch"},
         Default = 1,
         Multi = false,
         Text = "Pitch Mode",
@@ -3061,10 +3063,21 @@ do
     })
     PitchCustomDep:SetupDependencies({ { PitchDropdown, "Custom Pitch" } })
 
+    local PitchExtendedDep = AntiAimSection:AddDependencyBox()
+    PitchExtendedDep:AddSlider("AntiAim_ExtendedPitch", {
+        Text = "Extended Pitch",
+        Default = 0,
+        Min = 0,
+        Max = 999999,
+        Rounding = 0,
+        Callback = function(value) extendedPitch = value end
+    })
+    PitchExtendedDep:SetupDependencies({ { PitchDropdown, "Extended Pitch" } })
+
     local AntiAimDep2 = AntiAimSection:AddDependencyBox()
 
     local YawDropdown = AntiAimDep2:AddDropdown("AntiAim_YawMode", {
-        Values = {"Random Yaw", "Custom Yaw"},
+        Values = {"Random Yaw", "Custom Yaw", "Extended Yaw"},
         Default = 1,
         Multi = false,
         Text = "Yaw Mode",
@@ -3081,6 +3094,17 @@ do
         Callback = function(value) customYaw = value end
     })
     YawCustomDep:SetupDependencies({ { YawDropdown, "Custom Yaw" } })
+
+    local YawExtendedDep = AntiAimSection:AddDependencyBox()
+    YawExtendedDep:AddSlider("AntiAim_ExtendedYaw", {
+        Text = "Extended Yaw",
+        Default = 0,
+        Min = 0,
+        Max = 999999,
+        Rounding = 0,
+        Callback = function(value) extendedYaw = value end
+    })
+    YawExtendedDep:SetupDependencies({ { YawDropdown, "Extended Yaw" } })
 
     AntiAimDep:SetupDependencies({ { AntiAimToggle, true } })
     AntiAimDep2:SetupDependencies({ { AntiAimToggle, true } })
@@ -3125,12 +3149,16 @@ do
             pitchOverride = toggleVal
         elseif pitchMode == "Custom Pitch" then
             pitchOverride = customPitch
+        elseif pitchMode == "Extended Pitch" then
+            pitchOverride = extendedPitch
         end
 
         if yawMode == "Random Yaw" then
             yawOverride = toggleVal
         elseif yawMode == "Custom Yaw" then
             yawOverride = customYaw
+        elseif yawMode == "Extended Yaw" then
+            yawOverride = extendedYaw
         end
 
         local now = tick()
