@@ -2585,6 +2585,17 @@ do
             local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
             if not myRoot then return end
 
+            local myTeam = lplr:GetAttribute("TeamID")
+            if not myTeam and SpectateController then
+                local duel = SpectateController.CurrentDuelSubject
+                local localDueler = duel and duel:GetDueler(lplr)
+                myTeam = localDueler and localDueler:Get("TeamID") or nil
+            end
+            if not myTeam then
+                currentTargetYaw = nil
+                return
+            end
+
             local item = nil
             local isReloading = false
             if FighterController and FighterController.LocalFighter then
@@ -2742,7 +2753,7 @@ do
 
             if getgenv().Config and getgenv().Config.AntiHit then
                 local now = tick()
-                antiHitStart = now + 0.06
+                antiHitStart = now + 0.15
                 antiHitUntil = antiHitStart + (getgenv().Config.AntiHitDuration or 0.5)
             end
         end)
