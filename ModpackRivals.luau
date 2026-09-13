@@ -2742,7 +2742,7 @@ do
 
             if getgenv().Config and getgenv().Config.AntiHit then
                 local now = tick()
-                antiHitStart = now + 0.1
+                antiHitStart = now + 0.06
                 antiHitUntil = antiHitStart + (getgenv().Config.AntiHitDuration or 0.5)
             end
         end)
