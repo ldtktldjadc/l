@@ -2449,8 +2449,8 @@ do
             getgenv()._ragebotUtilHooked = true
             local oldEncode = util.EncodeCameraRotation
             util.EncodeCameraRotation = function(self, rot)
-                if currentTargetYaw and typeof(rot) == "Vector2" then
-                    local pitch = (getgenv().Config.WeaponSlot == "Knife") and 0 or math.rad(-89)
+                if currentTargetYaw and typeof(rot) == "Vector2" and getgenv().Config and getgenv().Config.WeaponSlot == "Knife" then
+                    local pitch = 0
                     rot = Vector2.new(pitch, currentTargetYaw)
                 end
                 return oldEncode(self, rot)
@@ -2463,8 +2463,8 @@ do
             oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                 local method = getnamecallmethod()
                 if not checkcaller() and method == "FireServer" and (self.Name == "UpdateCameraRotation" or (camRemote and self == camRemote)) then
-                    if currentTargetYaw and getgenv().Config and getgenv().Config.Enabled then
-                        local pitch = (getgenv().Config.WeaponSlot == "Knife") and 0 or math.rad(-89)
+                    if currentTargetYaw and getgenv().Config and getgenv().Config.Enabled and getgenv().Config.WeaponSlot == "Knife" then
+                        local pitch = 0
                         local encoded = util and util:EncodeCameraRotation(Vector2.new(pitch, currentTargetYaw))
                         if encoded then
                             return oldNamecall(self, encoded, nil)
@@ -2524,6 +2524,7 @@ do
         local lastFire = 0
         local lastTarget = nil
         local tpStartTime = 0
+        local antiHitStart = 0
         local antiHitUntil = 0
         local DeflectingPlayers = getgenv().DeflectingPlayers or {}
         local function isPlayerParrying(player)
@@ -2622,10 +2623,10 @@ do
                 end)
             end
 
-            local isAntiHit = getgenv().Config and getgenv().Config.AntiHit and (tick() < antiHitUntil)
+            local now = tick()
+            local isAntiHit = getgenv().Config and getgenv().Config.AntiHit and (now >= antiHitStart and now < antiHitUntil)
 
             local canAttack = getgenv().Config.Enabled
-                and (not isAntiHit)
                 and (not isReloading)
                 and (not myFF)
                 and (not targetFF)
@@ -2636,7 +2637,7 @@ do
                 and item ~= nil
 
             local desyncCF
-            if canAttack then
+            if canAttack and (not isAntiHit) then
                 local targetLowerTorso = targetPlayer.Character and targetPlayer.Character:FindFirstChild("LowerTorso")
                 local baseCFrame = targetLowerTorso and targetLowerTorso.CFrame or targetRoot.CFrame
                 local _, y, _ = baseCFrame:ToOrientation()
@@ -2688,6 +2689,10 @@ do
                 return
             end
 
+            if isAntiHit then
+                return
+            end
+
             currentTargetPart = targetHead
             currentDesyncCF = desyncCF
 
@@ -2711,23 +2716,16 @@ do
             local originPos = desyncCF.Position
             local targetPos = targetHead.Position
             local aimCF    = CFrame.lookAt(originPos, targetPos)
-            local randomOffset = Vector3.new(
-                (math.random() - 0.5) * 0.1,
-                (math.random() - 0.5) * 0.1,
-                (math.random() - 0.5) * 0.1
-            )
-            local aimedPos = targetPos + randomOffset
-            local objSpaceHeadOffset = targetHead.CFrame:ToObjectSpace(CFrame.new(aimedPos))
             local cameradata = {}
             cameradata[utf8.char(1)] = {
                 [utf8.char(0)] = util:EncodeCFrame(aimCF),
                 [utf8.char(1)] = util:EncodeCFrame(aimCF),
                 [utf8.char(2)] = targetHead,
-                [utf8.char(3)] = util:EncodeCFrame(objSpaceHeadOffset)
+                [utf8.char(3)] = util:EncodeCFrame(CFrame.new())
             }
-            if camRemote and currentTargetYaw then
+            if camRemote and currentTargetYaw and isKnife then
                 pcall(function()
-                    local pitch = isKnife and 0 or math.rad(-89)
+                    local pitch = 0
                     local enc = util:EncodeCameraRotation(Vector2.new(pitch, currentTargetYaw))
                     camRemote:FireServer(enc, nil)
                 end)
@@ -2741,7 +2739,8 @@ do
             )
 
             if getgenv().Config and getgenv().Config.AntiHit then
-                antiHitUntil = tick() + (getgenv().Config.AntiHitDuration or 0.5)
+                antiHitStart = tick() + 0.1
+                antiHitUntil = antiHitStart + (getgenv().Config.AntiHitDuration or 0.5)
             end
         end)
     end)
