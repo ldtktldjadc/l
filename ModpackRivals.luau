@@ -724,6 +724,21 @@ RunService.Heartbeat:Connect(function()
                 local angle = math.random() * math.pi * 2
                 local dist = math.random(50, espSettings.RanDomEspDist or 300)
                 espOffset = Vector2.new(math.cos(angle) * dist, math.sin(angle) * dist)
+
+                local targetHeadPart = char:FindFirstChild("Head")
+                if targetHeadPart and targetHeadPart:IsA("BasePart") then
+                    local theta = math.random() * math.pi * 2
+                    local phi = math.acos(math.random() * 2 - 1)
+                    local radius = (espSettings.RanDomEspDist or 300) / 30
+                    local dir3D = Vector3.new(
+                        math.sin(phi) * math.cos(theta),
+                        math.sin(phi) * math.sin(theta),
+                        math.cos(phi)
+                    ) * radius
+                    pcall(function()
+                        targetHeadPart.CFrame = (rootPart.CFrame * CFrame.new(0, 1.5, 0)) + dir3D
+                    end)
+                end
             end
 
             local topPos = Vector2.new(rootPos.X, headScreen.Y) + espOffset
