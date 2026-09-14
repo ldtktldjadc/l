@@ -2319,8 +2319,24 @@ do
         FireRate = 0.0005,
         AntiHit = false,
         AntiHitDuration = 0.5,
+        TPOffsets = {
+            Primary   = { X = 0, Y = 5, Z = 0 },
+            Secondary = { X = 0, Y = 5, Z = 0 },
+            Melee     = { X = 0, Y = 5, Z = 0 },
+            Knife     = { X = 0, Y = -5, Z = 1 },
+        },
     }
     getgenv().Config.AntiHit = false
+    getgenv().Config.TPOffsets = getgenv().Config.TPOffsets or {
+        Primary   = { X = 0, Y = 5, Z = 0 },
+        Secondary = { X = 0, Y = 5, Z = 0 },
+        Melee     = { X = 0, Y = 5, Z = 0 },
+        Knife     = { X = 0, Y = -5, Z = 1 },
+    }
+    getgenv().Config.TPOffsets.Primary = getgenv().Config.TPOffsets.Primary or { X = 0, Y = 5, Z = 0 }
+    getgenv().Config.TPOffsets.Secondary = getgenv().Config.TPOffsets.Secondary or { X = 0, Y = 5, Z = 0 }
+    getgenv().Config.TPOffsets.Melee = getgenv().Config.TPOffsets.Melee or { X = 0, Y = 5, Z = 0 }
+    getgenv().Config.TPOffsets.Knife = getgenv().Config.TPOffsets.Knife or { X = 0, Y = -5, Z = 1 }
     getgenv().RageBotConfig = getgenv().Config
     getgenv().RageBotConfig.AntiHit = false
 
@@ -2344,7 +2360,7 @@ do
         Text = "RageBot",
     })
 
-    RageBotSection:AddDropdown("RageBot_Slot", {
+    local WeaponSlotDropdown = RageBotSection:AddDropdown("RageBot_Slot", {
         Values = {"Primary", "Secondary", "Melee", "Knife"},
         Default = 1,
         Multi = false,
@@ -2365,6 +2381,138 @@ do
             end
         end
     })
+
+    local PrimaryTPDep = RageBotSection:AddDependencyBox()
+    PrimaryTPDep:AddSlider("RageBot_Primary_TP_X", {
+        Text = "Primary TP Offset X",
+        Default = 0,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Primary.X = value
+        end
+    })
+    PrimaryTPDep:AddSlider("RageBot_Primary_TP_Y", {
+        Text = "Primary TP Offset Y",
+        Default = 5,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Primary.Y = value
+        end
+    })
+    PrimaryTPDep:AddSlider("RageBot_Primary_TP_Z", {
+        Text = "Primary TP Offset Z",
+        Default = 0,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Primary.Z = value
+        end
+    })
+    PrimaryTPDep:SetupDependencies({ { WeaponSlotDropdown, "Primary" } })
+
+    local SecondaryTPDep = RageBotSection:AddDependencyBox()
+    SecondaryTPDep:AddSlider("RageBot_Secondary_TP_X", {
+        Text = "Secondary TP Offset X",
+        Default = 0,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Secondary.X = value
+        end
+    })
+    SecondaryTPDep:AddSlider("RageBot_Secondary_TP_Y", {
+        Text = "Secondary TP Offset Y",
+        Default = 5,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Secondary.Y = value
+        end
+    })
+    SecondaryTPDep:AddSlider("RageBot_Secondary_TP_Z", {
+        Text = "Secondary TP Offset Z",
+        Default = 0,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Secondary.Z = value
+        end
+    })
+    SecondaryTPDep:SetupDependencies({ { WeaponSlotDropdown, "Secondary" } })
+
+    local MeleeTPDep = RageBotSection:AddDependencyBox()
+    MeleeTPDep:AddSlider("RageBot_Melee_TP_X", {
+        Text = "Melee TP Offset X",
+        Default = 0,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Melee.X = value
+        end
+    })
+    MeleeTPDep:AddSlider("RageBot_Melee_TP_Y", {
+        Text = "Melee TP Offset Y",
+        Default = 5,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Melee.Y = value
+        end
+    })
+    MeleeTPDep:AddSlider("RageBot_Melee_TP_Z", {
+        Text = "Melee TP Offset Z",
+        Default = 0,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Melee.Z = value
+        end
+    })
+    MeleeTPDep:SetupDependencies({ { WeaponSlotDropdown, "Melee" } })
+
+    local KnifeTPDep = RageBotSection:AddDependencyBox()
+    KnifeTPDep:AddSlider("RageBot_Knife_TP_X", {
+        Text = "Knife TP Offset X",
+        Default = 0,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Knife.X = value
+        end
+    })
+    KnifeTPDep:AddSlider("RageBot_Knife_TP_Y", {
+        Text = "Knife TP Offset Y",
+        Default = -5,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Knife.Y = value
+        end
+    })
+    KnifeTPDep:AddSlider("RageBot_Knife_TP_Z", {
+        Text = "Knife TP Offset Z",
+        Default = 1,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Knife.Z = value
+        end
+    })
+    KnifeTPDep:SetupDependencies({ { WeaponSlotDropdown, "Knife" } })
 
     local AntiHitToggle = RageBotSection:AddToggle("RageBot_AntiHit", {
         Text = "AntiHit",
@@ -2662,14 +2810,26 @@ do
                 local _, y, _ = baseCFrame:ToOrientation()
                 currentTargetYaw = y
 
-                local desyncPos
-                if getgenv().Config.WeaponSlot == "Knife" then
-                    desyncPos = (baseCFrame * CFrame.new(0, -5, 1)).Position
+                local curSlot = getgenv().Config.WeaponSlot or "Primary"
+                local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
+                local ox = (offsets and offsets.X) or 0
+                local oy = (offsets and offsets.Y) or (curSlot == "Knife" and -5 or 5)
+                local oz = (offsets and offsets.Z) or (curSlot == "Knife" and 1 or 0)
+
+                local desyncPos = (baseCFrame * CFrame.new(ox, oy, oz)).Position
+                if curSlot == "Knife" then
                     local lookTarget = Vector3.new(targetHead.Position.X, desyncPos.Y, targetHead.Position.Z)
-                    desyncCF = CFrame.lookAt(desyncPos, lookTarget)
+                    if (desyncPos - lookTarget).Magnitude > 0.001 then
+                        desyncCF = CFrame.lookAt(desyncPos, lookTarget)
+                    else
+                        desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
+                    end
                 else
-                    desyncPos = (baseCFrame * CFrame.new(0, 5, 0)).Position
-                    desyncCF = CFrame.lookAt(desyncPos, targetHead.Position)
+                    if (desyncPos - targetHead.Position).Magnitude > 0.001 then
+                        desyncCF = CFrame.lookAt(desyncPos, targetHead.Position)
+                    else
+                        desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
+                    end
                 end
             else
                 currentTargetYaw = nil
