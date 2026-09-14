@@ -2323,6 +2323,7 @@ do
             Primary   = { X = 0, Y = 5, Z = 0 },
             Secondary = { X = 0, Y = 5, Z = 0 },
             Melee     = { X = 0, Y = 5, Z = 0 },
+            Knife     = { X = 0, Y = -5, Z = 1 },
         },
     }
     getgenv().Config.AntiHit = false
@@ -2330,16 +2331,18 @@ do
         Primary   = { X = 0, Y = 5, Z = 0 },
         Secondary = { X = 0, Y = 5, Z = 0 },
         Melee     = { X = 0, Y = 5, Z = 0 },
+        Knife     = { X = 0, Y = -5, Z = 1 },
     }
     getgenv().Config.TPOffsets.Primary = getgenv().Config.TPOffsets.Primary or { X = 0, Y = 5, Z = 0 }
     getgenv().Config.TPOffsets.Secondary = getgenv().Config.TPOffsets.Secondary or { X = 0, Y = 5, Z = 0 }
     getgenv().Config.TPOffsets.Melee = getgenv().Config.TPOffsets.Melee or { X = 0, Y = 5, Z = 0 }
-    getgenv().Config.TPOffsets.Knife = nil
+    getgenv().Config.TPOffsets.Knife = getgenv().Config.TPOffsets.Knife or { X = 0, Y = -5, Z = 1 }
     getgenv().RageBotConfig = getgenv().Config
     getgenv().RageBotConfig.AntiHit = false
 
     local currentTargetPart = nil
     local currentDesyncCF = nil
+    local currentTargetYaw = nil
 
     local RageBotToggle = RageBotSection:AddToggle("RageBot_Enabled", {
         Text = "Enable RageBot",
@@ -2478,6 +2481,38 @@ do
     })
     MeleeTPDep:SetupDependencies({ { WeaponSlotDropdown, "Melee" } })
 
+    local KnifeTPDep = RageBotSection:AddDependencyBox()
+    KnifeTPDep:AddSlider("RageBot_Knife_TP_X", {
+        Text = "Knife TP Offset X",
+        Default = 0,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Knife.X = value
+        end
+    })
+    KnifeTPDep:AddSlider("RageBot_Knife_TP_Y", {
+        Text = "Knife TP Offset Y",
+        Default = -5,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Knife.Y = value
+        end
+    })
+    KnifeTPDep:AddSlider("RageBot_Knife_TP_Z", {
+        Text = "Knife TP Offset Z",
+        Default = 1,
+        Min = -10,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(value)
+            getgenv().Config.TPOffsets.Knife.Z = value
+        end
+    })
+    KnifeTPDep:SetupDependencies({ { WeaponSlotDropdown, "Knife" } })
 
     local AntiHitToggle = RageBotSection:AddToggle("RageBot_AntiHit", {
         Text = "AntiHit",
@@ -2556,7 +2591,43 @@ do
             return slots[getgenv().Config.WeaponSlot] or 3
         end
 
+        local camRemote = nil
+        task.spawn(function()
+            pcall(function()
+                local remotes = repS:WaitForChild("Remotes", 5)
+                local replication = remotes and remotes:WaitForChild("Replication", 5)
+                local fighter = replication and replication:WaitForChild("Fighter", 5)
+                camRemote = fighter and fighter:WaitForChild("UpdateCameraRotation", 5)
+            end)
+        end)
 
+        if util and not getgenv()._ragebotUtilHooked then
+            getgenv()._ragebotUtilHooked = true
+            local oldEncode = util.EncodeCameraRotation
+            util.EncodeCameraRotation = function(self, rot)
+                if getgenv().Config and getgenv().Config.Enabled and getgenv().Config.WeaponSlot == "Knife" and currentTargetYaw and typeof(rot) == "Vector2" then
+                    rot = Vector2.new(0, currentTargetYaw)
+                end
+                return oldEncode(self, rot)
+            end
+        end
+
+        if not getgenv()._ragebotCamHooked then
+            getgenv()._ragebotCamHooked = true
+            local oldNamecall
+            oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+                local method = getnamecallmethod()
+                if not checkcaller() and method == "FireServer" and (self.Name == "UpdateCameraRotation" or (camRemote and self == camRemote)) then
+                    if currentTargetYaw and getgenv().Config and getgenv().Config.Enabled and getgenv().Config.WeaponSlot == "Knife" then
+                        local encoded = util and util:EncodeCameraRotation(Vector2.new(0, currentTargetYaw))
+                        if encoded then
+                            return oldNamecall(self, encoded, nil)
+                        end
+                    end
+                end
+                return oldNamecall(self, ...)
+            end)
+        end
 
         local shot_offset_cf = nil
         if util then
@@ -2606,7 +2677,6 @@ do
 
         local lastFire = 0
         local lastTarget = nil
-        local tpStartTime = 0
         local antiHitStart = 0
         local antiHitUntil = 0
         local DeflectingPlayers = getgenv().DeflectingPlayers or {}
@@ -2677,6 +2747,7 @@ do
                 myTeam = localDueler and localDueler:Get("TeamID") or nil
             end
             if not myTeam then
+                currentTargetYaw = nil
                 return
             end
 
@@ -2733,20 +2804,26 @@ do
 
             local desyncCF
             if canTarget then
-                local targetTorso = targetPlayer.Character and (targetPlayer.Character:FindFirstChild("UpperTorso") or targetPlayer.Character:FindFirstChild("LowerTorso") or targetPlayer.Character:FindFirstChild("Torso")) or targetRoot
-                local baseCFrame = targetTorso and targetTorso.CFrame or targetRoot.CFrame
+                local targetLowerTorso = targetPlayer.Character and targetPlayer.Character:FindFirstChild("LowerTorso")
+                local baseCFrame = targetLowerTorso and targetLowerTorso.CFrame or targetRoot.CFrame
+                local _, y, _ = baseCFrame:ToOrientation()
+                currentTargetYaw = y
 
                 local curSlot = getgenv().Config.WeaponSlot or "Primary"
-                local desyncPos
+                local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
+                local ox = (offsets and offsets.X) or 0
+                local oy = (offsets and offsets.Y) or (curSlot == "Knife" and -5 or 5)
+                local oz = (offsets and offsets.Z) or (curSlot == "Knife" and 1 or 0)
+
+                local desyncPos = (baseCFrame * CFrame.new(ox, oy, oz)).Position
                 if curSlot == "Knife" then
-                    desyncCF = baseCFrame * CFrame.new(0, -5, 1)
-                    desyncPos = desyncCF.Position
+                    local lookTarget = Vector3.new(targetHead.Position.X, desyncPos.Y, targetHead.Position.Z)
+                    if (desyncPos - lookTarget).Magnitude > 0.001 then
+                        desyncCF = CFrame.lookAt(desyncPos, lookTarget)
+                    else
+                        desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
+                    end
                 else
-                    local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
-                    local ox = (offsets and offsets.X) or 0
-                    local oy = (offsets and offsets.Y) or 5
-                    local oz = (offsets and offsets.Z) or 0
-                    desyncPos = (baseCFrame * CFrame.new(ox, oy, oz)).Position
                     if (desyncPos - targetHead.Position).Magnitude > 0.001 then
                         desyncCF = CFrame.lookAt(desyncPos, targetHead.Position)
                     else
@@ -2754,6 +2831,7 @@ do
                     end
                 end
             else
+                currentTargetYaw = nil
                 local randomDir = Vector3.new(
                     math.random(-100, 100),
                     math.random(-100, 100),
@@ -2780,7 +2858,6 @@ do
 
             if (not canTarget) or isAntiHitDelay then
                 lastTarget = nil
-                tpStartTime = 0
                 if MechanicsController and getgenv().Config.WeaponSlot == "Knife" then
                     pcall(function()
                         MechanicsController:EquippedItemInput("FinishAiming")
@@ -2824,6 +2901,12 @@ do
                 [utf8.char(2)] = targetHead,
                 [utf8.char(3)] = util:EncodeCFrame(objSpaceHeadOffset)
             }
+            if isKnife and camRemote and currentTargetYaw then
+                pcall(function()
+                    local enc = util:EncodeCameraRotation(Vector2.new(0, currentTargetYaw))
+                    camRemote:FireServer(enc, nil)
+                end)
+            end
 
             repS.Remotes.Replication.Fighter.UseItem:FireServer(
                 item:Get("ObjectID"),
