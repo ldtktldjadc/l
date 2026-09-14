@@ -2881,8 +2881,9 @@ do
             lastFire = tick()
 
             local isKnife = (getgenv().Config.WeaponSlot == "Knife")
+            local isMeleeOrKnife = (getgenv().Config.WeaponSlot == "Knife" or getgenv().Config.WeaponSlot == "Melee")
 
-            if isKnife and MechanicsController then
+            if isMeleeOrKnife and MechanicsController then
                 pcall(function()
                     MechanicsController:EquippedItemInput("StartAiming")
                 end)
@@ -2905,7 +2906,7 @@ do
                 [utf8.char(2)] = targetHead,
                 [utf8.char(3)] = util:EncodeCFrame(objSpaceHeadOffset)
             }
-            if isKnife and camRemote and currentTargetYaw then
+            if isMeleeOrKnife and camRemote and currentTargetYaw then
                 pcall(function()
                     local enc = util:EncodeCameraRotation(Vector2.new(0, currentTargetYaw))
                     camRemote:FireServer(enc, nil)
@@ -2914,7 +2915,7 @@ do
 
             repS.Remotes.Replication.Fighter.UseItem:FireServer(
                 item:Get("ObjectID"),
-                enum:ToEnum(isKnife and "StartAiming" or "StartShooting"),
+                enum:ToEnum(isMeleeOrKnife and "StartAiming" or "StartShooting"),
                 cameradata,
                 nil
             )
