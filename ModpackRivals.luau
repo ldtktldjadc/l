@@ -2677,6 +2677,7 @@ do
 
         local lastFire = 0
         local lastTarget = nil
+        local tpStartTime = 0
         local antiHitStart = 0
         local antiHitUntil = 0
         local DeflectingPlayers = getgenv().DeflectingPlayers or {}
@@ -2858,6 +2859,7 @@ do
 
             if (not canTarget) or isAntiHitDelay then
                 lastTarget = nil
+                tpStartTime = 0
                 if MechanicsController and getgenv().Config.WeaponSlot == "Knife" then
                     pcall(function()
                         MechanicsController:EquippedItemInput("FinishAiming")
@@ -2871,8 +2873,10 @@ do
 
             if lastTarget ~= targetPlayer then
                 lastTarget = targetPlayer
+                tpStartTime = tick()
             end
 
+            if tick() - tpStartTime < 0.15 then return end
             if tick() - lastFire < getgenv().Config.FireRate then return end
             lastFire = tick()
 
