@@ -2680,6 +2680,7 @@ do
         local tpStartTime = 0
         local antiHitStart = 0
         local antiHitUntil = 0
+        local knifeAiming = false
         local DeflectingPlayers = getgenv().DeflectingPlayers or {}
         local function isPlayerParrying(player)
             if not player then return false end
@@ -2843,28 +2844,33 @@ do
                 desyncCF = CFrame.new(camPos + randomDir * 7000000000000)
             end
 
-            local oldCF     = myRoot.CFrame
-            local oldVel    = myRoot.Velocity
-            local oldRotVel = myRoot.RotVelocity
-            myRoot.CFrame = desyncCF
-            pcall(function() runS:UnbindFromRenderStep("__restore") end)
-            runS:BindToRenderStep("__restore", 101, function()
-                if myRoot then
-                    myRoot.CFrame    = oldCF
-                    myRoot.Velocity  = oldVel
-                    myRoot.RotVelocity = oldRotVel
-                end
-                pcall(function() runS:UnbindFromRenderStep("__restore") end)
-            end)
+            local isKnife = (getgenv().Config.WeaponSlot == "Knife")
 
             if (not canTarget) or isAntiHitDelay then
                 lastTarget = nil
                 tpStartTime = 0
-                if MechanicsController and getgenv().Config.WeaponSlot == "Knife" then
-                    pcall(function()
-                        MechanicsController:EquippedItemInput("FinishAiming")
-                    end)
+                if knifeAiming then
+                    knifeAiming = false
+                    if MechanicsController and isKnife then
+                        pcall(function()
+                            MechanicsController:EquippedItemInput("FinishAiming")
+                        end)
+                    end
                 end
+
+                local oldCF     = myRoot.CFrame
+                local oldVel    = myRoot.Velocity
+                local oldRotVel = myRoot.RotVelocity
+                myRoot.CFrame = desyncCF
+                pcall(function() runS:UnbindFromRenderStep("__restore") end)
+                runS:BindToRenderStep("__restore", 101, function()
+                    if myRoot then
+                        myRoot.CFrame    = oldCF
+                        myRoot.Velocity  = oldVel
+                        myRoot.RotVelocity = oldRotVel
+                    end
+                    pcall(function() runS:UnbindFromRenderStep("__restore") end)
+                end)
                 return
             end
 
@@ -2874,18 +2880,69 @@ do
             if lastTarget ~= targetPlayer then
                 lastTarget = targetPlayer
                 tpStartTime = tick()
+                if isKnife and knifeAiming and MechanicsController then
+                    pcall(function()
+                        MechanicsController:EquippedItemInput("FinishAiming")
+                    end)
+                end
+                knifeAiming = false
             end
 
-            if tick() - tpStartTime < 0.15 then return end
-            if tick() - lastFire < getgenv().Config.FireRate then return end
-            lastFire = tick()
+            if isKnife then
+                -- Knife: 先にAimする（TPする前）
+                if not knifeAiming then
+                    knifeAiming = true
+                    if MechanicsController then
+                        pcall(function()
+                            MechanicsController:EquippedItemInput("StartAiming")
+                        end)
+                    end
+                    if camRemote and currentTargetYaw then
+                        pcall(function()
+                            local enc = util:EncodeCameraRotation(Vector2.new(0, currentTargetYaw))
+                            camRemote:FireServer(enc, nil)
+                        end)
+                    end
+                end
 
-            local isKnife = (getgenv().Config.WeaponSlot == "Knife")
+                -- Aim待機中（TPする前）はテレポート処理を行わない
+                if tick() - tpStartTime < 0.15 then return end
+                if tick() - lastFire < getgenv().Config.FireRate then return end
+                lastFire = tick()
 
-            if isKnife and MechanicsController then
-                pcall(function()
-                    MechanicsController:EquippedItemInput("StartAiming")
+                -- Aim完了後にTP
+                local oldCF     = myRoot.CFrame
+                local oldVel    = myRoot.Velocity
+                local oldRotVel = myRoot.RotVelocity
+                myRoot.CFrame = desyncCF
+                pcall(function() runS:UnbindFromRenderStep("__restore") end)
+                runS:BindToRenderStep("__restore", 101, function()
+                    if myRoot then
+                        myRoot.CFrame    = oldCF
+                        myRoot.Velocity  = oldVel
+                        myRoot.RotVelocity = oldRotVel
+                    end
+                    pcall(function() runS:UnbindFromRenderStep("__restore") end)
                 end)
+            else
+                -- Primary / Secondary / Melee: 従来通り毎フレームTP
+                local oldCF     = myRoot.CFrame
+                local oldVel    = myRoot.Velocity
+                local oldRotVel = myRoot.RotVelocity
+                myRoot.CFrame = desyncCF
+                pcall(function() runS:UnbindFromRenderStep("__restore") end)
+                runS:BindToRenderStep("__restore", 101, function()
+                    if myRoot then
+                        myRoot.CFrame    = oldCF
+                        myRoot.Velocity  = oldVel
+                        myRoot.RotVelocity = oldRotVel
+                    end
+                    pcall(function() runS:UnbindFromRenderStep("__restore") end)
+                end)
+
+                if tick() - tpStartTime < 0.15 then return end
+                if tick() - lastFire < getgenv().Config.FireRate then return end
+                lastFire = tick()
             end
 
             local originPos = desyncCF.Position
@@ -2918,6 +2975,11 @@ do
                 cameradata,
                 nil
             )
+
+            if isKnife then
+                knifeAiming = false
+                tpStartTime = tick()
+            end
 
             if getgenv().Config and getgenv().Config.AntiHit then
                 local now = tick()
