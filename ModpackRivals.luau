@@ -2873,10 +2873,8 @@ do
 
             if lastTarget ~= targetPlayer then
                 lastTarget = targetPlayer
-                tpStartTime = tick()
             end
 
-            if tick() - tpStartTime < 0.15 then return end
             if tick() - lastFire < getgenv().Config.FireRate then return end
             lastFire = tick()
 
