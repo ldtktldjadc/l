@@ -3998,7 +3998,8 @@ pcall(function()
 
     local function _isLocalKiller(args)
         local killer = args[3]
-        if killer == nil then return false end
+        -- killer不明の場合は自分のキルとみなす（フォールバック）
+        if killer == nil then return true end
         if type(killer) == "number" then
             return killer == _lp.UserId
         end
@@ -4008,15 +4009,19 @@ pcall(function()
         if type(killer) == "string" then
             return killer:lower() == _lp.Name:lower()
         end
+        -- enum/userdata型: pcall内のreturnは外に伝わらないので変数に受ける
+        local _enumMatch = false
         pcall(function()
             if _enumLib then
                 local ok, decoded = pcall(_enumLib.FromEnum, _enumLib, killer)
                 if ok and decoded ~= nil then
-                    return tostring(decoded):lower() == _lp.Name:lower()
+                    _enumMatch = tostring(decoded):lower() == _lp.Name:lower()
                 end
             end
         end)
-        return false
+        if _enumMatch then return true end
+        -- 判定できない場合は自分のキルとみなす
+        return true
     end
 
     _ClientEntity.ReplicateFromServer = function(self, action, ...)
