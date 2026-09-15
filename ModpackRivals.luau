@@ -3968,6 +3968,91 @@ if _vmMod then
         return _origNew(repData, cliItm)
     end
 end
+
+-- FinisherEffect クライアント強制再生フック
+pcall(function()
+    local _ClientEntity = require(_lp.PlayerScripts.Modules.ClientReplicatedClasses.ClientEntity)
+    if not _ClientEntity or not _ClientEntity.ReplicateFromServer then return end
+
+    local _origReplicate = _ClientEntity.ReplicateFromServer
+
+    local function _resolveFinisherData()
+        -- 最後に使った武器のFinisher優先、なければ任意の武器から
+        for _, wn in ipairs({_lastWep or ""}) do
+            if _eq[wn] and _eq[wn].Finisher then
+                return _eq[wn].Finisher
+            end
+        end
+        for _, cos in pairs(_eq) do
+            if cos.Finisher then return cos.Finisher end
+        end
+        return nil
+    end
+
+    local function _isLocalKiller(args)
+        local killer = args[3]
+        if killer == nil then return false end
+        if type(killer) == "number" then
+            return killer == _lp.UserId
+        end
+        if typeof(killer) == "Instance" and killer:IsA("Player") then
+            return killer == _lp
+        end
+        if type(killer) == "string" then
+            return killer:lower() == _lp.Name:lower()
+        end
+        pcall(function()
+            if _enumLib then
+                local ok, decoded = pcall(_enumLib.FromEnum, _enumLib, killer)
+                if ok and decoded ~= nil then
+                    return tostring(decoded):lower() == _lp.Name:lower()
+                end
+            end
+        end)
+        return false
+    end
+
+    _ClientEntity.ReplicateFromServer = function(self, action, ...)
+        if not getgenv().UnlockAllEnabled or action ~= "FinisherEffect" then
+            return _origReplicate(self, action, ...)
+        end
+
+        local args = {...}
+
+        if not _isLocalKiller(args) then
+            return _origReplicate(self, action, ...)
+        end
+
+        local finisherData = _resolveFinisherData()
+        if not finisherData then
+            return _origReplicate(self, action, ...)
+        end
+
+        -- Enum解決
+        local finisherEnum = finisherData.Enum
+        if finisherEnum == nil and _enumLib then
+            pcall(function()
+                finisherEnum = _enumLib:ToEnum(finisherData.Name)
+                finisherData.Enum = finisherEnum
+            end)
+        end
+        if finisherEnum == nil then finisherEnum = finisherData.ObjectID end
+        if finisherEnum == nil then
+            return _origReplicate(self, action, ...)
+        end
+
+        if not self:IsRendered() then return end
+
+        local ok, decoded = pcall(function() return self:FromEnum(finisherEnum) end)
+        if not ok or decoded == nil then decoded = finisherData.Name end
+        if decoded == nil then return _origReplicate(self, action, ...) end
+
+        pcall(function()
+            self:_PlayFinisher(decoded, args[2], args[3], args[4])
+        end)
+    end
+end)
+
                 -- [END EMBEDDED UNLOCKALL.LUA]
             end)
         end
