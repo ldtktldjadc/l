@@ -3924,12 +3924,14 @@ if _cliItem and _cliItem._CreateViewModel then
                     vmRef[_dk][self:ToEnum("Skin")] = _eq[_wn].Skin
                     vmRef[_dk][self:ToEnum("Name")] = _eq[_wn].Skin.Name
                 end
-                if _eq[_wn].Charm then vmRef[_dk][self:ToEnum("Charm")] = _eq[_wn].Charm end
-                if _eq[_wn].Wrap  then vmRef[_dk][self:ToEnum("Wrap")]  = _eq[_wn].Wrap  end
+                if _eq[_wn].Charm    then vmRef[_dk][self:ToEnum("Charm")]    = _eq[_wn].Charm    end
+                if _eq[_wn].Wrap     then vmRef[_dk][self:ToEnum("Wrap")]     = _eq[_wn].Wrap     end
+                pcall(function() if _eq[_wn].Finisher then vmRef[_dk][self:ToEnum("Finisher")] = _eq[_wn].Finisher end end)
             elseif vmRef.Data then
                 if _eq[_wn].Skin  then vmRef.Data.Skin  = _eq[_wn].Skin; vmRef.Data.Name = _eq[_wn].Skin.Name end
                 if _eq[_wn].Charm then vmRef.Data.Charm = _eq[_wn].Charm end
                 if _eq[_wn].Wrap  then vmRef.Data.Wrap  = _eq[_wn].Wrap  end
+                pcall(function() if _eq[_wn].Finisher then vmRef.Data.Finisher = _eq[_wn].Finisher end end)
             end
         end
         local _r = _origCVM(self, vmRef)
@@ -3957,6 +3959,11 @@ if _vmMod then
             if _cos.Skin  then repData[_dk][_ekSkin]  = _cos.Skin  end
             if _cos.Charm then repData[_dk][_ekCharm] = _cos.Charm end
             if _cos.Wrap  then repData[_dk][_ekWrap]  = _cos.Wrap  end
+            pcall(function()
+                if _cos.Finisher then
+                    repData[_dk][_RC:ToEnum("Finisher")] = _cos.Finisher
+                end
+            end)
         end
         return _origNew(repData, cliItm)
     end
