@@ -3741,7 +3741,7 @@ end
 
 _loadCfg()
 
-local _cosTypes = {Skin = true, Wrap = true, Charm = true, Dance = true, Emote = true}
+local _cosTypes = {Skin = true, Wrap = true, Charm = true, Dance = true, Emote = true, Finisher = true}
 local function _isCosType(cosObj)
     if not cosObj then return false end
     return _cosTypes[cosObj.Type] == true
@@ -3751,21 +3751,21 @@ local _origOwnsNormally = _cosLib.OwnsCosmeticNormally
 _cosLib.OwnsCosmeticNormally = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsNormally(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and c.Type == "Skin" then return true end
+    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
     return false
 end
 local _origOwnsUniversally = _cosLib.OwnsCosmeticUniversally
 _cosLib.OwnsCosmeticUniversally = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsUniversally(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and c.Type == "Skin" then return true end
+    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
     return false
 end
 local _origOwnsForWep = _cosLib.OwnsCosmeticForWeapon
 _cosLib.OwnsCosmeticForWeapon = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsForWep(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and c.Type == "Skin" then return true end
+    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
     return false
 end
 
