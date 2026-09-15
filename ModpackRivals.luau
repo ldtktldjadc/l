@@ -3647,6 +3647,7 @@ local _eq, _favs = {}, {}
 local _buildingWep, _viewProf = nil, nil
 local _lastWep = nil
 local _fakeInv = {}
+local _lastEquippedFinisher = nil
 
 local function _mkCosmetic(nm, ctype, opts)
     local _base = _cosLib.Cosmetics[nm]
@@ -3876,7 +3877,12 @@ if hookmetamethod then
                         inverted = _opts.IsInverted,
                         favoritesOnly = _opts.OnlyUseFavorites
                     })
-                    if _cloned then _eq[_wn][_ct] = _cloned end
+                    if _cloned then
+                        _eq[_wn][_ct] = _cloned
+                        if _ct == "Finisher" then
+                            _lastEquippedFinisher = _cloned
+                        end
+                    end
                 end
                 if _wepDataCache then table.clear(_wepDataCache) end
                 task.defer(function()
@@ -3977,12 +3983,13 @@ pcall(function()
     local _origReplicate = _ClientEntity.ReplicateFromServer
 
     local function _resolveFinisherData()
-        -- 最後に使った武器のFinisher優先、なければ任意の武器から
-        for _, wn in ipairs({_lastWep or ""}) do
-            if _eq[wn] and _eq[wn].Finisher then
-                return _eq[wn].Finisher
-            end
+        -- 最後に装備したFinisher最優先
+        if _lastEquippedFinisher then return _lastEquippedFinisher end
+        -- 最後に使った武器のFinisher
+        if _lastWep and _eq[_lastWep] and _eq[_lastWep].Finisher then
+            return _eq[_lastWep].Finisher
         end
+        -- 任意の武器から
         for _, cos in pairs(_eq) do
             if cos.Finisher then return cos.Finisher end
         end
