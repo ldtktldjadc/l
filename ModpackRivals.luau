@@ -15,6 +15,34 @@ pcall(function()
 end)
 
 
+-- ========== SETCONTROLS BLOCKING & SPEEDUP INITIALIZATION ==========
+getgenv().ModpackLoaded = false
+getgenv().DeviceSpoofEnabled = false
+getgenv().DeviceSpoofValue = "Touch"
+getgenv()._LastPendingControls = nil
+
+if not getgenv()._SetControlsHooked and hookmetamethod and newcclosure then
+    getgenv()._SetControlsHooked = true
+    local oldNC
+    oldNC = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        if (method == "FireServer" or (method and method:lower() == "fireserver")) then
+            if self and (self.Name == "SetControls" or tostring(self) == "SetControls") then
+                if not getgenv().ModpackLoaded then
+                    getgenv()._LastPendingControls = ...
+                    return nil
+                end
+                if getgenv().DeviceSpoofEnabled and getgenv().DeviceSpoofValue then
+                    if checkcaller and not checkcaller() then
+                        return oldNC(self, getgenv().DeviceSpoofValue)
+                    end
+                end
+            end
+        end
+        return oldNC(self, ...)
+    end))
+end
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -24,8 +52,7 @@ local lp = Players.LocalPlayer
 local PlayerGui = lp:WaitForChild("PlayerGui")
 
 if PlayerGui:FindFirstChild("LoadingScreen") then
-    repeat task.wait(0.5) until not PlayerGui:FindFirstChild("LoadingScreen")
-    task.wait(1)
+    repeat task.wait(0.05) until not PlayerGui:FindFirstChild("LoadingScreen")
 end
 
 local boundRenderSteps = {}
@@ -1083,10 +1110,23 @@ end)
 local repo = "https://raw.githubusercontent.com/mstudio45/LinoriaLib/main/"
 
 local function fetchRepo(file)
+    local localName = "LinoriaLib_" .. file:gsub("[^%w%.%-_]", "_")
+    if readfile and isfile and isfile(localName) then
+        local success, content = pcall(readfile, localName)
+        if success and content and #content > 0 then
+            local fn = loadstring(content)
+            if fn then return fn() end
+        end
+    end
+
     for i = 1, 5 do
-        local res = game:HttpGet(repo .. file)
-        if type(res) == "string" then return loadstring(res)() end
-        task.wait(0.5)
+        local success, res = pcall(function() return game:HttpGet(repo .. file) end)
+        if success and type(res) == "string" and #res > 0 then
+            if writefile then pcall(writefile, localName, res) end
+            local fn = loadstring(res)
+            if fn then return fn() end
+        end
+        task.wait(0.1)
     end
     error("Failed to load LinoriaLib: " .. file)
 end
@@ -2561,23 +2601,25 @@ do
         local MechanicsController = nil
         local KnifeModule = nil
 
-        pcall(function()
-            local ps = lplr:WaitForChild("PlayerScripts", 5)
-            if ps then
-                local controllers = ps:WaitForChild("Controllers", 5)
-                if controllers then
-                    local fc = controllers:WaitForChild("FighterController", 5)
-                    if fc then FighterController = require(fc) end
-                    local sc = controllers:WaitForChild("SpectateController", 5)
-                    if sc then SpectateController = require(sc) end
-                    local mc = controllers:WaitForChild("MechanicsController", 5)
-                    if mc then MechanicsController = require(mc) end
+        task.spawn(function()
+            pcall(function()
+                local ps = lplr:WaitForChild("PlayerScripts", 5)
+                if ps then
+                    local controllers = ps:WaitForChild("Controllers", 5)
+                    if controllers then
+                        local fc = controllers:WaitForChild("FighterController", 5)
+                        if fc then FighterController = require(fc) end
+                        local sc = controllers:WaitForChild("SpectateController", 5)
+                        if sc then SpectateController = require(sc) end
+                        local mc = controllers:WaitForChild("MechanicsController", 5)
+                        if mc then MechanicsController = require(mc) end
+                    end
+                    local modules = ps:WaitForChild("Modules", 5)
+                    local items = modules and modules:WaitForChild("Items", 5)
+                    local km = items and items:WaitForChild("Knife", 5)
+                    if km then KnifeModule = require(km) end
                 end
-                local modules = ps:WaitForChild("Modules", 5)
-                local items = modules and modules:WaitForChild("Items", 5)
-                local km = items and items:WaitForChild("Knife", 5)
-                if km then KnifeModule = require(km) end
-            end
+            end)
         end)
 
         local slots = {
@@ -4087,6 +4129,10 @@ DeviceSpooferToggle = DeviceSpoofSection:AddToggle("DeviceSpoofToggle", {
     Text = "Enable Device Spoofer",
     Default = false,
     Callback = function(value)
+        getgenv().DeviceSpoofEnabled = value
+        if DeviceSpoofDropdownObj then
+            getgenv().DeviceSpoofValue = DeviceSpoofDropdownObj.Value
+        end
         if value and DeviceSpoofDropdownObj then
             task.defer(function()
                 pcall(function()
@@ -4110,7 +4156,12 @@ DeviceSpoofDropdownObj = DeviceSpoofDep:AddDropdown("DeviceSpoofDropdown", {
     Multi = false,
     Text = "Select Device",
     Callback = function(value)
-        -- 螟画峩縺励◆縺縺代〒縺ｯ襍ｰ繧峨↑縺・ｈ縺・↓縺吶ｋ・医が繝ｳ縺ｫ縺励◆譎ゅ・縺ｿ・・
+        getgenv().DeviceSpoofValue = value
+        if DeviceSpooferToggle and DeviceSpooferToggle.Value then
+            pcall(function()
+                ReplicatedStorage.Remotes.Replication.Fighter.SetControls:FireServer(value)
+            end)
+        end
     end
 })
 DeviceSpoofDep:SetupDependencies({ { DeviceSpooferToggle, true } })
@@ -5326,3 +5377,10 @@ SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({"AutoExecuteToggle"})
 SaveManager:BuildConfigSection(Tabs.Config)
 SaveManager:LoadAutoloadConfig()
+
+getgenv().ModpackLoaded = true
+if not getgenv().DeviceSpoofEnabled and getgenv()._LastPendingControls then
+    pcall(function()
+        ReplicatedStorage.Remotes.Replication.Fighter.SetControls:FireServer(getgenv()._LastPendingControls)
+    end)
+end
