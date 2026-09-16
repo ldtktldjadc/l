@@ -1149,6 +1149,7 @@ local Tabs = {
     World   = Window:AddTab("World"),
     Rage    = Window:AddTab("Rage"),
     Misc    = Window:AddTab("Misc"),
+    Changer = Window:AddTab("Changer"),
     Config  = Window:AddTab("Config"),
 }
 
@@ -5443,6 +5444,1020 @@ lp.CharacterAdded:Connect(function()
     end
 end)
 end -- do AutoLoadout
+
+-- ========== CHANGER TAB ==========
+do
+    local changerLocalPlayer = lp
+    local LeaderboardController
+    pcall(function()
+        LeaderboardController = require(changerLocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Controllers"):WaitForChild("LeaderboardController"))
+    end)
+
+    local SeasonLibrary
+    pcall(function()
+        SeasonLibrary = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("SeasonLibrary"))
+    end)
+
+    local kCharmEloMap = {
+        ["Unranked"] = -1,
+        ["Bronze 1"] = 0,
+        ["Bronze 2"] = 200,
+        ["Bronze 3"] = 400,
+        ["Silver 1"] = 600,
+        ["Silver 2"] = 800,
+        ["Silver 3"] = 1000,
+        ["Gold 1"] = 1200,
+        ["Gold 2"] = 1400,
+        ["Gold 3"] = 1600,
+        ["Platinum 1"] = 1800,
+        ["Platinum 2"] = 2000,
+        ["Platinum 3"] = 2200,
+        ["Diamond 1"] = 2400,
+        ["Diamond 2"] = 2600,
+        ["Diamond 3"] = 2800,
+        ["Onyx 1"] = 3000,
+        ["Onyx 2"] = 3200,
+        ["Onyx 3"] = 3400,
+        ["Nemesis"] = 3600,
+        ["Archnemesis"] = 3600,
+    }
+
+    local kSeasonNameMap = {
+        [0] = "Zero",
+        [1] = "Warp",
+        [2] = "Polar",
+        [3] = "Fame",
+        ["Zero"] = 0,
+        ["Warp"] = 1,
+        ["Polar"] = 2,
+        ["Fame"] = 3,
+    }
+
+    local kSeasonToggleMap = {
+        [0] = "s0_charm",
+        [1] = "s1_charm",
+        [2] = "s2_charm",
+        [3] = "s3_charm",
+    }
+
+    local kCharmRanks = {
+        "Use Spoofed ELO",
+        "Unranked",
+        "Bronze 1",
+        "Bronze 2",
+        "Bronze 3",
+        "Silver 1",
+        "Silver 2",
+        "Silver 3",
+        "Gold 1",
+        "Gold 2",
+        "Gold 3",
+        "Platinum 1",
+        "Platinum 2",
+        "Platinum 3",
+        "Diamond 1",
+        "Diamond 2",
+        "Diamond 3",
+        "Onyx 1",
+        "Onyx 2",
+        "Onyx 3",
+        "Nemesis",
+        "Archnemesis",
+    }
+
+    local changerStates = {
+        avatar = {
+            victim_username = changerLocalPlayer.Name,
+            victim_user_id = changerLocalPlayer.UserId,
+            spoof_avatar = false,
+            spoof_thumbnails = false,
+            thumb_spoof_conn = {},
+        },
+        leaderboard = {
+            streak_value = changerLocalPlayer:GetAttribute("StatisticDuelsWinStreak") or 0,
+            level_value = changerLocalPlayer:GetAttribute("Level") or 1,
+            elo_value = 0,
+            wins_value = 0,
+            kills_value = 0,
+
+            old_streak_value = changerLocalPlayer:GetAttribute("StatisticDuelsWinStreak"),
+            old_level_value = changerLocalPlayer:GetAttribute("Level"),
+
+            Streak = false,
+            Level = false,
+            ELO = false,
+            Wins = false,
+            Kills = false,
+        },
+        charm = {
+            charm_rank = "Use Spoofed ELO",
+            arch_rank = 1,
+            s0_charm = false,
+            s1_charm = false,
+            s2_charm = false,
+            s3_charm = false,
+        },
+        badges = {
+            Premium = false,
+            Verified = false,
+            Influencer = false,
+            Admin = false,
+        },
+        text = {
+            display_name = false,
+            display_name_value = changerLocalPlayer.DisplayName,
+            username = false,
+            username_value = changerLocalPlayer.Name,
+            name_spoof_conn = {},
+        }
+    }
+
+    local changerConnections = {}
+    local function changerBind(name, signal, fn)
+        if changerConnections[name] then
+            changerConnections[name]:Disconnect()
+        end
+        changerConnections[name] = signal:Connect(fn)
+    end
+    local function changerUnbind(name)
+        if changerConnections[name] then
+            changerConnections[name]:Disconnect()
+            changerConnections[name] = nil
+        end
+    end
+
+    local function FormatNumber(n)
+        n = tostring(n)
+        return n:reverse():gsub("%d%d%d", "%1,"):reverse():gsub("^,", "")
+    end
+
+    local function IsTextObject(obj)
+        return obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")
+    end
+
+    local function ApplyNameSpoof(obj)
+        if not IsTextObject(obj) then return end
+        local text = obj.Text
+        if typeof(text) ~= "string" then return end
+
+        if changerStates.text.display_name and obj.Name == "DisplayName" then
+            text = text:gsub(changerLocalPlayer.DisplayName, changerStates.text.display_name_value)
+        end
+        if changerStates.text.username and obj.Name == "Username" then
+            text = text:gsub(changerLocalPlayer.Name, changerStates.text.username_value)
+        end
+        if changerStates.text.display_name and obj.Parent and obj.Parent.Name == "NameContainer" and obj.Name == "Name" then
+            text = text:gsub(changerLocalPlayer.DisplayName, changerStates.text.display_name_value)
+        end
+        if changerStates.text.username and obj.Parent and obj.Parent.Name == "NameContainer" and obj.Name == "Handle" then
+            text = text:gsub(changerLocalPlayer.Name, changerStates.text.username_value)
+        end
+        if changerStates.text.display_name and obj.Parent and obj.Parent.Name == "Title" and obj.Name == "TitleText" then
+            text = text:gsub(changerLocalPlayer.DisplayName, changerStates.text.display_name_value)
+        end
+        if changerStates.text.username and obj.Parent and obj.Parent.Name == "Subtitle" and obj.Name == "SubtitleText" then
+            text = text:gsub(changerLocalPlayer.Name, changerStates.text.username_value)
+        end
+        if changerStates.text.display_name and (obj.Name == "HeaderText" or obj.Name == "Title") then
+            text = text:gsub(changerLocalPlayer.DisplayName, changerStates.text.display_name_value)
+        end
+
+        if changerStates.leaderboard.Wins and obj.Name == "Wins" then
+            text = FormatNumber(changerStates.leaderboard.wins_value)
+        end
+        if changerStates.leaderboard.Level and obj.Parent and obj.Parent.Name == "Level" and obj.Name == "Value" then
+            text = FormatNumber(changerStates.leaderboard.level_value)
+        end
+        if changerStates.leaderboard.Streak and obj.Parent and obj.Parent.Name == "Streak" and obj.Name == "Value" then
+            text = FormatNumber(changerStates.leaderboard.streak_value)
+        end
+
+        if obj.Text ~= text then
+            obj.Text = text
+        end
+    end
+
+    local function RefreshAllNameSpoofs()
+        for obj, _ in pairs(changerStates.text.name_spoof_conn) do
+            if obj and obj.Parent then
+                ApplyNameSpoof(obj)
+            end
+        end
+    end
+
+    local function RegisterTextObject(obj)
+        if not IsTextObject(obj) then return end
+        local kAllowed = {
+            DisplayName = true,
+            Username = true,
+            Name = true,
+            Handle = true,
+            TitleText = true,
+            SubtitleText = true,
+            HeaderText = true,
+            Title = true,
+            Wins = true,
+            Value = true,
+        }
+        if not kAllowed[obj.Name] then return end
+
+        ApplyNameSpoof(obj)
+        if changerStates.text.name_spoof_conn[obj] then return end
+
+        changerStates.text.name_spoof_conn[obj] = obj:GetPropertyChangedSignal("Text"):Connect(function()
+            ApplyNameSpoof(obj)
+        end)
+        obj.Destroying:Connect(function()
+            if changerStates.text.name_spoof_conn[obj] then
+                changerStates.text.name_spoof_conn[obj]:Disconnect()
+                changerStates.text.name_spoof_conn[obj] = nil
+            end
+        end)
+    end
+
+    for _, obj in ipairs(game:GetDescendants()) do
+        RegisterTextObject(obj)
+    end
+    game.DescendantAdded:Connect(RegisterTextObject)
+
+    -- Avatar helper functions
+    local function BuildWeld(weld_name, parent, part0, part1, c0, c1)
+        local weld = Instance.new("Weld")
+        weld.Name = weld_name
+        weld.Part0 = part0
+        weld.Part1 = part1
+        weld.C0 = c0
+        weld.C1 = c1
+        weld.Parent = parent
+        return weld
+    end
+
+    local function WeldAttachments(attach1, attach2)
+        local weld = Instance.new("Weld")
+        weld.Part0 = attach1.Parent
+        weld.Part1 = attach2.Parent
+        weld.C0 = attach1.CFrame
+        weld.C1 = attach2.CFrame
+        weld.Parent = attach1.Parent
+        return weld
+    end
+
+    local function FindFirstMatchingAttachment(model, name)
+        for _, child in pairs(model:GetChildren()) do
+            if child:IsA("Attachment") and child.Name == name then
+                return child
+            elseif not child:IsA("Accoutrement") and not child:IsA("Tool") then
+                local found = FindFirstMatchingAttachment(child, name)
+                if found then return found end
+            end
+        end
+    end
+
+    local function FindHeadPart(instance)
+        if not instance then return nil end
+        if instance:IsA("BasePart") then return instance end
+        local head = instance:FindFirstChild("Head")
+        if head and head:IsA("BasePart") then return head end
+        for _, descendant in ipairs(instance:GetDescendants()) do
+            if descendant:IsA("BasePart") and descendant.Name == "Head" then
+                return descendant
+            end
+        end
+        for _, descendant in ipairs(instance:GetDescendants()) do
+            if descendant:IsA("BasePart") then
+                return descendant
+            end
+        end
+        return nil
+    end
+
+    local function CopyHeadVisuals(real_head, source_head)
+        if not real_head or not source_head then return end
+        if not real_head:IsA("BasePart") or not source_head:IsA("BasePart") then return end
+
+        for _, child in ipairs(real_head:GetChildren()) do
+            if child:IsA("Decal") or child:IsA("Texture") or child:IsA("SpecialMesh") or child:IsA("Mesh") then
+                child:Destroy()
+            end
+        end
+
+        real_head.Material = source_head.Material
+        real_head.Color = source_head.Color
+        real_head.Reflectance = source_head.Reflectance
+        real_head.Transparency = source_head.Transparency
+        real_head.LocalTransparencyModifier = source_head.LocalTransparencyModifier
+        real_head.CastShadow = source_head.CastShadow
+        real_head.CanCollide = false
+
+        if real_head:IsA("MeshPart") and source_head:IsA("MeshPart") then
+            real_head.MeshId = source_head.MeshId
+            real_head.TextureID = source_head.TextureID
+            real_head.Size = source_head.Size
+        end
+
+        for _, child in ipairs(source_head:GetChildren()) do
+            if child:IsA("Decal") or child:IsA("Texture") or child:IsA("SpecialMesh") or child:IsA("Mesh") then
+                local clone = child:Clone()
+                clone.Parent = real_head
+            end
+        end
+    end
+
+    local function ApplyFakeHead(character, source_head)
+        if not character or not source_head then return end
+        local real_head = character:FindFirstChild("Head")
+        if not real_head or not real_head:IsA("BasePart") then return end
+        CopyHeadVisuals(real_head, source_head)
+    end
+
+    local function AddAccoutrement(character, accoutrement)
+        accoutrement.Parent = character
+        local handle = accoutrement:FindFirstChild("Handle")
+        if handle then
+            local attachment = handle:FindFirstChildOfClass("Attachment")
+            if attachment then
+                local char_attachment = FindFirstMatchingAttachment(character, attachment.Name)
+                if char_attachment then
+                    WeldAttachments(char_attachment, attachment)
+                end
+            else
+                local head = character:FindFirstChild("Head")
+                if head then
+                    local attachmentCFrame = CFrame.new(0, 0.5, 0)
+                    local hatCFrame = accoutrement.AttachmentPoint
+                    BuildWeld("HeadWeld", head, head, handle, attachmentCFrame, hatCFrame)
+                end
+            end
+        end
+    end
+
+    local function ApplyThumbnailSpoof(obj)
+        if not obj:IsA("ImageLabel") then return end
+        local image = obj.Image
+        if typeof(image) ~= "string" then return end
+
+        if changerStates.avatar.spoof_thumbnails and changerStates.avatar.victim_user_id then
+            local myId = tostring(changerLocalPlayer.UserId)
+            local spoofId = tostring(changerStates.avatar.victim_user_id)
+            if obj.Name == "AvatarThumbnail" or obj.Name == "Headshot" then
+                image = image:gsub(myId, spoofId)
+            elseif obj.Parent and obj.Parent.Name == "Thumbnail" and obj.Name == "ImageLabel" then
+                image = image:gsub(myId, spoofId)
+            end
+        end
+
+        if obj.Image ~= image then
+            obj.Image = image
+        end
+    end
+
+    local function RefreshAllThumbnailSpoofs()
+        for obj, _ in pairs(changerStates.avatar.thumb_spoof_conn) do
+            if obj and obj.Parent then
+                ApplyThumbnailSpoof(obj)
+            end
+        end
+    end
+
+    local function RegisterImageObject(obj)
+        if not obj:IsA("ImageLabel") then return end
+        local kAllowed = {
+            AvatarThumbnail = true,
+            ImageLabel = true,
+            Headshot = true
+        }
+        if not kAllowed[obj.Name] then return end
+
+        ApplyThumbnailSpoof(obj)
+        if changerStates.avatar.thumb_spoof_conn[obj] then return end
+
+        changerStates.avatar.thumb_spoof_conn[obj] = obj:GetPropertyChangedSignal("Image"):Connect(function()
+            ApplyThumbnailSpoof(obj)
+        end)
+        obj.Destroying:Connect(function()
+            if changerStates.avatar.thumb_spoof_conn[obj] then
+                changerStates.avatar.thumb_spoof_conn[obj]:Disconnect()
+                changerStates.avatar.thumb_spoof_conn[obj] = nil
+            end
+        end)
+    end
+
+    for _, obj in ipairs(game:GetDescendants()) do
+        RegisterImageObject(obj)
+    end
+    game.DescendantAdded:Connect(RegisterImageObject)
+
+    local function SetAvatar(use_old)
+        local user_id = use_old and changerLocalPlayer.UserId or changerStates.avatar.victim_user_id
+        if not user_id then return end
+
+        local char = changerLocalPlayer.Character or changerLocalPlayer.CharacterAdded:Wait()
+        if not char or not char.Parent then return end
+
+        local ok, rig_model = pcall(function()
+            return Players:CreateHumanoidModelFromUserId(user_id)
+        end)
+        if not ok or not rig_model then return end
+
+        for _, v in ipairs(char:GetDescendants()) do
+            local isFaceDecal = v:IsA("Decal") and v.Name == "face"
+            if v:IsA("Accessory")
+            or v:IsA("Shirt")
+            or v:IsA("Pants")
+            or v:IsA("ShirtGraphic")
+            or v:IsA("BodyColors")
+            or v:IsA("CharacterMesh")
+            or v:IsA("LayeredClothing")
+            or isFaceDecal then
+                pcall(function() v:Destroy() end)
+            end
+        end
+
+        for _, item in ipairs(rig_model:GetChildren()) do
+            if item:IsA("Accessory") then
+                pcall(function()
+                    local acc = item:Clone()
+                    AddAccoutrement(char, acc)
+                end)
+            elseif item:IsA("Shirt")
+            or item:IsA("Pants")
+            or item:IsA("ShirtGraphic")
+            or item:IsA("BodyColors")
+            or item:IsA("LayeredClothing")
+            or item:IsA("CharacterMesh") then
+                pcall(function()
+                    local clone = item:Clone()
+                    clone.Parent = char
+                end)
+            end
+        end
+
+        local target_head = FindHeadPart(rig_model)
+        if target_head then
+            ApplyFakeHead(char, target_head)
+            task.wait(0.1)
+        end
+
+        pcall(function() rig_model:Destroy() end)
+    end
+
+    local function SpoofAvatar()
+        if changerStates.avatar.spoof_avatar then
+            SetAvatar(false)
+        else
+            SetAvatar(true)
+        end
+    end
+
+    changerLocalPlayer.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        if changerStates.avatar.spoof_avatar then
+            SpoofAvatar()
+        end
+    end)
+
+    local function ResolveUserId(input)
+        if not input or input == "" then return nil end
+        local num = tonumber(input)
+        if num and num > 1000 then return num end
+        local success, resolvedId = pcall(function()
+            return Players:GetUserIdFromNameAsync(tostring(input))
+        end)
+        if success and resolvedId then return resolvedId end
+        return nil
+    end
+
+    -- Leaderboard logic
+    local function InsertPlayerByValue(list, user_id, value)
+        for i = #list, 1, -1 do
+            if tonumber(list[i].key) == user_id then
+                table.remove(list, i)
+                break
+            end
+        end
+        local rank = 1
+        for i, entry in ipairs(list) do
+            if tonumber(entry.value) >= value then
+                rank = i + 1
+            else
+                break
+            end
+        end
+        table.insert(list, rank, {
+            key = tostring(user_id),
+            value = value,
+        })
+    end
+
+    local function ResetLeaderboard(name, config_idx)
+        if not LeaderboardController then return end
+        changerUnbind(config_idx)
+
+        local serial = LeaderboardController.LeaderboardSerials and LeaderboardController.LeaderboardSerials[name]
+        if serial and serial.Players then
+            local user_id = changerLocalPlayer.UserId
+            for i = #serial.Players, 1, -1 do
+                local player = serial.Players[i]
+                if player.UserId == user_id or player.UserID == user_id or player.PlayerId == user_id then
+                    table.remove(serial.Players, i)
+                end
+            end
+            if LeaderboardController.Refreshed then
+                LeaderboardController.Refreshed:Fire(name)
+            end
+        end
+    end
+
+    local function ModifyLeaderboard(config_idx, name, value)
+        if not LeaderboardController then return end
+        task.spawn(function()
+            local timeout = tick() + 5
+            while (not LeaderboardController.LeaderboardSerials
+                or not LeaderboardController.LeaderboardSerials[name]
+                or not LeaderboardController.LeaderboardSerials[name].Players
+                or #LeaderboardController.LeaderboardSerials[name].Players <= 0) and tick() < timeout do
+                task.wait(0.5)
+            end
+
+            local user_id = changerLocalPlayer.UserId
+            local serial = LeaderboardController.LeaderboardSerials and LeaderboardController.LeaderboardSerials[name]
+            if serial and serial.Players then
+                InsertPlayerByValue(serial.Players, user_id, value)
+                if LeaderboardController.Refreshed then
+                    LeaderboardController.Refreshed:Fire(name)
+                end
+            end
+
+            local UpdateRemote = ReplicatedStorage:FindFirstChild("Remotes")
+                and ReplicatedStorage.Remotes:FindFirstChild("Misc")
+                and ReplicatedStorage.Remotes.Misc:FindFirstChild("UpdateLeaderboard")
+
+            if UpdateRemote and UpdateRemote:IsA("RemoteEvent") then
+                changerBind(config_idx, UpdateRemote.OnClientEvent, function(data)
+                    local lb_name = data and data.Name
+                    if not lb_name or lb_name ~= name then return end
+                    if not changerStates.leaderboard[config_idx] then return end
+
+                    task.defer(function()
+                        local s = LeaderboardController.LeaderboardSerials and LeaderboardController.LeaderboardSerials[name]
+                        if s and s.Players then
+                            InsertPlayerByValue(s.Players, user_id, value)
+                            if LeaderboardController.Refreshed then
+                                LeaderboardController.Refreshed:Fire(name)
+                            end
+                        end
+                    end)
+                end)
+            end
+        end)
+    end
+
+    local function UpdateLeaderboardOptions()
+        if changerStates.leaderboard.ELO then
+            changerUnbind("ELO")
+            ModifyLeaderboard("ELO", "Highest ELO", changerStates.leaderboard.elo_value)
+        else
+            ResetLeaderboard("Highest ELO", "ELO")
+        end
+
+        if changerStates.leaderboard.Streak then
+            changerUnbind("Streak")
+            ModifyLeaderboard("Streak", "Current Highest Win Streak", changerStates.leaderboard.streak_value)
+            changerStates.leaderboard.old_streak_value = changerStates.leaderboard.old_streak_value or changerLocalPlayer:GetAttribute("StatisticDuelsWinStreak")
+            changerLocalPlayer:SetAttribute("StatisticDuelsWinStreak", changerStates.leaderboard.streak_value)
+        else
+            ResetLeaderboard("Current Highest Win Streak", "Streak")
+            if changerStates.leaderboard.old_streak_value ~= nil then
+                changerLocalPlayer:SetAttribute("StatisticDuelsWinStreak", changerStates.leaderboard.old_streak_value)
+            end
+        end
+
+        if changerStates.leaderboard.Kills then
+            changerUnbind("Kills")
+            ModifyLeaderboard("Kills", "Most Eliminations", changerStates.leaderboard.kills_value)
+        else
+            ResetLeaderboard("Most Eliminations", "Kills")
+        end
+
+        if changerStates.leaderboard.Wins then
+            changerUnbind("Wins")
+            ModifyLeaderboard("Wins", "Most Wins", changerStates.leaderboard.wins_value)
+        else
+            ResetLeaderboard("Most Wins", "Wins")
+        end
+
+        if changerStates.leaderboard.Level then
+            changerUnbind("Level")
+            ModifyLeaderboard("Level", "Highest Level", changerStates.leaderboard.level_value)
+            changerStates.leaderboard.old_level_value = changerStates.leaderboard.old_level_value or changerLocalPlayer:GetAttribute("Level")
+            changerLocalPlayer:SetAttribute("Level", changerStates.leaderboard.level_value)
+        else
+            ResetLeaderboard("Highest Level", "Level")
+            if changerStates.leaderboard.old_level_value ~= nil then
+                changerLocalPlayer:SetAttribute("Level", changerStates.leaderboard.old_level_value)
+            end
+        end
+    end
+
+    -- Rank / Charm logic
+    if SeasonLibrary and SeasonLibrary.FormatSeasonRankCharm then
+        local original_fsrc = SeasonLibrary.FormatSeasonRankCharm
+        SeasonLibrary.FormatSeasonRankCharm = function(self, p2, p3, p4, p5)
+            local season_num = kSeasonNameMap[p3]
+            local elo = kCharmEloMap[changerStates.charm.charm_rank] or changerStates.leaderboard.elo_value
+            if season_num and kSeasonToggleMap[season_num] and changerStates.charm[kSeasonToggleMap[season_num]] then
+                p4 = elo or p4
+                p5 = changerStates.charm.arch_rank
+            end
+            return original_fsrc(self, p2, p3, p4, p5)
+        end
+    end
+
+    local function UpdateCharmOptions()
+        task.wait(0.2)
+        for _, descendant in ipairs(Workspace:GetDescendants()) do
+            if descendant:IsA("Model") and descendant:FindFirstChild("Extra") then
+                local name = descendant.Name
+                if string.sub(name, 1, 7) == "Season " then
+                    local season_num = tonumber(string.sub(name, 8))
+                    if season_num and kSeasonToggleMap[season_num] and changerStates.charm[kSeasonToggleMap[season_num]] then
+                        local season_name = kSeasonNameMap[season_num]
+                        if season_name and SeasonLibrary and SeasonLibrary.FormatSeasonRankCharm then
+                            local elo = kCharmEloMap[changerStates.charm.charm_rank] or changerStates.leaderboard.elo_value
+                            local rank = changerStates.charm.arch_rank
+                            pcall(function()
+                                SeasonLibrary:FormatSeasonRankCharm(descendant, season_name, elo, rank)
+                            end)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Badges Spoofs
+    if hookmetamethod and not getgenv()._BadgesHooked then
+        getgenv()._BadgesHooked = true
+        local old_index; old_index = hookmetamethod(game, "__index", function(self, key)
+            if self == changerLocalPlayer then
+                if key == "MembershipType" and changerStates.badges.Premium then
+                    return Enum.MembershipType.Premium
+                end
+                if key == "HasVerifiedBadge" and changerStates.badges.Verified then
+                    return true
+                end
+            end
+            return old_index(self, key)
+        end)
+    end
+
+    local function UpdateBadgesOptions()
+        changerLocalPlayer:SetAttribute("IsInfluencer", changerStates.badges.Influencer and true or false)
+        changerLocalPlayer:SetAttribute("IsRobloxEmployee", changerStates.badges.Admin and true or false)
+    end
+
+    -- ========== CHANGER UI SETUP ==========
+    local AvatarGroup = Tabs.Changer:AddLeftGroupbox("Avatar Changer")
+
+    AvatarGroup:AddInput("VictimUsername", {
+        Default = changerLocalPlayer.Name,
+        Numeric = false,
+        Finished = true,
+        Text = "Target Username",
+        Tooltip = "Enter target Roblox Username (or UserId) to copy avatar from",
+        Placeholder = "Enter Username...",
+        Callback = function(val)
+            task.spawn(function()
+                local resolvedId = ResolveUserId(val)
+                if resolvedId then
+                    changerStates.avatar.victim_username = val
+                    changerStates.avatar.victim_user_id = resolvedId
+                    if changerStates.avatar.spoof_avatar then
+                        SpoofAvatar()
+                    end
+                    RefreshAllThumbnailSpoofs()
+                    if Library and Library.Notify then
+                        Library:Notify("Avatar target: " .. tostring(val) .. " (" .. tostring(resolvedId) .. ")", 3)
+                    end
+                else
+                    if Library and Library.Notify then
+                        Library:Notify("User not found: " .. tostring(val), 3)
+                    end
+                end
+            end)
+        end
+    })
+
+    AvatarGroup:AddToggle("SpoofAvatarToggle", {
+        Text = "Spoof Character Avatar",
+        Default = false,
+        Tooltip = "Copies accessories, clothing, and head from target user",
+        Callback = function(val)
+            changerStates.avatar.spoof_avatar = val
+            SpoofAvatar()
+        end
+    })
+
+    AvatarGroup:AddToggle("SpoofThumbnailsToggle", {
+        Text = "Spoof Avatar Thumbnails",
+        Default = false,
+        Tooltip = "Replaces in-game thumbnail icons with target user's avatar",
+        Callback = function(val)
+            changerStates.avatar.spoof_thumbnails = val
+            RefreshAllThumbnailSpoofs()
+        end
+    })
+
+    AvatarGroup:AddButton("Re-apply Avatar", function()
+        SpoofAvatar()
+        RefreshAllThumbnailSpoofs()
+    end)
+
+    local CharmGroup = Tabs.Changer:AddLeftGroupbox("Rank & Charm Changer")
+
+    CharmGroup:AddDropdown("CharmRankDropdown", {
+        Values = kCharmRanks,
+        Default = 1,
+        Multi = false,
+        Text = "Charm Rank",
+        Tooltip = "Choose rank for season charms (or use spoofed ELO)",
+        Callback = function(val)
+            changerStates.charm.charm_rank = val
+            UpdateCharmOptions()
+        end
+    })
+
+    CharmGroup:AddSlider("ArchRankSlider", {
+        Text = "Arch Rank",
+        Default = 1,
+        Min = 1,
+        Max = 100,
+        Rounding = 0,
+        Compact = false,
+        Callback = function(val)
+            changerStates.charm.arch_rank = math.floor(val)
+            UpdateCharmOptions()
+        end
+    })
+
+    CharmGroup:AddToggle("S0CharmToggle", {
+        Text = "Season 0 Charm",
+        Default = false,
+        Callback = function(val)
+            changerStates.charm.s0_charm = val
+            UpdateCharmOptions()
+        end
+    })
+
+    CharmGroup:AddToggle("S1CharmToggle", {
+        Text = "Season 1 Charm",
+        Default = false,
+        Callback = function(val)
+            changerStates.charm.s1_charm = val
+            UpdateCharmOptions()
+        end
+    })
+
+    CharmGroup:AddToggle("S2CharmToggle", {
+        Text = "Season 2 Charm",
+        Default = false,
+        Callback = function(val)
+            changerStates.charm.s2_charm = val
+            UpdateCharmOptions()
+        end
+    })
+
+    CharmGroup:AddToggle("S3CharmToggle", {
+        Text = "Season 3 Charm",
+        Default = false,
+        Callback = function(val)
+            changerStates.charm.s3_charm = val
+            UpdateCharmOptions()
+        end
+    })
+
+    CharmGroup:AddButton("Update Workspace Charms", function()
+        UpdateCharmOptions()
+    end)
+
+    local StatsGroup = Tabs.Changer:AddRightGroupbox("Stats & Leaderboard Changer")
+
+    StatsGroup:AddInput("StreakInput", {
+        Default = tostring(changerStates.leaderboard.streak_value),
+        Numeric = true,
+        Finished = true,
+        Text = "Streak Value",
+        Placeholder = "Enter streak...",
+        Callback = function(val)
+            changerStates.leaderboard.streak_value = tonumber(val) or 0
+            if changerStates.leaderboard.Streak then
+                UpdateLeaderboardOptions()
+                RefreshAllNameSpoofs()
+            end
+        end
+    })
+
+    StatsGroup:AddToggle("StreakToggle", {
+        Text = "Spoof Win Streak",
+        Default = false,
+        Callback = function(val)
+            changerStates.leaderboard.Streak = val
+            UpdateLeaderboardOptions()
+            RefreshAllNameSpoofs()
+        end
+    })
+
+    StatsGroup:AddDivider()
+
+    StatsGroup:AddInput("LevelInput", {
+        Default = tostring(changerStates.leaderboard.level_value),
+        Numeric = true,
+        Finished = true,
+        Text = "Level Value",
+        Placeholder = "Enter level...",
+        Callback = function(val)
+            changerStates.leaderboard.level_value = tonumber(val) or 1
+            if changerStates.leaderboard.Level then
+                UpdateLeaderboardOptions()
+                RefreshAllNameSpoofs()
+            end
+        end
+    })
+
+    StatsGroup:AddToggle("LevelToggle", {
+        Text = "Spoof Level",
+        Default = false,
+        Callback = function(val)
+            changerStates.leaderboard.Level = val
+            UpdateLeaderboardOptions()
+            RefreshAllNameSpoofs()
+        end
+    })
+
+    StatsGroup:AddDivider()
+
+    StatsGroup:AddInput("ELOInput", {
+        Default = "0",
+        Numeric = true,
+        Finished = true,
+        Text = "ELO Value",
+        Placeholder = "Enter ELO...",
+        Callback = function(val)
+            changerStates.leaderboard.elo_value = tonumber(val) or 0
+            if changerStates.leaderboard.ELO then
+                UpdateLeaderboardOptions()
+            end
+            UpdateCharmOptions()
+        end
+    })
+
+    StatsGroup:AddToggle("ELOToggle", {
+        Text = "Spoof Leaderboard ELO",
+        Default = false,
+        Callback = function(val)
+            changerStates.leaderboard.ELO = val
+            UpdateLeaderboardOptions()
+        end
+    })
+
+    StatsGroup:AddDivider()
+
+    StatsGroup:AddInput("WinsInput", {
+        Default = "0",
+        Numeric = true,
+        Finished = true,
+        Text = "Wins Value",
+        Placeholder = "Enter wins...",
+        Callback = function(val)
+            changerStates.leaderboard.wins_value = tonumber(val) or 0
+            if changerStates.leaderboard.Wins then
+                UpdateLeaderboardOptions()
+                RefreshAllNameSpoofs()
+            end
+        end
+    })
+
+    StatsGroup:AddToggle("WinsToggle", {
+        Text = "Spoof Wins",
+        Default = false,
+        Callback = function(val)
+            changerStates.leaderboard.Wins = val
+            UpdateLeaderboardOptions()
+            RefreshAllNameSpoofs()
+        end
+    })
+
+    StatsGroup:AddDivider()
+
+    StatsGroup:AddInput("KillsInput", {
+        Default = "0",
+        Numeric = true,
+        Finished = true,
+        Text = "Kills Value",
+        Placeholder = "Enter kills...",
+        Callback = function(val)
+            changerStates.leaderboard.kills_value = tonumber(val) or 0
+            if changerStates.leaderboard.Kills then
+                UpdateLeaderboardOptions()
+            end
+        end
+    })
+
+    StatsGroup:AddToggle("KillsToggle", {
+        Text = "Spoof Kills",
+        Default = false,
+        Callback = function(val)
+            changerStates.leaderboard.Kills = val
+            UpdateLeaderboardOptions()
+        end
+    })
+
+    local BadgesGroup = Tabs.Changer:AddRightGroupbox("Profile & Badges")
+
+    BadgesGroup:AddInput("DisplayNameInput", {
+        Default = changerLocalPlayer.DisplayName,
+        Numeric = false,
+        Finished = true,
+        Text = "Display Name",
+        Placeholder = "Enter new display name...",
+        Callback = function(val)
+            changerStates.text.display_name_value = val
+            if changerStates.text.display_name then
+                RefreshAllNameSpoofs()
+            end
+        end
+    })
+
+    BadgesGroup:AddToggle("DisplayNameToggle", {
+        Text = "Spoof Display Name",
+        Default = false,
+        Callback = function(val)
+            changerStates.text.display_name = val
+            RefreshAllNameSpoofs()
+        end
+    })
+
+    BadgesGroup:AddDivider()
+
+    BadgesGroup:AddInput("UsernameInput", {
+        Default = changerLocalPlayer.Name,
+        Numeric = false,
+        Finished = true,
+        Text = "Username",
+        Placeholder = "Enter new username...",
+        Callback = function(val)
+            changerStates.text.username_value = val
+            if changerStates.text.username then
+                RefreshAllNameSpoofs()
+            end
+        end
+    })
+
+    BadgesGroup:AddToggle("UsernameToggle", {
+        Text = "Spoof Username",
+        Default = false,
+        Callback = function(val)
+            changerStates.text.username = val
+            RefreshAllNameSpoofs()
+        end
+    })
+
+    BadgesGroup:AddDivider()
+
+    BadgesGroup:AddToggle("PremiumToggle", {
+        Text = "Premium Membership",
+        Default = false,
+        Callback = function(val)
+            changerStates.badges.Premium = val
+        end
+    })
+
+    BadgesGroup:AddToggle("VerifiedToggle", {
+        Text = "Verified Badge",
+        Default = false,
+        Callback = function(val)
+            changerStates.badges.Verified = val
+        end
+    })
+
+    BadgesGroup:AddToggle("InfluencerToggle", {
+        Text = "Influencer Badge",
+        Default = false,
+        Callback = function(val)
+            changerStates.badges.Influencer = val
+            UpdateBadgesOptions()
+        end
+    })
+
+    BadgesGroup:AddToggle("AdminToggle", {
+        Text = "Roblox Employee (Admin)",
+        Default = false,
+        Callback = function(val)
+            changerStates.badges.Admin = val
+            UpdateBadgesOptions()
+        end
+    })
+end -- do Changer
 
 -- ========== AUTO EXECUTE ==========
 local AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
