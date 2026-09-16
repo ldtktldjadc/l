@@ -2356,6 +2356,8 @@ do
     getgenv().Config = getgenv().Config or {
         Enabled = false,
         WeaponSlot = "Primary",
+        TargetPart = "HitboxHead",
+        TargetSort = "Distance (Closest)",
         FireRate = 0.0005,
         AntiHit = false,
         AntiHitDuration = 0.5,
@@ -2366,6 +2368,8 @@ do
             Knife     = { X = 0, Y = -5, Z = 1 },
         },
     }
+    getgenv().Config.TargetPart = getgenv().Config.TargetPart or "HitboxHead"
+    getgenv().Config.TargetSort = getgenv().Config.TargetSort or "Distance (Closest)"
     getgenv().Config.AntiHit = false
     getgenv().Config.TPOffsets = getgenv().Config.TPOffsets or {
         Primary   = { X = 0, Y = 5, Z = 0 },
@@ -2419,6 +2423,35 @@ do
                     localFighter:EquipItem(slots[value] or 3)
                 end)
             end
+        end
+    })
+
+    local RageBotTargetPartDropdown = RageBotSection:AddDropdown("RageBot_TargetPart", {
+        Values = {
+            "HitboxHead", "HitboxBody", "Head", "UpperTorso", "LowerTorso",
+            "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg", "Random"
+        },
+        Default = 1,
+        Multi = false,
+        Text = "Target Part",
+        Callback = function(value)
+            getgenv().Config.TargetPart = value
+            if getgenv().RageBotConfig then getgenv().RageBotConfig.TargetPart = value end
+        end
+    })
+
+    local RageBotTargetSortDropdown = RageBotSection:AddDropdown("RageBot_TargetSort", {
+        Values = {
+            "Distance (Closest)", "Distance (Farthest)",
+            "Health (Lowest)", "Health (Highest)",
+            "Mouse (Closest)", "Mouse (Farthest)"
+        },
+        Default = 1,
+        Multi = false,
+        Text = "Target Sort",
+        Callback = function(value)
+            getgenv().Config.TargetSort = value
+            if getgenv().RageBotConfig then getgenv().RageBotConfig.TargetSort = value end
         end
     })
 
@@ -2750,32 +2783,101 @@ do
             return true
         end
 
+        local function resolveRageTargetPart(pChar)
+            if not pChar then return nil end
+            local mode = getgenv().Config and getgenv().Config.TargetPart or "HitboxHead"
+            if mode == "Random" then
+                local candidateNames = {
+                    "HitboxHead", "HitboxBody", "Head", "UpperTorso", "LowerTorso",
+                    "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg"
+                }
+                local valid = {}
+                for _, name in ipairs(candidateNames) do
+                    local part = pChar:FindFirstChild(name)
+                    if part then table.insert(valid, part) end
+                end
+                if #valid > 0 then
+                    return valid[math.random(1, #valid)]
+                end
+                return pChar:FindFirstChild("HitboxHead") or pChar:FindFirstChild("Head") or pChar:FindFirstChild("HumanoidRootPart")
+            end
+            return pChar:FindFirstChild(mode)
+                or pChar:FindFirstChild("HitboxHead")
+                or pChar:FindFirstChild("Head")
+                or pChar:FindFirstChild("HumanoidRootPart")
+        end
+
         local function getClosestTarget()
             local char = lplr.Character
             if not char then return nil, nil, nil end
             local myRoot = char:FindFirstChild("HumanoidRootPart")
             if not myRoot then return nil, nil, nil end
-            local closestPlayer = nil
-            local closestRoot = nil
-            local closestHead = nil
-            local closestDist = 500
+
+            local mousePos = Vector2.new(0, 0)
+            local uisOk, uis = pcall(function() return game:GetService("UserInputService") end)
+            if uisOk and uis and uis.GetMouseLocation then
+                pcall(function() mousePos = uis:GetMouseLocation() end)
+            end
+            local curCam = ws.CurrentCamera
+
+            local candidates = {}
             for _, player in plrs:GetPlayers() do
                 if not isEnemy(player) then continue end
                 local pChar = player.Character
                 if not pChar then continue end
                 local pRoot = pChar:FindFirstChild("HumanoidRootPart")
-                local pHead = pChar:FindFirstChild("HitboxHead") or pChar:FindFirstChild("Head")
                 local pHum = pChar:FindFirstChildWhichIsA("Humanoid")
-                if not (pRoot and pHead and pHum and pHum.Health > 0) then continue end
+                if not (pRoot and pHum and pHum.Health > 0) then continue end
+
+                local pTargetPart = resolveRageTargetPart(pChar)
+                if not pTargetPart then continue end
+
                 local dist = (myRoot.Position - pRoot.Position).Magnitude
-                if dist < closestDist then
-                    closestDist = dist
-                    closestPlayer = player
-                    closestRoot = pRoot
-                    closestHead = pHead
+                if dist > 500 then continue end
+
+                local mouseDist = 999999
+                if curCam then
+                    local pScr, pOn = curCam:WorldToViewportPoint(pTargetPart.Position)
+                    if pOn and pScr.Z > 0 then
+                        mouseDist = (Vector2.new(pScr.X, pScr.Y) - mousePos).Magnitude
+                    else
+                        mouseDist = (Vector2.new(pScr.X, pScr.Y) - mousePos).Magnitude + 2000
+                    end
                 end
+
+                table.insert(candidates, {
+                    player = player,
+                    root = pRoot,
+                    targetPart = pTargetPart,
+                    worldDist = dist,
+                    health = pHum.Health,
+                    mouseDist = mouseDist,
+                })
             end
-            return closestPlayer, closestRoot, closestHead
+
+            if #candidates == 0 then return nil, nil, nil end
+
+            local sortMethod = getgenv().Config and getgenv().Config.TargetSort or "Distance (Closest)"
+            table.sort(candidates, function(a, b)
+                if sortMethod == "Distance (Closest)" then
+                    return a.worldDist < b.worldDist
+                elseif sortMethod == "Distance (Farthest)" then
+                    return a.worldDist > b.worldDist
+                elseif sortMethod == "Health (Lowest)" then
+                    return a.health < b.health
+                elseif sortMethod == "Health (Highest)" then
+                    return a.health > b.health
+                elseif sortMethod == "Mouse (Closest)" then
+                    return a.mouseDist < b.mouseDist
+                elseif sortMethod == "Mouse (Farthest)" then
+                    return a.mouseDist > b.mouseDist
+                else
+                    return a.worldDist < b.worldDist
+                end
+            end)
+
+            local chosen = candidates[1]
+            return chosen.player, chosen.root, chosen.targetPart
         end
 
         runS.Heartbeat:Connect(function()
@@ -2811,7 +2913,7 @@ do
                 end
             end
 
-            local targetPlayer, targetRoot, targetHead = getClosestTarget()
+            local targetPlayer, targetRoot, targetPart = getClosestTarget()
 
             local myFF = false
             local targetFF = false
@@ -2841,7 +2943,7 @@ do
                 and (not targetFF)
                 and targetPlayer ~= nil
                 and targetRoot ~= nil
-                and targetHead ~= nil
+                and targetPart ~= nil
                 and (not isPlayerParrying(targetPlayer))
                 and item ~= nil
 
@@ -2860,15 +2962,15 @@ do
 
                 local desyncPos = (baseCFrame * CFrame.new(ox, oy, oz)).Position
                 if curSlot == "Knife" then
-                    local lookTarget = Vector3.new(targetHead.Position.X, desyncPos.Y, targetHead.Position.Z)
+                    local lookTarget = Vector3.new(targetPart.Position.X, desyncPos.Y, targetPart.Position.Z)
                     if (desyncPos - lookTarget).Magnitude > 0.001 then
                         desyncCF = CFrame.lookAt(desyncPos, lookTarget)
                     else
                         desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
                     end
                 else
-                    if (desyncPos - targetHead.Position).Magnitude > 0.001 then
-                        desyncCF = CFrame.lookAt(desyncPos, targetHead.Position)
+                    if (desyncPos - targetPart.Position).Magnitude > 0.001 then
+                        desyncCF = CFrame.lookAt(desyncPos, targetPart.Position)
                     else
                         desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
                     end
@@ -2910,7 +3012,7 @@ do
                 return
             end
 
-            currentTargetPart = targetHead
+            currentTargetPart = targetPart
             currentDesyncCF = desyncCF
 
             if lastTarget ~= targetPlayer then
@@ -2931,7 +3033,7 @@ do
             end
 
             local originPos = desyncCF.Position
-            local targetPos = targetHead.Position
+            local targetPos = targetPart.Position
             local aimCF    = CFrame.lookAt(originPos, targetPos)
             local randomOffset = Vector3.new(
                 (math.random() - 0.5) * 0.1,
@@ -2939,12 +3041,12 @@ do
                 (math.random() - 0.5) * 0.1
             )
             local aimedPos = targetPos + randomOffset
-            local objSpaceHeadOffset = targetHead.CFrame:ToObjectSpace(CFrame.new(aimedPos))
+            local objSpaceHeadOffset = targetPart.CFrame:ToObjectSpace(CFrame.new(aimedPos))
             local cameradata = {}
             cameradata[utf8.char(1)] = {
                 [utf8.char(0)] = util:EncodeCFrame(aimCF),
                 [utf8.char(1)] = util:EncodeCFrame(aimCF),
-                [utf8.char(2)] = targetHead,
+                [utf8.char(2)] = targetPart,
                 [utf8.char(3)] = util:EncodeCFrame(objSpaceHeadOffset)
             }
             if isKnife and camRemote and currentTargetYaw then
