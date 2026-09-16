@@ -75,9 +75,9 @@ local function safeUnbindFromRenderStep(rs, name)
 end
 
 -- 螟夐㍾繝ｭ繝ｼ繝蛾亟豁｢・・遘剃ｻ･蜀・↓騾｣邯壹〒螳溯｡後＆繧後◆蝣ｴ蜷医・蠑ｾ縺擾ｼ・
-if getgenv().ModpackRivals_Executing then return end
-getgenv().ModpackRivals_Executing = true
-task.delay(5, function() getgenv().ModpackRivals_Executing = false end)
+if getgenv().KETY_Executing then return end
+getgenv().KETY_Executing = true
+task.delay(5, function() getgenv().KETY_Executing = false end)
 
 --==========
 --[[
@@ -98,8 +98,8 @@ local cam = workspace.CurrentCamera
 if getgenv().MyLinoriaLibrary then
     pcall(function() getgenv().MyLinoriaLibrary:Unload() end)
 end
-if getgenv().MyModpackESP then
-    pcall(function() getgenv().MyModpackESP:Destroy() end)
+if getgenv().MyKETYESP then
+    pcall(function() getgenv().MyKETYESP:Destroy() end)
 end
 
 -- ========== SILENT AIM CONFIG ==========
@@ -379,11 +379,11 @@ local function getESPContainerParent()
 end
 
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "ModpackESP_UI"
+screenGui.Name = "KETY_ESP_UI"
 screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
 screenGui.Parent = getESPContainerParent()
-getgenv().MyModpackESP = screenGui
+getgenv().MyKETYESP = screenGui
 
 local espContainer = Instance.new("Frame")
 espContainer.Name = "ESP_Container"
@@ -1138,7 +1138,7 @@ local SaveManager  = fetchRepo("addons/SaveManager.lua")
 getgenv().MyLinoriaLibrary = Library
 
 local Window = Library:CreateWindow({
-    Title = "Modpack Rivals",
+    Title = "KETY",
     Center = true,
     AutoShow = true,
 })
@@ -2212,10 +2212,10 @@ local function updateWorldColor()
 end
 
 local function updateCC()
-    local cc = Lighting:FindFirstChild("ModpackCorrection")
+    local cc = Lighting:FindFirstChild("KETYCorrection")
     if not cc then
         cc = Instance.new("ColorCorrectionEffect")
-        cc.Name = "ModpackCorrection"
+        cc.Name = "KETYCorrection"
         cc.Parent = Lighting
     end
     cc.Enabled = envSettings.CCEnabled
@@ -2228,7 +2228,7 @@ local snowPart, snowEmitter, snowConn
 local function updateSnow()
     if not snowPart then
         snowPart = Instance.new("Part")
-        snowPart.Name = "ModpackSnowPart"
+        snowPart.Name = "KETYSnowPart"
         snowPart.Transparency = 1
         snowPart.Anchored = true
         snowPart.CanCollide = false
@@ -2358,6 +2358,7 @@ do
         WeaponSlot = "Primary",
         TargetPart = "HitboxHead",
         TargetSort = "Distance (Closest)",
+        TeamCheck = true,
         FireRate = 0.0005,
         AntiHit = false,
         AntiHitDuration = 0.5,
@@ -2370,6 +2371,7 @@ do
     }
     getgenv().Config.TargetPart = getgenv().Config.TargetPart or "HitboxHead"
     getgenv().Config.TargetSort = getgenv().Config.TargetSort or "Distance (Closest)"
+    if getgenv().Config.TeamCheck == nil then getgenv().Config.TeamCheck = true end
     getgenv().Config.AntiHit = false
     getgenv().Config.TPOffsets = getgenv().Config.TPOffsets or {
         Primary   = { X = 0, Y = 5, Z = 0 },
@@ -2402,6 +2404,15 @@ do
         SyncToggleState = true,
         Mode = "Toggle",
         Text = "RageBot",
+    })
+
+    local RageBotTeamCheckToggle = RageBotSection:AddToggle("RageBot_TeamCheck", {
+        Text = "Team Check",
+        Default = true,
+        Callback = function(value)
+            getgenv().Config.TeamCheck = value
+            if getgenv().RageBotConfig then getgenv().RageBotConfig.TeamCheck = value end
+        end
     })
 
     local WeaponSlotDropdown = RageBotSection:AddDropdown("RageBot_Slot", {
@@ -2764,6 +2775,8 @@ do
 
         local function isEnemy(player)
             if player == lplr then return false end
+            local tc = getgenv().Config and getgenv().Config.TeamCheck
+            if tc == false then return true end
             local duel = SpectateController and SpectateController.CurrentDuelSubject
             local localDueler = duel and duel:GetDueler(lplr)
             local localTeam = localDueler and localDueler:Get("TeamID") or nil
@@ -2885,15 +2898,18 @@ do
             local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
             if not myRoot then return end
 
-            local myTeam = lplr:GetAttribute("TeamID")
-            if not myTeam and SpectateController then
-                local duel = SpectateController.CurrentDuelSubject
-                local localDueler = duel and duel:GetDueler(lplr)
-                myTeam = localDueler and localDueler:Get("TeamID") or nil
-            end
-            if not myTeam then
-                currentTargetYaw = nil
-                return
+            local tc = getgenv().Config and getgenv().Config.TeamCheck
+            if tc ~= false then
+                local myTeam = lplr:GetAttribute("TeamID")
+                if not myTeam and SpectateController then
+                    local duel = SpectateController.CurrentDuelSubject
+                    local localDueler = duel and duel:GetDueler(lplr)
+                    myTeam = localDueler and localDueler:Get("TeamID") or nil
+                end
+                if not myTeam then
+                    currentTargetYaw = nil
+                    return
+                end
             end
 
             local item = nil
@@ -4807,7 +4823,7 @@ end
 
 -- ========== THEME MANAGER ==========
 ThemeManager:SetLibrary(Library)
-ThemeManager:SetFolder("NewModpackRivals")
+ThemeManager:SetFolder("KETY")
 ThemeManager:ApplyTheme("Default")
 Library.AccentColor = Color3.fromRGB(0, 180, 255)
 Library:UpdateColorsUsingRegistry()
@@ -5436,7 +5452,7 @@ local pastebinCode = "loadstring(game:HttpGet('https://raw.githubusercontent.com
 local _autoExecOn = false
 pcall(function()
     if isfile then
-        _autoExecOn = isfile("autoexec/ModpackRivals.lua") or isfile("ModpackRivals_AutoExec.lua") or false
+        _autoExecOn = isfile("autoexec/KETY.lua") or isfile("KETY_AutoExec.lua") or false
     end
 end)
 
@@ -5462,19 +5478,19 @@ AutoExecSection:AddToggle("AutoExecuteToggle", {
             end)
             pcall(function()
                 if isfolder and not isfolder("autoexec") then makefolder("autoexec") end
-                writefile("autoexec/ModpackRivals.lua", pastebinCode)
+                writefile("autoexec/KETY.lua", pastebinCode)
             end)
-            pcall(function() writefile("ModpackRivals_AutoExec.lua", pastebinCode) end)
+            pcall(function() writefile("KETY_AutoExec.lua", pastebinCode) end)
         else
-            pcall(function() if isfile("autoexec/ModpackRivals.lua") then delfile("autoexec/ModpackRivals.lua") end end)
-            pcall(function() if isfile("ModpackRivals_AutoExec.lua") then delfile("ModpackRivals_AutoExec.lua") end end)
+            pcall(function() if isfile("autoexec/KETY.lua") then delfile("autoexec/KETY.lua") end end)
+            pcall(function() if isfile("KETY_AutoExec.lua") then delfile("KETY_AutoExec.lua") end end)
         end
     end
 })
 
 -- ========== SAVE MANAGER ==========
 SaveManager:SetLibrary(Library)
-SaveManager:SetFolder("NewModpackRivals")
+SaveManager:SetFolder("KETY")
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({"AutoExecuteToggle"})
 SaveManager:BuildConfigSection(Tabs.Config)
