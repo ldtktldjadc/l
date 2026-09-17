@@ -3864,22 +3864,22 @@ local _origOwnsNormally = _cosLib.OwnsCosmeticNormally
 _cosLib.OwnsCosmeticNormally = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsNormally(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and _isCosType(c) then return true end
-    return _origOwnsNormally(self, inv, nm, wep)
+    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
+    return false
 end
 local _origOwnsUniversally = _cosLib.OwnsCosmeticUniversally
 _cosLib.OwnsCosmeticUniversally = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsUniversally(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and _isCosType(c) then return true end
-    return _origOwnsUniversally(self, inv, nm, wep)
+    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
+    return false
 end
 local _origOwnsForWep = _cosLib.OwnsCosmeticForWeapon
 _cosLib.OwnsCosmeticForWeapon = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsForWep(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and _isCosType(c) then return true end
-    return _origOwnsForWep(self, inv, nm, wep)
+    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
+    return false
 end
 
 local _origOwns = _cosLib.OwnsCosmetic
@@ -4013,9 +4013,7 @@ if hookmetamethod then
             if self == _equipRem then
                 local _wn, _ct, _cn, _opts = ...
                 _opts = _opts or {}
-                -- 偽武器（非所持武器）の場合は必ずローカル装備
-                local _isRealWeapon = (_origGetWep(_datCtrl, _wn) ~= nil)
-                if _cn and _cn ~= "None" and _cn ~= "" and _isRealWeapon then
+                if _cn and _cn ~= "None" and _cn ~= "" then
                     local _inv = _datCtrl:Get("CosmeticInventory")
                     if _inv and rawget(_inv, _cn) then
                         return _onc(self, ...)
@@ -4247,7 +4245,88 @@ UnlockAllSection:AddToggle("UnlockWeaponsToggle", {
         end)
     end
 })
+-- ========== DISABLE OUT OF BOUNDS ==========
+local OutOfBoundsSection = Tabs.Misc:AddLeftGroupbox("Out Of Bounds")
+local DisableOOBToggle = OutOfBoundsSection:AddToggle("DisableOOBToggle", {
+    Text = "Disable Out Of Bounds",
+    Default = false,
+    Callback = function(value)
+        getgenv().DisableOutOfBoundsEnabled = value
+        if value and not getgenv().OOBHookExecuted then
+            getgenv().OOBHookExecuted = true
+            task.spawn(function()
+                local _rs = game:GetService("ReplicatedStorage")
+                local oob_remote = _rs:FindFirstChild("Remotes")
+                if oob_remote then
+                    local rep = oob_remote:FindFirstChild("Replication")
+                    if rep then
+                        local fighter = rep:FindFirstChild("Fighter")
+                        if fighter then
+                            oob_remote = fighter:FindFirstChild("OutOfBounds")
+                        else oob_remote = nil end
+                    else oob_remote = nil end
+                end
 
+                if hookmetamethod and oob_remote then
+                    local oldNamecall
+                    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+                        if getgenv().DisableOutOfBoundsEnabled and getnamecallmethod() == "FireServer" and self == oob_remote then
+                            return nil
+                        end
+                        return oldNamecall(self, ...)
+                    end)
+                end
+
+                local modulesFolder = _rs:WaitForChild("Modules", 10)
+                if modulesFolder then
+                    pcall(function()
+                        local OutOfBoundsMachine = require(modulesFolder:WaitForChild("OutOfBoundsMachine", 5))
+                        if type(OutOfBoundsMachine) == "table" then
+                            local origIsOOB = OutOfBoundsMachine.IsOutOfBounds
+                            OutOfBoundsMachine.IsOutOfBounds = function(...)
+                                if getgenv().DisableOutOfBoundsEnabled then return false end
+                                if type(origIsOOB) == "function" then return origIsOOB(...) end
+                            end
+                            local origUpdate = OutOfBoundsMachine.Update
+                            OutOfBoundsMachine.Update = function(...)
+                                if getgenv().DisableOutOfBoundsEnabled then return end
+                                if type(origUpdate) == "function" then return origUpdate(...) end
+                            end
+                        end
+                    end)
+
+                    pcall(function()
+                        local GameplayUtility = require(modulesFolder:WaitForChild("GameplayUtility", 5))
+                        if type(GameplayUtility) == "table" then
+                            local origWarn = GameplayUtility.GetOOBWarnDelay
+                            GameplayUtility.GetOOBWarnDelay = function(...)
+                                if getgenv().DisableOutOfBoundsEnabled then return 9999 end
+                                if type(origWarn) == "function" then return origWarn(...) end
+                            end
+                            local origKill = GameplayUtility.GetOOBKillDelay
+                            GameplayUtility.GetOOBKillDelay = function(...)
+                                if getgenv().DisableOutOfBoundsEnabled then return 9999 end
+                                if type(origKill) == "function" then return origKill(...) end
+                            end
+                            local origWithin = GameplayUtility.IsWithinOOBPart
+                            GameplayUtility.IsWithinOOBPart = function(...)
+                                if getgenv().DisableOutOfBoundsEnabled then return false end
+                                if type(origWithin) == "function" then return origWithin(...) end
+                            end
+                        end
+                    end)
+                end
+            end)
+        end
+    end
+})
+
+DisableOOBToggle:AddKeyPicker("DisableOOBKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Disable OOB",
+})
 
 local DeviceSpoofSection = Tabs.Misc:AddLeftGroupbox("Device Spoofer")
 
