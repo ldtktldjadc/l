@@ -3050,6 +3050,15 @@ do
                 local oz = (offsets and offsets.Z) or (curSlot == "Knife" and 1 or 0)
 
                 local desyncPos = (baseCFrame * CFrame.new(ox, oy, oz)).Position
+                -- Knife: 速度予測で高速移動中の相手にも追従
+                if curSlot == "Knife" then
+                    local targetBasePart = targetPlayer.Character and (targetPlayer.Character:FindFirstChild("LowerTorso") or targetRoot)
+                    if targetBasePart then
+                        local vel = targetBasePart.AssemblyLinearVelocity
+                        local predFactor = getgenv().Config.KnifePredictFactor or 0.08
+                        desyncPos = desyncPos + vel * predFactor
+                    end
+                end
                 if curSlot == "Knife" then
                     local lookTarget = Vector3.new(targetPart.Position.X, desyncPos.Y, targetPart.Position.Z)
                     if (desyncPos - lookTarget).Magnitude > 0.001 then
