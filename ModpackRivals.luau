@@ -2480,11 +2480,11 @@ do
     })
 
     local RageBotTeamCheckToggle = RageBotSection:AddToggle("RageBot_TeamCheck", {
-        Text = "Team Check",
-        Default = true,
+        Text = "FFA",
+        Default = false,
         Callback = function(value)
-            getgenv().Config.TeamCheck = value
-            if getgenv().RageBotConfig then getgenv().RageBotConfig.TeamCheck = value end
+            getgenv().Config.TeamCheck = not value
+            if getgenv().RageBotConfig then getgenv().RageBotConfig.TeamCheck = not value end
         end
     })
 
@@ -2906,6 +2906,7 @@ do
             end
             local curCam = ws.CurrentCamera
 
+            local tc = getgenv().Config and getgenv().Config.TeamCheck
             local candidates = {}
             for _, player in plrs:GetPlayers() do
                 if not isEnemy(player) then continue end
@@ -2914,6 +2915,19 @@ do
                 local pRoot = pChar:FindFirstChild("HumanoidRootPart")
                 local pHum = pChar:FindFirstChildWhichIsA("Humanoid")
                 if not (pRoot and pHum and pHum.Health > 0) then continue end
+
+                if tc == false then
+                    local isInvincible = false
+                    pcall(function()
+                        if FighterController and type(FighterController.GetFighter) == "function" then
+                            local fighter = FighterController:GetFighter(player)
+                            if fighter and fighter.Entity then
+                                isInvincible = fighter.Entity:Get("IsInvincible") == true
+                            end
+                        end
+                    end)
+                    if isInvincible then continue end
+                end
 
                 local pTargetPart = resolveRageTargetPart(pChar)
                 if not pTargetPart then continue end
@@ -3075,14 +3089,18 @@ do
                 end
             else
                 currentTargetYaw = nil
-                local randomDir = Vector3.new(
-                    math.random(-100, 100),
-                    math.random(-100, 100),
-                    math.random(-100, 100)
-                ).Unit
-                local cam = ws.CurrentCamera
-                local camPos = cam and cam.CFrame.Position or Vector3.new(0, 0, 0)
-                desyncCF = CFrame.new(camPos + randomDir * 7000000000000)
+                if tc == false then
+                    desyncCF = myRoot.CFrame
+                else
+                    local randomDir = Vector3.new(
+                        math.random(-100, 100),
+                        math.random(-100, 100),
+                        math.random(-100, 100)
+                    ).Unit
+                    local cam = ws.CurrentCamera
+                    local camPos = cam and cam.CFrame.Position or Vector3.new(0, 0, 0)
+                    desyncCF = CFrame.new(camPos + randomDir * 7000000000000)
+                end
             end
 
             local oldCF     = myRoot.CFrame
