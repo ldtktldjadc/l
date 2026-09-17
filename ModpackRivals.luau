@@ -6408,6 +6408,147 @@ do
             UpdateBadgesOptions()
         end
     })
+
+    -- ========== UNLOCK ALL WEAPONS (CLIENT-SIDE) ==========
+    local UnlockGroup = Tabs.Changer:AddLeftGroupbox("Unlock All (Client-Side)")
+
+    local unlockAllEnabled = false
+    local origGetUnlockedWeapons = nil
+    local origGetWeaponData = nil
+    local origOwnsAllWeapons = nil
+
+    local function applyUnlockAllHook()
+        local PlayerDataController = nil
+        pcall(function()
+            PlayerDataController = require(lp:WaitForChild("PlayerScripts"):WaitForChild("Controllers"):WaitForChild("PlayerDataController"))
+        end)
+        if not PlayerDataController then return end
+
+        local PlayerDataUtility = nil
+        pcall(function()
+            PlayerDataUtility = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("PlayerDataUtility"))
+        end)
+
+        local ItemLibrary = nil
+        pcall(function()
+            ItemLibrary = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("ItemLibrary"))
+        end)
+
+        local ShopLibrary = nil
+        pcall(function()
+            ShopLibrary = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("ShopLibrary"))
+        end)
+
+        local function getAllWeaponList()
+            local list = {}
+            if ShopLibrary and ShopLibrary.OwnableWeapons then
+                for _, w in pairs(ShopLibrary.OwnableWeapons) do
+                    list[w] = true
+                end
+            elseif ItemLibrary and ItemLibrary.Items then
+                for name, data in pairs(ItemLibrary.Items) do
+                    if data.Type == "Weapon" or data.Class then
+                        list[name] = true
+                    end
+                end
+            end
+            return list
+        end
+
+        local function createFakeWeaponData(wName)
+            return {
+                Name = wName,
+                Level = 100,
+                XP = 0,
+                Kills = 0,
+                Headshots = 0,
+                IsFavorited = false,
+                Unlocked = true
+            }
+        end
+
+        if PlayerDataUtility then
+            if not origGetUnlockedWeapons then
+                origGetUnlockedWeapons = PlayerDataUtility.GetUnlockedWeapons
+                PlayerDataUtility.GetUnlockedWeapons = function(self, ...)
+                    if unlockAllEnabled then
+                        return getAllWeaponList()
+                    end
+                    return origGetUnlockedWeapons(self, ...)
+                end
+            end
+
+            if not origGetWeaponData then
+                origGetWeaponData = PlayerDataUtility.GetWeaponData
+                PlayerDataUtility.GetWeaponData = function(self, wName, ...)
+                    local real = origGetWeaponData(self, wName, ...)
+                    if unlockAllEnabled and not real and wName then
+                        return createFakeWeaponData(wName)
+                    end
+                    return real
+                end
+            end
+
+            if not origOwnsAllWeapons then
+                origOwnsAllWeapons = PlayerDataUtility.OwnsAllWeapons
+                PlayerDataUtility.OwnsAllWeapons = function(self, ...)
+                    if unlockAllEnabled then
+                        return true
+                    end
+                    return origOwnsAllWeapons(self, ...)
+                end
+            end
+        end
+
+        if PlayerDataController then
+            if not PlayerDataController._OrigGetUnlockedWeapons then
+                PlayerDataController._OrigGetUnlockedWeapons = PlayerDataController.GetUnlockedWeapons
+                PlayerDataController.GetUnlockedWeapons = function(self, ...)
+                    if unlockAllEnabled then
+                        return getAllWeaponList()
+                    end
+                    return PlayerDataController._OrigGetUnlockedWeapons(self, ...)
+                end
+            end
+
+            if not PlayerDataController._OrigGetWeaponData then
+                PlayerDataController._OrigGetWeaponData = PlayerDataController.GetWeaponData
+                PlayerDataController.GetWeaponData = function(self, wName, ...)
+                    local real = PlayerDataController._OrigGetWeaponData(self, wName, ...)
+                    if unlockAllEnabled and not real and wName then
+                        return createFakeWeaponData(wName)
+                    end
+                    return real
+                end
+            end
+        end
+
+        -- Refresh Equipment UI if open
+        pcall(function()
+            local UserInterface = lp:WaitForChild("PlayerScripts"):WaitForChild("UserInterface")
+            local Equipment = UserInterface:FindFirstChild("Equipment")
+            if Equipment then
+                local eqModule = require(Equipment)
+                if eqModule and eqModule.Left and eqModule.Left._Generate then
+                    eqModule.Left:_Generate()
+                end
+            end
+        end)
+    end
+
+    UnlockGroup:AddToggle("UnlockAllWeaponsToggle", {
+        Text = "Unlock All Weapons",
+        Default = false,
+        Tooltip = "Client-side unlock all weapons in inventory and equipment UI",
+        Callback = function(val)
+            unlockAllEnabled = val
+            applyUnlockAllHook()
+        end
+    })
+
+    UnlockGroup:AddButton("Refresh Equipment UI", function()
+        applyUnlockAllHook()
+    end)
 end -- do Changer
 
 -- ========== AUTO EXECUTE ==========
