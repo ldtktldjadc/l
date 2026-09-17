@@ -3145,18 +3145,19 @@ do
                 end)
             end
 
+            -- AntiHit: FireServer の前にタイマーをセット（撃つ前にTP予約）
+            if getgenv().Config and getgenv().Config.AntiHit then
+                local now = tick()
+                antiHitStart = now + 0.15
+                antiHitUntil = antiHitStart + (getgenv().Config.AntiHitDuration or 0.5)
+            end
+
             repS.Remotes.Replication.Fighter.UseItem:FireServer(
                 item:Get("ObjectID"),
                 enum:ToEnum(isKnife and "StartAiming" or "StartShooting"),
                 cameradata,
                 nil
             )
-
-            if getgenv().Config and getgenv().Config.AntiHit then
-                local now = tick()
-                antiHitStart = now + 0.15
-                antiHitUntil = antiHitStart + (getgenv().Config.AntiHitDuration or 0.5)
-            end
         end)
     end)
 end
