@@ -3864,22 +3864,22 @@ local _origOwnsNormally = _cosLib.OwnsCosmeticNormally
 _cosLib.OwnsCosmeticNormally = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsNormally(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
-    return false
+    if c and _isCosType(c) then return true end
+    return _origOwnsNormally(self, inv, nm, wep)
 end
 local _origOwnsUniversally = _cosLib.OwnsCosmeticUniversally
 _cosLib.OwnsCosmeticUniversally = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsUniversally(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
-    return false
+    if c and _isCosType(c) then return true end
+    return _origOwnsUniversally(self, inv, nm, wep)
 end
 local _origOwnsForWep = _cosLib.OwnsCosmeticForWeapon
 _cosLib.OwnsCosmeticForWeapon = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsForWep(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
-    return false
+    if c and _isCosType(c) then return true end
+    return _origOwnsForWep(self, inv, nm, wep)
 end
 
 local _origOwns = _cosLib.OwnsCosmetic
@@ -4013,7 +4013,9 @@ if hookmetamethod then
             if self == _equipRem then
                 local _wn, _ct, _cn, _opts = ...
                 _opts = _opts or {}
-                if _cn and _cn ~= "None" and _cn ~= "" then
+                -- 偽武器（非所持武器）の場合は必ずローカル装備
+                local _isRealWeapon = (_origGetWep(_datCtrl, _wn) ~= nil)
+                if _cn and _cn ~= "None" and _cn ~= "" and _isRealWeapon then
                     local _inv = _datCtrl:Get("CosmeticInventory")
                     if _inv and rawget(_inv, _cn) then
                         return _onc(self, ...)
