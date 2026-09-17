@@ -3937,7 +3937,20 @@ local _origGetWep = _datCtrl.GetWeaponData
 _datCtrl.GetWeaponData = function(self, wn)
     local _d = _origGetWep(self, wn)
     if not getgenv().UnlockAllEnabled then return _d end
-    if not _d then return nil end
+    -- 未所持武器もフェイクデータで返す
+    if not _d then
+        if getgenv().UnlockWeaponsEnabled then
+            return {
+                Name = wn,
+                Level = 1,
+                XP = 0,
+                Kills = 0,
+                Headshots = 0,
+                IsFavorited = false,
+            }
+        end
+        return nil
+    end
     if _wepDataCache[wn] then return _wepDataCache[wn] end
     local _m = {}
     for k, v in pairs(_d) do _m[k] = v end
@@ -3949,6 +3962,32 @@ _datCtrl.GetWeaponData = function(self, wn)
     end
     _wepDataCache[wn] = _m
     return _m
+end
+
+-- GetUnlockedWeapons フック（武器装備UIのロック判定を全解除）
+local _origGetUnlockedWeps = _datCtrl.GetUnlockedWeapons
+_datCtrl.GetUnlockedWeapons = function(self, ...)
+    local _orig = _origGetUnlockedWeps(self, ...)
+    if not getgenv().UnlockWeaponsEnabled then return _orig end
+    local _all = {}
+    pcall(function()
+        local _shopLib = require(_rs:WaitForChild("Modules", 5):WaitForChild("ShopLibrary", 5))
+        if _shopLib and _shopLib.OwnableWeapons then
+            for _, wn in pairs(_shopLib.OwnableWeapons) do
+                _all[wn] = true
+            end
+        end
+    end)
+    if not next(_all) and _orig then
+        return _orig
+    end
+    -- 元々持っているものもマージ
+    if _orig then
+        for wn, v in pairs(_orig) do
+            _all[wn] = v
+        end
+    end
+    return _all
 end
 
 local _fightCtrl
@@ -4190,7 +4229,24 @@ UnlockAllToggle:AddKeyPicker("UnlockAllKey", {
     Text = "Unlock All",
 })
 
--- ========== DEVICE SPOOFER ==========
+UnlockAllSection:AddToggle("UnlockWeaponsToggle", {
+    Text = "Unlock All Weapons (UI)",
+    Default = false,
+    Tooltip = "自分の画面の装備UIで全武器がアンロック済みに見える",
+    Callback = function(value)
+        getgenv().UnlockWeaponsEnabled = value
+        -- Equipment UIをリフレッシュ
+        pcall(function()
+            local EquipmentModule = lp:WaitForChild("PlayerScripts"):WaitForChild("Modules"):WaitForChild("UserInterface"):WaitForChild("Equipment")
+            local eq = require(EquipmentModule)
+            if eq and eq.Left and eq.Left._Generate then
+                eq.Left:_Generate()
+            end
+        end)
+    end
+})
+
+
 local DeviceSpoofSection = Tabs.Misc:AddLeftGroupbox("Device Spoofer")
 
 local DeviceSpooferToggle, DeviceSpoofDropdownObj
