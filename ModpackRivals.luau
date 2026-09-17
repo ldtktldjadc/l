@@ -3216,7 +3216,7 @@ do
                 if not FFASettings.AutoRespawn then return end
                 task.spawn(function()
                     while FFASettings.AutoRespawn do
-                        local char = lplr.Character
+                        local char = lp.Character
                         if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
                             break
                         end
@@ -3229,12 +3229,12 @@ do
             end)
         end
     end
-    lplr.CharacterAdded:Connect(onCharacter)
-    if lplr.Character then task.spawn(function() onCharacter(lplr.Character) end) end
+    lp.CharacterAdded:Connect(onCharacter)
+    if lp.Character then task.spawn(function() onCharacter(lp.Character) end) end
 
     local ffaTime = 0
-    runS.RenderStepped:Connect(function(dt)
-        local character = lplr.Character
+    RunService.RenderStepped:Connect(function(dt)
+        local character = lp.Character
         if not character then return end
         local hrp = character:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
