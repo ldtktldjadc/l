@@ -3187,6 +3187,82 @@ do
             )
         end)
     end)
+
+    -- ===== FFA =====
+    local FFASection = Tabs.Rage:AddLeftGroupbox("FFA")
+    local FFASettings = {
+        AutoHealth = true,
+        AutoAmmo = true,
+        AutoRespawn = true,
+    }
+
+    FFASection:AddToggle("FFA_AutoHealth", {
+        Text = "Auto Health", Default = true,
+        Callback = function(value) FFASettings.AutoHealth = value end
+    })
+    FFASection:AddToggle("FFA_AutoAmmo", {
+        Text = "Auto Ammo", Default = true,
+        Callback = function(value) FFASettings.AutoAmmo = value end
+    })
+    FFASection:AddToggle("FFA_AutoRespawn", {
+        Text = "Auto Respawn", Default = true,
+        Callback = function(value) FFASettings.AutoRespawn = value end
+    })
+
+    local function onCharacter(character)
+        local humanoid = character:WaitForChild("Humanoid", 5)
+        if humanoid then
+            humanoid.Died:Connect(function()
+                if not FFASettings.AutoRespawn then return end
+                task.spawn(function()
+                    while FFASettings.AutoRespawn do
+                        local char = lplr.Character
+                        if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
+                            break
+                        end
+                        pcall(function() keypress(0x20) end)
+                        task.wait(0.1)
+                        pcall(function() keyrelease(0x20) end)
+                        task.wait(0.1)
+                    end
+                end)
+            end)
+        end
+    end
+    lplr.CharacterAdded:Connect(onCharacter)
+    if lplr.Character then task.spawn(function() onCharacter(lplr.Character) end) end
+
+    local ffaTime = 0
+    runS.RenderStepped:Connect(function(dt)
+        local character = lplr.Character
+        if not character then return end
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        ffaTime = ffaTime + dt * 8
+        local bounce = math.sin(ffaTime) * 4
+
+        local targetPos = (currentDesyncCF and currentDesyncCF.Position) or hrp.Position
+
+        for _, obj in workspace:GetChildren() do
+            if obj.Name == "_drop" and obj:IsA("BasePart") then
+                if (FFASettings.AutoAmmo and obj:FindFirstChild("Ammo")) or
+                   (FFASettings.AutoHealth and obj:FindFirstChild("Health")) then
+                    obj.Anchored = true
+                    obj.CFrame = CFrame.new(targetPos + Vector3.new(0, bounce, 0))
+                    obj.Transparency = 1
+                    for _, child in pairs(obj:GetDescendants()) do
+                        if child:IsA("BasePart") or child:IsA("UnionOperation") or child:IsA("MeshPart") or child:IsA("SpecialMesh") then
+                            pcall(function() child.Transparency = 1 end)
+                        end
+                        if child:IsA("BillboardGui") or child:IsA("SurfaceGui") or child:IsA("ParticleEmitter") or child:IsA("SelectionBox") then
+                            pcall(function() child.Enabled = false end)
+                        end
+                    end
+                end
+            end
+        end
+    end)
 end
 -- ===== GUN MODS =====
 do
