@@ -3043,7 +3043,7 @@ do
                 and (not isEscaping)
                 and (not isReloading)
                 and (not myFF)
-                and (not targetFF)
+                and (tc == false or not targetFF)
                 and targetPlayer ~= nil
                 and targetRoot ~= nil
                 and targetPart ~= nil
