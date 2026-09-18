@@ -3933,10 +3933,6 @@ local function _loadCfg()
                         })
                         if _cloned then
                             _eq[wn][ct] = _cloned
-                            if ct == "Wrap" or ct == "Wrapping" then
-                                _eq[wn]["Wrap"] = _cloned
-                                _eq[wn]["Wrapping"] = _cloned
-                            end
                             _cnt += 1
                         end
                     end
@@ -3963,23 +3959,11 @@ end
 
 _loadCfg()
 
-local _cosTypes = {Skin = true, Wrap = true, Wrapping = true, Charm = true, Dance = true, Emote = true, Finisher = true}
-local function _isCosType(cosObj, nm)
-    if not cosObj and nm then
-        cosObj = _cosLib.Cosmetics[nm]
-    end
-    if cosObj and _cosTypes[cosObj.Type] == true then return true end
-    if cosObj and cosObj.Type then
-        local ct = tostring(cosObj.Type):lower()
-        if ct:find("wrap") or ct:find("charm") or ct:find("dance") or ct:find("emote") or ct:find("skin") or ct:find("finish") then
-            return true
-        end
-    end
-    if nm then
-        local l = tostring(nm):lower()
-        if l:find("wrap") or l:find("charm") or l:find("dance") or l:find("emote") or l:find("skin") or l:find("finish") then
-            return true
-        end
+local _cosTypes = {"Skin","Wrap","Charm","Dance","Emote","Finisher"}
+local function _isCosType(cosObj)
+    if not cosObj then return false end
+    for _, t in ipairs(_cosTypes) do
+        if cosObj.Type == t then return true end
     end
     return false
 end
@@ -3987,68 +3971,63 @@ end
 local _origOwnsNormally = _cosLib.OwnsCosmeticNormally
 _cosLib.OwnsCosmeticNormally = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsNormally(self, inv, nm, wep) end
-    if _isCosType(nil, nm) then return true end
-    return _origOwnsNormally(self, inv, nm, wep)
+    local c = _cosLib.Cosmetics[nm]
+    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
+    return false
 end
 local _origOwnsUniversally = _cosLib.OwnsCosmeticUniversally
 _cosLib.OwnsCosmeticUniversally = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsUniversally(self, inv, nm, wep) end
-    if _isCosType(nil, nm) then return true end
-    return _origOwnsUniversally(self, inv, nm, wep)
+    local c = _cosLib.Cosmetics[nm]
+    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
+    return false
 end
 local _origOwnsForWep = _cosLib.OwnsCosmeticForWeapon
 _cosLib.OwnsCosmeticForWeapon = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsForWep(self, inv, nm, wep) end
-    if _isCosType(nil, nm) then return true end
-    return _origOwnsForWep(self, inv, nm, wep)
-end
-
-local _origOwnsForSm = _cosLib.OwnsCosmeticForSomething
-if _origOwnsForSm then
-    _cosLib.OwnsCosmeticForSomething = function(self, inv, nm)
-        if not getgenv().UnlockAllEnabled then return _origOwnsForSm(self, inv, nm) end
-        if _isCosType(nil, nm) then return true end
-        return _origOwnsForSm(self, inv, nm)
-    end
+    local c = _cosLib.Cosmetics[nm]
+    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
+    return false
 end
 
 local _origOwns = _cosLib.OwnsCosmetic
 _cosLib.OwnsCosmetic = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwns(self, inv, nm, wep) end
-    if nm and (tostring(nm):find("MISSING_") or nm == "Bubble Gun") then
+    if nm:find("MISSING_") or nm == "Bubble Gun" then
         return _origOwns(self, inv, nm, wep)
     end
-    if _isCosType(nil, nm) then return true end
+    local c = _cosLib.Cosmetics[nm]
+    if c and _isCosType(c) then return true end
     return _origOwns(self, inv, nm, wep)
 end
 
-local _cachedCosmeticProxy = nil
 local _origGet = _datCtrl.Get
 _datCtrl.Get = function(self, key)
     local _val = _origGet(self, key)
     if not getgenv().UnlockAllEnabled then return _val end
     if key == "CosmeticInventory" then
-        if _cachedCosmeticProxy then return _cachedCosmeticProxy end
         local _prx = {}
         if _val then
             for k, v in pairs(_val) do
-                if _isCosType(nil, k) then _prx[k] = v end
+                local c = _cosLib.Cosmetics[k]
+                if c and _isCosType(c) then _prx[k] = v end
             end
         end
-        _cachedCosmeticProxy = setmetatable(_prx, {
+        return setmetatable(_prx, {
             __index = function(t, k)
-                if _isCosType(nil, k) then return true end
+                local c = _cosLib.Cosmetics[k]
+                if c and _isCosType(c) then return true end
                 return nil
             end
         })
-        return _cachedCosmeticProxy
     end
     if key == "FavoritedCosmetics" then
         local _res = _val and table.clone(_val) or {}
         for wep, fv in pairs(_favs) do
             _res[wep] = _res[wep] or {}
             for nm, isFav in pairs(fv) do
-                if _isCosType(nil, nm) then
+                local c = _cosLib.Cosmetics[nm]
+                if c and _isCosType(c) then
                     _res[wep][nm] = isFav
                 end
             end
@@ -4058,86 +4037,20 @@ _datCtrl.Get = function(self, key)
     return _val
 end
 
-local function _patchCurrentData(cd)
-    if not cd or cd._unlockAllPatched then return end
-    cd._unlockAllPatched = true
-    local _cdGet = cd.Get
-    cd.Get = function(self, key, ...)
-        if getgenv().UnlockAllEnabled then
-            if key == "CosmeticInventory" then
-                return _datCtrl:Get("CosmeticInventory")
-            elseif key == "FavoritedCosmetics" then
-                return _datCtrl:Get("FavoritedCosmetics")
-            end
-        end
-        return _cdGet(self, key, ...)
-    end
-end
-if _datCtrl.CurrentData then _patchCurrentData(_datCtrl.CurrentData) end
-if _datCtrl.PlayerDataAdded then
-    _datCtrl.PlayerDataAdded:Connect(function(cd) _patchCurrentData(cd) end)
-end
-
-local _wepDataCache = {}
 local _origGetWep = _datCtrl.GetWeaponData
 _datCtrl.GetWeaponData = function(self, wn)
     local _d = _origGetWep(self, wn)
     if not getgenv().UnlockAllEnabled then return _d end
-    -- 未所持武器もフェイクデータで返す
-    if not _d then
-        if getgenv().UnlockWeaponsEnabled then
-            return {
-                Name = wn,
-                Level = 1,
-                XP = 0,
-                Kills = 0,
-                Headshots = 0,
-                IsFavorited = false,
-            }
-        end
-        return nil
-    end
-    if _wepDataCache[wn] then return _wepDataCache[wn] end
+    if not _d then return nil end
     local _m = {}
     for k, v in pairs(_d) do _m[k] = v end
     _m.Name = wn
     if _eq[wn] then
         for ct, cd in pairs(_eq[wn]) do
             _m[ct] = cd
-            if ct == "Wrap" or ct == "Wrapping" then
-                _m["Wrap"] = cd
-                _m["Wrapping"] = cd
-            end
         end
     end
-    _wepDataCache[wn] = _m
     return _m
-end
-
--- GetUnlockedWeapons フック（武器装備UIのロック判定を全解除）
-local _origGetUnlockedWeps = _datCtrl.GetUnlockedWeapons
-_datCtrl.GetUnlockedWeapons = function(self, ...)
-    local _orig = _origGetUnlockedWeps(self, ...)
-    if not getgenv().UnlockWeaponsEnabled then return _orig end
-    local _all = {}
-    pcall(function()
-        local _shopLib = require(_rs:WaitForChild("Modules", 5):WaitForChild("ShopLibrary", 5))
-        if _shopLib and _shopLib.OwnableWeapons then
-            for _, wn in pairs(_shopLib.OwnableWeapons) do
-                _all[wn] = true
-            end
-        end
-    end)
-    if not next(_all) and _orig then
-        return _orig
-    end
-    -- 元々持っているものもマージ
-    if _orig then
-        for wn, v in pairs(_orig) do
-            _all[wn] = v
-        end
-    end
-    return _all
 end
 
 local _fightCtrl
@@ -4150,19 +4063,41 @@ if hookmetamethod then
     local _dataRem   = _remotes and _remotes:FindFirstChild("Data")
     local _equipRem  = _dataRem and _dataRem:FindFirstChild("EquipCosmetic")
     local _favRem    = _dataRem and _dataRem:FindFirstChild("FavoriteCosmetic")
+    local _repRem    = _remotes and _remotes:FindFirstChild("Replication")
+    local _fightRem  = _repRem and _repRem:FindFirstChild("Fighter")
+    local _useItmRem = _fightRem and _fightRem:FindFirstChild("UseItem")
 
     if _equipRem then
         local _onc
         _onc = hookmetamethod(game, "__namecall", function(self, ...)
-            local method = getnamecallmethod()
-            if method ~= "FireServer" then
+            if getnamecallmethod() ~= "FireServer" then
                 return _onc(self, ...)
             end
             if not getgenv().UnlockAllEnabled then return _onc(self, ...) end
+            local _a = {...}
+
+            if _useItmRem and self == _useItmRem then
+                local _oid = _a[1]
+                if _fightCtrl then
+                    pcall(function()
+                        local _f = _fightCtrl:GetFighter(_lp)
+                        if _f and _f.Items then
+                            for _, itm in pairs(_f.Items) do
+                                if itm:Get("ObjectID") == _oid then
+                                    _lastWep = itm.Name
+                                    break
+                                end
+                            end
+                        end
+                    end)
+                end
+            end
 
             if self == _equipRem then
-                local _wn, _ct, _cn, _opts = ...
-                _opts = _opts or {}
+                local _wn   = _a[1]
+                local _ct   = _a[2]
+                local _cn   = _a[3]
+                local _opts = _a[4] or {}
                 if _cn and _cn ~= "None" and _cn ~= "" then
                     local _inv = _datCtrl:Get("CosmeticInventory")
                     if _inv and rawget(_inv, _cn) then
@@ -4172,10 +4107,6 @@ if hookmetamethod then
                 _eq[_wn] = _eq[_wn] or {}
                 if not _cn or _cn == "None" or _cn == "" then
                     _eq[_wn][_ct] = nil
-                    if _ct == "Wrap" or _ct == "Wrapping" then
-                        _eq[_wn]["Wrap"] = nil
-                        _eq[_wn]["Wrapping"] = nil
-                    end
                     if not next(_eq[_wn]) then _eq[_wn] = nil end
                 else
                     local _cloned = _mkCosmetic(_cn, _ct, {
@@ -4184,35 +4115,25 @@ if hookmetamethod then
                     })
                     if _cloned then
                         _eq[_wn][_ct] = _cloned
-                        if _ct == "Wrap" or _ct == "Wrapping" then
-                            _eq[_wn]["Wrap"] = _cloned
-                            _eq[_wn]["Wrapping"] = _cloned
-                        elseif _ct == "Finisher" then
+                        if _ct == "Finisher" then
                             _lastEquippedFinisher = _cloned
                         end
                     end
                 end
-                if _wepDataCache then table.clear(_wepDataCache) end
                 task.defer(function()
-                    if _datCtrl.CurrentData then
-                        pcall(function() _datCtrl.CurrentData:Replicate("WeaponInventory") end)
-                        pcall(function() _datCtrl.CurrentData:Replicate("CosmeticInventory") end)
-                    end
+                    pcall(function() _datCtrl.CurrentData:Replicate("WeaponInventory") end)
                 end)
                 _saveCfg()
                 return
             end
 
             if self == _favRem then
-                local a1, a2, a3 = ...
-                local _cos = _cosLib.Cosmetics[a2]
+                local _cos = _cosLib.Cosmetics[_a[2]]
                 if _cos then
-                    _favs[a1] = _favs[a1] or {}
-                    _favs[a1][a2] = a3 or nil
+                    _favs[_a[1]] = _favs[_a[1]] or {}
+                    _favs[_a[1]][_a[2]] = _a[3] or nil
                     task.spawn(function()
-                        if _datCtrl.CurrentData then
-                            pcall(function() _datCtrl.CurrentData:Replicate("FavoritedCosmetics") end)
-                        end
+                        pcall(function() _datCtrl.CurrentData:Replicate("FavoritedCosmetics") end)
                     end)
                     _saveCfg()
                 end
@@ -4238,25 +4159,18 @@ if _cliItem and _cliItem._CreateViewModel then
         _buildingWep = (_wp == _lp) and _wn or nil
         if _wp == _lp and _eq[_wn] then
             local _dk = self:ToEnum("Data")
-            local _wrap = _eq[_wn].Wrap or _eq[_wn].Wrapping
             if vmRef[_dk] then
                 if _eq[_wn].Skin then
                     vmRef[_dk][self:ToEnum("Skin")] = _eq[_wn].Skin
                     vmRef[_dk][self:ToEnum("Name")] = _eq[_wn].Skin.Name
                 end
-                if _eq[_wn].Charm then vmRef[_dk][self:ToEnum("Charm")] = _eq[_wn].Charm end
-                if _wrap then
-                    pcall(function() vmRef[_dk][self:ToEnum("Wrap")] = _wrap end)
-                    pcall(function() vmRef[_dk][self:ToEnum("Wrapping")] = _wrap end)
-                end
+                if _eq[_wn].Charm    then vmRef[_dk][self:ToEnum("Charm")]    = _eq[_wn].Charm    end
+                if _eq[_wn].Wrap     then vmRef[_dk][self:ToEnum("Wrap")]     = _eq[_wn].Wrap     end
                 pcall(function() if _eq[_wn].Finisher then vmRef[_dk][self:ToEnum("Finisher")] = _eq[_wn].Finisher end end)
             elseif vmRef.Data then
-                if _eq[_wn].Skin  then vmRef.Data.Skin  = _eq[_wn].Skin; vmRef.Data.Name = _eq[_wn].Skin.Name end
-                if _eq[_wn].Charm then vmRef.Data.Charm = _eq[_wn].Charm end
-                if _wrap then
-                    vmRef.Data.Wrap = _wrap
-                    vmRef.Data.Wrapping = _wrap
-                end
+                if _eq[_wn].Skin     then vmRef.Data.Skin     = _eq[_wn].Skin; vmRef.Data.Name = _eq[_wn].Skin.Name end
+                if _eq[_wn].Charm    then vmRef.Data.Charm    = _eq[_wn].Charm    end
+                if _eq[_wn].Wrap     then vmRef.Data.Wrap     = _eq[_wn].Wrap     end
                 pcall(function() if _eq[_wn].Finisher then vmRef.Data.Finisher = _eq[_wn].Finisher end end)
             end
         end
@@ -4270,71 +4184,21 @@ local _vmMod = _lp.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.C
 if _vmMod then
     local _CVM = require(_vmMod)
     local _origNew = _CVM.new
-    local _RC  = require(_rs.Modules.ReplicatedClass)
-    local _dk  = _RC:ToEnum("Data")
-    local _ekSkin = _RC:ToEnum("Skin")
-    local _ekCharm = _RC:ToEnum("Charm")
-    local _ekWrap = _RC:ToEnum("Wrap")
-
-    if _CVM.GetWrap then
-        local _origGetWrap = _CVM.GetWrap
-        _CVM.GetWrap = function(self)
-            if not getgenv().UnlockAllEnabled then return _origGetWrap(self) end
-            local _cliItm = self.ClientItem
-            local _wn = _cliItm and _cliItm.Name
-            local _wp = _cliItm and _cliItm.ClientFighter and _cliItm.ClientFighter.Player
-            if _wn and _wp == _lp and _eq[_wn] then
-                local _w = _eq[_wn].Wrap or _eq[_wn].Wrapping
-                if _w then return _w end
-            end
-            return _origGetWrap(self)
-        end
-    end
-
-    if _CVM.GetCharm then
-        local _origGetCharm = _CVM.GetCharm
-        _CVM.GetCharm = function(self)
-            if not getgenv().UnlockAllEnabled then return _origGetCharm(self) end
-            local _cliItm = self.ClientItem
-            local _wn = _cliItm and _cliItm.Name
-            local _wp = _cliItm and _cliItm.ClientFighter and _cliItm.ClientFighter.Player
-            if _wn and _wp == _lp and _eq[_wn] and _eq[_wn].Charm then
-                return _eq[_wn].Charm
-            end
-            return _origGetCharm(self)
-        end
-    end
-
     _CVM.new = function(repData, cliItm)
         if not getgenv().UnlockAllEnabled then return _origNew(repData, cliItm) end
         local _wp  = cliItm.ClientFighter and cliItm.ClientFighter.Player
         local _wn  = _buildingWep or cliItm.Name
         if _wp == _lp and _eq[_wn] then
+            local _RC  = require(_rs.Modules.ReplicatedClass)
+            local _dk  = _RC:ToEnum("Data")
             repData[_dk] = repData[_dk] or {}
             local _cos = _eq[_wn]
-            local _w = _cos.Wrap or _cos.Wrapping
-            if _cos.Skin  then repData[_dk][_ekSkin]  = _cos.Skin  end
-            if _cos.Charm then repData[_dk][_ekCharm] = _cos.Charm end
-            if _w then
-                if _ekWrap then repData[_dk][_ekWrap] = _w end
-                pcall(function() repData[_dk][_RC:ToEnum("Wrapping")] = _w end)
-            end
-            pcall(function()
-                if _cos.Finisher then
-                    repData[_dk][_RC:ToEnum("Finisher")] = _cos.Finisher
-                end
-            end)
+            if _cos.Skin     then repData[_dk][_RC:ToEnum("Skin")]  = _cos.Skin  end
+            if _cos.Charm    then repData[_dk][_RC:ToEnum("Charm")] = _cos.Charm end
+            if _cos.Wrap     then repData[_dk][_RC:ToEnum("Wrap")]  = _cos.Wrap  end
+            pcall(function() if _cos.Finisher then repData[_dk][_RC:ToEnum("Finisher")] = _cos.Finisher end end)
         end
-        local _res = _origNew(repData, cliItm)
-        if _wp == _lp and _eq[_wn] and (_eq[_wn].Wrap or _eq[_wn].Wrapping) and _res and _res._UpdateWrap then
-            pcall(function() _res:_UpdateWrap() end)
-            task.delay(0.1, function()
-                if _res and not _res._destroyed and _res._UpdateWrap then
-                    pcall(function() _res:_UpdateWrap() end)
-                end
-            end)
-        end
-        return _res
+        return _origNew(repData, cliItm)
     end
 end
 
