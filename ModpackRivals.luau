@@ -3234,33 +3234,30 @@ do
     if lp.Character then task.spawn(function() onCharacter(lp.Character) end) end
 
     local ffaTime = 0
-    task.spawn(function()
-        while true do
-            task.wait(0.05)
-            local character = lp.Character
-            if not character then continue end
-            local hrp = character:FindFirstChild("HumanoidRootPart")
-            if not hrp then continue end
+    RunService.Heartbeat:Connect(function(dt)
+        local character = lp.Character
+        if not character then return end
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
 
-            ffaTime = ffaTime + 0.05 * 8
-            local bounce = math.sin(ffaTime) * 4
+        ffaTime = ffaTime + dt * 8
+        local bounce = math.sin(ffaTime) * 4
 
-            local targetPos = (currentDesyncCF and currentDesyncCF.Position) or hrp.Position
+        local targetPos = (currentDesyncCF and currentDesyncCF.Position) or hrp.Position
 
-            for _, obj in workspace:GetChildren() do
-                if obj.Name == "_drop" and obj:IsA("BasePart") then
-                    if (FFASettings.AutoAmmo and obj:FindFirstChild("Ammo")) or
-                       (FFASettings.AutoHealth and obj:FindFirstChild("Health")) then
-                        obj.Anchored = true
-                        obj.CFrame = CFrame.new(targetPos + Vector3.new(0, bounce, 0))
-                        obj.Transparency = 1
-                        for _, child in pairs(obj:GetDescendants()) do
-                            if child:IsA("BasePart") or child:IsA("UnionOperation") or child:IsA("MeshPart") or child:IsA("SpecialMesh") then
-                                pcall(function() child.Transparency = 1 end)
-                            end
-                            if child:IsA("BillboardGui") or child:IsA("SurfaceGui") or child:IsA("ParticleEmitter") or child:IsA("SelectionBox") then
-                                pcall(function() child.Enabled = false end)
-                            end
+        for _, obj in workspace:GetChildren() do
+            if obj.Name == "_drop" and obj:IsA("BasePart") then
+                if (FFASettings.AutoAmmo and obj:FindFirstChild("Ammo")) or
+                   (FFASettings.AutoHealth and obj:FindFirstChild("Health")) then
+                    obj.Anchored = true
+                    obj.CFrame = CFrame.new(targetPos + Vector3.new(0, bounce, 0))
+                    obj.Transparency = 1
+                    for _, child in pairs(obj:GetDescendants()) do
+                        if child:IsA("BasePart") or child:IsA("UnionOperation") or child:IsA("MeshPart") or child:IsA("SpecialMesh") then
+                            pcall(function() child.Transparency = 1 end)
+                        end
+                        if child:IsA("BillboardGui") or child:IsA("SurfaceGui") or child:IsA("ParticleEmitter") or child:IsA("SelectionBox") then
+                            pcall(function() child.Enabled = false end)
                         end
                     end
                 end
