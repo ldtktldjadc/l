@@ -3107,6 +3107,7 @@ do
             local oldVel    = myRoot.Velocity
             local oldRotVel = myRoot.RotVelocity
             myRoot.CFrame = desyncCF
+            currentDesyncCF = desyncCF
             pcall(function() runS:UnbindFromRenderStep("__restore") end)
             runS:BindToRenderStep("__restore", 101, function()
                 if myRoot then
