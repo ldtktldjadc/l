@@ -3864,7 +3864,6 @@ local _eq, _favs = {}, {}
 local _buildingWep, _viewProf = nil, nil
 local _lastWep = nil
 local _fakeInv = {}
-local _lastEquippedFinisher = nil
 
 local function _mkCosmetic(nm, ctype, opts)
     local _base = _cosLib.Cosmetics[nm]
@@ -3959,7 +3958,7 @@ end
 
 _loadCfg()
 
-local _cosTypes = {"Skin","Wrap","Charm","Dance","Emote","Finisher"}
+local _cosTypes = {"Skin","Wrap","Charm","Dance","Emote"}
 local function _isCosType(cosObj)
     if not cosObj then return false end
     for _, t in ipairs(_cosTypes) do
@@ -3968,42 +3967,25 @@ local function _isCosType(cosObj)
     return false
 end
 
-local _origOwnsNormally = _cosLib.OwnsCosmeticNormally
 _cosLib.OwnsCosmeticNormally = function(self, inv, nm, wep)
-    if not getgenv().UnlockAllEnabled then return _origOwnsNormally(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and _isCosType(c) then return true end
-    return _origOwnsNormally(self, inv, nm, wep)
+    if c and c.Type == "Skin" then return true end
+    return false
 end
-local _origOwnsUniversally = _cosLib.OwnsCosmeticUniversally
 _cosLib.OwnsCosmeticUniversally = function(self, inv, nm, wep)
-    if not getgenv().UnlockAllEnabled then return _origOwnsUniversally(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and _isCosType(c) then return true end
-    return _origOwnsUniversally(self, inv, nm, wep)
+    if c and c.Type == "Skin" then return true end
+    return false
 end
-local _origOwnsForWep = _cosLib.OwnsCosmeticForWeapon
 _cosLib.OwnsCosmeticForWeapon = function(self, inv, nm, wep)
-    if not getgenv().UnlockAllEnabled then return _origOwnsForWep(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and _isCosType(c) then return true end
-    return _origOwnsForWep(self, inv, nm, wep)
-end
-
-if _cosLib.OwnsCosmeticForSomething then
-    local _origOwnsForSomething = _cosLib.OwnsCosmeticForSomething
-    _cosLib.OwnsCosmeticForSomething = function(self, inv, nm)
-        if not getgenv().UnlockAllEnabled then return _origOwnsForSomething(self, inv, nm) end
-        local c = _cosLib.Cosmetics[nm]
-        if c and _isCosType(c) then return true end
-        return _origOwnsForSomething(self, inv, nm)
-    end
+    if c and c.Type == "Skin" then return true end
+    return false
 end
 
 local _origOwns = _cosLib.OwnsCosmetic
 _cosLib.OwnsCosmetic = function(self, inv, nm, wep)
-    if not getgenv().UnlockAllEnabled then return _origOwns(self, inv, nm, wep) end
-    if not nm or type(nm) ~= "string" or nm:find("MISSING_") or nm == "Bubble Gun" then
+    if nm:find("MISSING_") or nm == "Bubble Gun" then
         return _origOwns(self, inv, nm, wep)
     end
     local c = _cosLib.Cosmetics[nm]
@@ -4014,7 +3996,6 @@ end
 local _origGet = _datCtrl.Get
 _datCtrl.Get = function(self, key)
     local _val = _origGet(self, key)
-    if not getgenv().UnlockAllEnabled then return _val end
     if key == "CosmeticInventory" then
         local _prx = {}
         if _val then
@@ -4050,7 +4031,6 @@ end
 local _origGetWep = _datCtrl.GetWeaponData
 _datCtrl.GetWeaponData = function(self, wn)
     local _d = _origGetWep(self, wn)
-    if not getgenv().UnlockAllEnabled then return _d end
     if not _d then return nil end
     local _m = {}
     for k, v in pairs(_d) do _m[k] = v end
@@ -4083,7 +4063,6 @@ if hookmetamethod then
             if getnamecallmethod() ~= "FireServer" then
                 return _onc(self, ...)
             end
-            if not getgenv().UnlockAllEnabled then return _onc(self, ...) end
             local _a = {...}
 
             if _useItmRem and self == _useItmRem then
@@ -4123,23 +4102,10 @@ if hookmetamethod then
                         inverted = _opts.IsInverted,
                         favoritesOnly = _opts.OnlyUseFavorites
                     })
-                    if _cloned then
-                        _eq[_wn][_ct] = _cloned
-                        if _ct == "Finisher" then
-                            _lastEquippedFinisher = _cloned
-                        end
-                    end
+                    if _cloned then _eq[_wn][_ct] = _cloned end
                 end
                 task.defer(function()
                     pcall(function() _datCtrl.CurrentData:Replicate("WeaponInventory") end)
-                    pcall(function()
-                        if _fightCtrl then
-                            local f = _fightCtrl:GetFighter(_lp)
-                            if f and f.ActiveItem and f.ActiveItem.ClientViewModel and f.ActiveItem.ClientViewModel._UpdateWrap then
-                                f.ActiveItem.ClientViewModel:_UpdateWrap()
-                            end
-                        end
-                    end)
                 end)
                 _saveCfg()
                 return
@@ -4171,7 +4137,6 @@ end)
 if _cliItem and _cliItem._CreateViewModel then
     local _origCVM = _cliItem._CreateViewModel
     _cliItem._CreateViewModel = function(self, vmRef)
-        if not getgenv().UnlockAllEnabled then return _origCVM(self, vmRef) end
         local _wn  = self.Name
         local _wp  = self.ClientFighter and self.ClientFighter.Player
         _buildingWep = (_wp == _lp) and _wn or nil
@@ -4182,14 +4147,12 @@ if _cliItem and _cliItem._CreateViewModel then
                     vmRef[_dk][self:ToEnum("Skin")] = _eq[_wn].Skin
                     vmRef[_dk][self:ToEnum("Name")] = _eq[_wn].Skin.Name
                 end
-                if _eq[_wn].Charm    then vmRef[_dk][self:ToEnum("Charm")]    = _eq[_wn].Charm    end
-                if _eq[_wn].Wrap     then vmRef[_dk][self:ToEnum("Wrap")]     = _eq[_wn].Wrap     end
-                pcall(function() if _eq[_wn].Finisher then vmRef[_dk][self:ToEnum("Finisher")] = _eq[_wn].Finisher end end)
+                if _eq[_wn].Charm then vmRef[_dk][self:ToEnum("Charm")] = _eq[_wn].Charm end
+                if _eq[_wn].Wrap  then vmRef[_dk][self:ToEnum("Wrap")]  = _eq[_wn].Wrap  end
             elseif vmRef.Data then
-                if _eq[_wn].Skin     then vmRef.Data.Skin     = _eq[_wn].Skin; vmRef.Data.Name = _eq[_wn].Skin.Name end
-                if _eq[_wn].Charm    then vmRef.Data.Charm    = _eq[_wn].Charm    end
-                if _eq[_wn].Wrap     then vmRef.Data.Wrap     = _eq[_wn].Wrap     end
-                pcall(function() if _eq[_wn].Finisher then vmRef.Data.Finisher = _eq[_wn].Finisher end end)
+                if _eq[_wn].Skin  then vmRef.Data.Skin  = _eq[_wn].Skin; vmRef.Data.Name = _eq[_wn].Skin.Name end
+                if _eq[_wn].Charm then vmRef.Data.Charm = _eq[_wn].Charm end
+                if _eq[_wn].Wrap  then vmRef.Data.Wrap  = _eq[_wn].Wrap  end
             end
         end
         local _r = _origCVM(self, vmRef)
@@ -4198,50 +4161,11 @@ if _cliItem and _cliItem._CreateViewModel then
     end
 end
 
-if _cliItem and _cliItem.GetWrap then
-    local _origCliGetWrap = _cliItem.GetWrap
-    _cliItem.GetWrap = function(self)
-        if not getgenv().UnlockAllEnabled then return _origCliGetWrap(self) end
-        local _wn = self.Name
-        local _wp = self.ClientFighter and self.ClientFighter.Player
-        if _wp == _lp and _eq[_wn] and _eq[_wn].Wrap then
-            return _eq[_wn].Wrap
-        end
-        return _origCliGetWrap(self)
-    end
-end
-
-if _fightCtrl and _fightCtrl.GetWrap then
-    local _origFightGetWrap = _fightCtrl.GetWrap
-    _fightCtrl.GetWrap = function(self, objectID)
-        if not getgenv().UnlockAllEnabled then return _origFightGetWrap(self, objectID) end
-        local res = _origFightGetWrap(self, objectID)
-        if res then return res end
-        if _lastWep and _eq[_lastWep] and _eq[_lastWep].Wrap then
-            return _eq[_lastWep].Wrap
-        end
-        return nil
-    end
-end
-
 local _vmMod = _lp.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem:FindFirstChild("ClientViewModel")
 if _vmMod then
     local _CVM = require(_vmMod)
-    if _CVM.GetWrap then
-        local _origGetWrap = _CVM.GetWrap
-        _CVM.GetWrap = function(self)
-            if not getgenv().UnlockAllEnabled then return _origGetWrap(self) end
-            local _wn = self.ClientItem and self.ClientItem.Name
-            local _wp = self.ClientItem and self.ClientItem.ClientFighter and self.ClientItem.ClientFighter.Player
-            if _wn and _wp == _lp and _eq[_wn] and _eq[_wn].Wrap then
-                return _eq[_wn].Wrap
-            end
-            return _origGetWrap(self)
-        end
-    end
     local _origNew = _CVM.new
     _CVM.new = function(repData, cliItm)
-        if not getgenv().UnlockAllEnabled then return _origNew(repData, cliItm) end
         local _wp  = cliItm.ClientFighter and cliItm.ClientFighter.Player
         local _wn  = _buildingWep or cliItm.Name
         if _wp == _lp and _eq[_wn] then
@@ -4249,108 +4173,13 @@ if _vmMod then
             local _dk  = _RC:ToEnum("Data")
             repData[_dk] = repData[_dk] or {}
             local _cos = _eq[_wn]
-            if _cos.Skin     then repData[_dk][_RC:ToEnum("Skin")]  = _cos.Skin  end
-            if _cos.Charm    then repData[_dk][_RC:ToEnum("Charm")] = _cos.Charm end
-            if _cos.Wrap     then repData[_dk][_RC:ToEnum("Wrap")]  = _cos.Wrap  end
-            pcall(function() if _cos.Finisher then repData[_dk][_RC:ToEnum("Finisher")] = _cos.Finisher end end)
+            if _cos.Skin  then repData[_dk][_RC:ToEnum("Skin")]  = _cos.Skin  end
+            if _cos.Charm then repData[_dk][_RC:ToEnum("Charm")] = _cos.Charm end
+            if _cos.Wrap  then repData[_dk][_RC:ToEnum("Wrap")]  = _cos.Wrap  end
         end
-        local _res = _origNew(repData, cliItm)
-        if _res and _res._UpdateWrap then
-            pcall(function() _res:_UpdateWrap() end)
-        end
-        return _res
+        return _origNew(repData, cliItm)
     end
 end
-
--- FinisherEffect クライアント強制再生フック
-pcall(function()
-    local _ClientEntity = require(_lp.PlayerScripts.Modules.ClientReplicatedClasses.ClientEntity)
-    if not _ClientEntity or not _ClientEntity.ReplicateFromServer then return end
-
-    local _origReplicate = _ClientEntity.ReplicateFromServer
-
-    local function _resolveFinisherData()
-        -- 最後に装備したFinisher最優先
-        if _lastEquippedFinisher then return _lastEquippedFinisher end
-        -- 最後に使った武器のFinisher
-        if _lastWep and _eq[_lastWep] and _eq[_lastWep].Finisher then
-            return _eq[_lastWep].Finisher
-        end
-        -- 任意の武器から
-        for _, cos in pairs(_eq) do
-            if cos.Finisher then return cos.Finisher end
-        end
-        return nil
-    end
-
-    local function _isLocalKiller(args)
-        local killer = args[3]
-        -- killer不明の場合は自分のキルとみなす（フォールバック）
-        if killer == nil then return true end
-        if type(killer) == "number" then
-            return killer == _lp.UserId
-        end
-        if typeof(killer) == "Instance" and killer:IsA("Player") then
-            return killer == _lp
-        end
-        if type(killer) == "string" then
-            return killer:lower() == _lp.Name:lower()
-        end
-        -- enum/userdata型: pcall内のreturnは外に伝わらないので変数に受ける
-        local _enumMatch = false
-        pcall(function()
-            if _enumLib then
-                local ok, decoded = pcall(_enumLib.FromEnum, _enumLib, killer)
-                if ok and decoded ~= nil then
-                    _enumMatch = tostring(decoded):lower() == _lp.Name:lower()
-                end
-            end
-        end)
-        if _enumMatch then return true end
-        -- 判定できない場合は自分のキルとみなす
-        return true
-    end
-
-    _ClientEntity.ReplicateFromServer = function(self, action, ...)
-        if not getgenv().UnlockAllEnabled or action ~= "FinisherEffect" then
-            return _origReplicate(self, action, ...)
-        end
-
-        local args = {...}
-
-        if not _isLocalKiller(args) then
-            return _origReplicate(self, action, ...)
-        end
-
-        local finisherData = _resolveFinisherData()
-        if not finisherData then
-            return _origReplicate(self, action, ...)
-        end
-
-        -- Enum解決
-        local finisherEnum = finisherData.Enum
-        if finisherEnum == nil and _enumLib then
-            pcall(function()
-                finisherEnum = _enumLib:ToEnum(finisherData.Name)
-                finisherData.Enum = finisherEnum
-            end)
-        end
-        if finisherEnum == nil then finisherEnum = finisherData.ObjectID end
-        if finisherEnum == nil then
-            return _origReplicate(self, action, ...)
-        end
-
-        if not self:IsRendered() then return end
-
-        local ok, decoded = pcall(function() return self:FromEnum(finisherEnum) end)
-        if not ok or decoded == nil then decoded = finisherData.Name end
-        if decoded == nil then return _origReplicate(self, action, ...) end
-
-        pcall(function()
-            self:_PlayFinisher(decoded, args[2], args[3], args[4])
-        end)
-    end
-end)
 
                 -- [END EMBEDDED UNLOCKALL.LUA]
             end)
