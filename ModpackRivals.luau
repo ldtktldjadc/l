@@ -3972,28 +3972,38 @@ local _origOwnsNormally = _cosLib.OwnsCosmeticNormally
 _cosLib.OwnsCosmeticNormally = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsNormally(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
-    return false
+    if c and _isCosType(c) then return true end
+    return _origOwnsNormally(self, inv, nm, wep)
 end
 local _origOwnsUniversally = _cosLib.OwnsCosmeticUniversally
 _cosLib.OwnsCosmeticUniversally = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsUniversally(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
-    return false
+    if c and _isCosType(c) then return true end
+    return _origOwnsUniversally(self, inv, nm, wep)
 end
 local _origOwnsForWep = _cosLib.OwnsCosmeticForWeapon
 _cosLib.OwnsCosmeticForWeapon = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwnsForWep(self, inv, nm, wep) end
     local c = _cosLib.Cosmetics[nm]
-    if c and (c.Type == "Skin" or c.Type == "Finisher") then return true end
-    return false
+    if c and _isCosType(c) then return true end
+    return _origOwnsForWep(self, inv, nm, wep)
+end
+
+if _cosLib.OwnsCosmeticForSomething then
+    local _origOwnsForSomething = _cosLib.OwnsCosmeticForSomething
+    _cosLib.OwnsCosmeticForSomething = function(self, inv, nm)
+        if not getgenv().UnlockAllEnabled then return _origOwnsForSomething(self, inv, nm) end
+        local c = _cosLib.Cosmetics[nm]
+        if c and _isCosType(c) then return true end
+        return _origOwnsForSomething(self, inv, nm)
+    end
 end
 
 local _origOwns = _cosLib.OwnsCosmetic
 _cosLib.OwnsCosmetic = function(self, inv, nm, wep)
     if not getgenv().UnlockAllEnabled then return _origOwns(self, inv, nm, wep) end
-    if nm:find("MISSING_") or nm == "Bubble Gun" then
+    if not nm or type(nm) ~= "string" or nm:find("MISSING_") or nm == "Bubble Gun" then
         return _origOwns(self, inv, nm, wep)
     end
     local c = _cosLib.Cosmetics[nm]
@@ -4122,6 +4132,14 @@ if hookmetamethod then
                 end
                 task.defer(function()
                     pcall(function() _datCtrl.CurrentData:Replicate("WeaponInventory") end)
+                    pcall(function()
+                        if _fightCtrl then
+                            local f = _fightCtrl:GetFighter(_lp)
+                            if f and f.ActiveItem and f.ActiveItem.ClientViewModel and f.ActiveItem.ClientViewModel._UpdateWrap then
+                                f.ActiveItem.ClientViewModel:_UpdateWrap()
+                            end
+                        end
+                    end)
                 end)
                 _saveCfg()
                 return
@@ -4180,9 +4198,47 @@ if _cliItem and _cliItem._CreateViewModel then
     end
 end
 
+if _cliItem and _cliItem.GetWrap then
+    local _origCliGetWrap = _cliItem.GetWrap
+    _cliItem.GetWrap = function(self)
+        if not getgenv().UnlockAllEnabled then return _origCliGetWrap(self) end
+        local _wn = self.Name
+        local _wp = self.ClientFighter and self.ClientFighter.Player
+        if _wp == _lp and _eq[_wn] and _eq[_wn].Wrap then
+            return _eq[_wn].Wrap
+        end
+        return _origCliGetWrap(self)
+    end
+end
+
+if _fightCtrl and _fightCtrl.GetWrap then
+    local _origFightGetWrap = _fightCtrl.GetWrap
+    _fightCtrl.GetWrap = function(self, objectID)
+        if not getgenv().UnlockAllEnabled then return _origFightGetWrap(self, objectID) end
+        local res = _origFightGetWrap(self, objectID)
+        if res then return res end
+        if _lastWep and _eq[_lastWep] and _eq[_lastWep].Wrap then
+            return _eq[_lastWep].Wrap
+        end
+        return nil
+    end
+end
+
 local _vmMod = _lp.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem:FindFirstChild("ClientViewModel")
 if _vmMod then
     local _CVM = require(_vmMod)
+    if _CVM.GetWrap then
+        local _origGetWrap = _CVM.GetWrap
+        _CVM.GetWrap = function(self)
+            if not getgenv().UnlockAllEnabled then return _origGetWrap(self) end
+            local _wn = self.ClientItem and self.ClientItem.Name
+            local _wp = self.ClientItem and self.ClientItem.ClientFighter and self.ClientItem.ClientFighter.Player
+            if _wn and _wp == _lp and _eq[_wn] and _eq[_wn].Wrap then
+                return _eq[_wn].Wrap
+            end
+            return _origGetWrap(self)
+        end
+    end
     local _origNew = _CVM.new
     _CVM.new = function(repData, cliItm)
         if not getgenv().UnlockAllEnabled then return _origNew(repData, cliItm) end
@@ -4198,7 +4254,11 @@ if _vmMod then
             if _cos.Wrap     then repData[_dk][_RC:ToEnum("Wrap")]  = _cos.Wrap  end
             pcall(function() if _cos.Finisher then repData[_dk][_RC:ToEnum("Finisher")] = _cos.Finisher end end)
         end
-        return _origNew(repData, cliItm)
+        local _res = _origNew(repData, cliItm)
+        if _res and _res._UpdateWrap then
+            pcall(function() _res:_UpdateWrap() end)
+        end
+        return _res
     end
 end
 
