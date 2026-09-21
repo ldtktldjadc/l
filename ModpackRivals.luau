@@ -2716,7 +2716,7 @@ do
             _noDelayEntry.connection = nil
         end
         _noDelayEntry.refCount = 0
-        local c = lplr.Character
+        local c = lp.Character
         local hum = c and c:FindFirstChildOfClass("Humanoid")
         local root = c and c:FindFirstChild("HumanoidRootPart")
         if hum and root then
@@ -2732,7 +2732,7 @@ do
                 _noDelayDisable()
                 return
             end
-            local ch = lplr.Character
+            local ch = lp.Character
             local hm = ch and ch:FindFirstChildOfClass("Humanoid")
             local rt = ch and ch:FindFirstChild("HumanoidRootPart")
             if not ch or not hm or not rt then return end
@@ -2743,7 +2743,7 @@ do
             local myRoot = rt
             local closest, closestDist = nil, math.huge
             for _, p in ipairs(Players:GetPlayers()) do
-                if p ~= lplr and p.Character then
+                if p ~= lp and p.Character then
                     local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
                     if pRoot then
                         local d = (pRoot.Position - myRoot.Position).Magnitude
@@ -2765,12 +2765,28 @@ do
             end
 
             if not closest or not closest.Parent then return end
+
+            -- Desync: 元位置を保存してからTP、RenderSteppedで戻す
+            local oldCF     = myRoot.CFrame
+            local oldVel    = myRoot.Velocity
+            local oldRotVel = myRoot.RotVelocity
+
             pcall(sethiddenproperty, rt, "PhysicsRepRootPart", closest)
             rt.CFrame = closest.CFrame
             local tVel = closest.AssemblyLinearVelocity
             rt.AssemblyLinearVelocity = tVel
             rt.AssemblyAngularVelocity = Vector3.zero
             pcall(function() rt.Velocity = tVel end)
+
+            pcall(function() RunService:UnbindFromRenderStep("__ndrestore") end)
+            RunService:BindToRenderStep("__ndrestore", 101, function()
+                if rt then
+                    rt.CFrame        = oldCF
+                    rt.Velocity      = oldVel
+                    rt.RotVelocity   = oldRotVel
+                end
+                pcall(function() RunService:UnbindFromRenderStep("__ndrestore") end)
+            end)
         end)
     end
 
@@ -3183,6 +3199,10 @@ do
                         myRoot.AssemblyLinearVelocity = tVel
                         myRoot.AssemblyAngularVelocity = Vector3.zero
                         pcall(function() myRoot.Velocity = tVel end)
+                        desyncCF = myRoot.CFrame
+                        currentDesyncCF = desyncCF
+                    else
+                        -- フォールバック: snapTargetが見つからなくてもdesyncCFをセット
                         desyncCF = myRoot.CFrame
                         currentDesyncCF = desyncCF
                     end
