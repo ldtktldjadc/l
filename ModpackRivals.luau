@@ -2725,69 +2725,8 @@ do
     end
 
     local function _noDelayEnable()
-        if _noDelayEntry.connection then return end
+        -- メインのRageBotHeartbeatがNoDelayを処理するのでここでは有効化フラグのみ
         _noDelayEnabled = true
-        _noDelayEntry.connection = RunService.Heartbeat:Connect(function()
-            if not _noDelayEnabled or not getgenv().Config.Enabled or not getgenv().Config.NoDelay then
-                _noDelayDisable()
-                return
-            end
-            local ch = lp.Character
-            local hm = ch and ch:FindFirstChildOfClass("Humanoid")
-            local rt = ch and ch:FindFirstChild("HumanoidRootPart")
-            if not ch or not hm or not rt then return end
-
-            pcall(setsimulationradius, math.huge, math.huge)
-
-            local snapPartName = getgenv().Config.NoDelaySnapPart or "HitboxHead"
-            local myRoot = rt
-            local closest, closestDist = nil, math.huge
-            for _, p in ipairs(Players:GetPlayers()) do
-                if p ~= lp and p.Character then
-                    local pRoot = p.Character:FindFirstChild("HumanoidRootPart")
-                    if pRoot then
-                        local d = (pRoot.Position - myRoot.Position).Magnitude
-                        if d < closestDist then
-                            closestDist = d
-                            local part
-                            if snapPartName == "RootPart" then
-                                part = pRoot
-                            else
-                                part = p.Character:FindFirstChild(snapPartName)
-                                    or p.Character:FindFirstChild("HitboxHead")
-                                    or p.Character:FindFirstChild("Head")
-                                    or pRoot
-                            end
-                            closest = part
-                        end
-                    end
-                end
-            end
-
-            if not closest or not closest.Parent then return end
-
-            -- Desync: 元位置を保存してからTP、RenderSteppedで戻す
-            local oldCF     = myRoot.CFrame
-            local oldVel    = myRoot.Velocity
-            local oldRotVel = myRoot.RotVelocity
-
-            pcall(sethiddenproperty, rt, "PhysicsRepRootPart", closest)
-            rt.CFrame = closest.CFrame
-            local tVel = closest.AssemblyLinearVelocity
-            rt.AssemblyLinearVelocity = tVel
-            rt.AssemblyAngularVelocity = Vector3.zero
-            pcall(function() rt.Velocity = tVel end)
-
-            pcall(function() RunService:UnbindFromRenderStep("__ndrestore") end)
-            RunService:BindToRenderStep("__ndrestore", 101, function()
-                if rt then
-                    rt.CFrame        = oldCF
-                    rt.Velocity      = oldVel
-                    rt.RotVelocity   = oldRotVel
-                end
-                pcall(function() RunService:UnbindFromRenderStep("__ndrestore") end)
-            end)
-        end)
     end
 
     local NoDelayToggle = RageBotSection:AddToggle("RageBot_NoDelay", {
@@ -3188,9 +3127,15 @@ do
                             or targetRoot
                         )
                     end
+
+                    -- Desync: 元位置保存 → TP → RenderStepped復元
+                    local oldCF     = myRoot.CFrame
+                    local oldVel    = myRoot.Velocity
+                    local oldRotVel = myRoot.RotVelocity
+
                     if snapTarget then
                         pcall(setsimulationradius, math.huge, math.huge)
-                        local hm = lplr.Character and lplr.Character:FindFirstChildOfClass("Humanoid")
+                        local hm = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
                         if hm then
                             pcall(sethiddenproperty, myRoot, "PhysicsRepRootPart", snapTarget)
                         end
@@ -3200,12 +3145,20 @@ do
                         myRoot.AssemblyAngularVelocity = Vector3.zero
                         pcall(function() myRoot.Velocity = tVel end)
                         desyncCF = myRoot.CFrame
-                        currentDesyncCF = desyncCF
                     else
-                        -- フォールバック: snapTargetが見つからなくてもdesyncCFをセット
-                        desyncCF = myRoot.CFrame
-                        currentDesyncCF = desyncCF
+                        desyncCF = oldCF
                     end
+                    currentDesyncCF = desyncCF
+
+                    pcall(function() runS:UnbindFromRenderStep("__restore") end)
+                    runS:BindToRenderStep("__restore", 101, function()
+                        if myRoot then
+                            myRoot.CFrame      = oldCF
+                            myRoot.Velocity    = oldVel
+                            myRoot.RotVelocity = oldRotVel
+                        end
+                        pcall(function() runS:UnbindFromRenderStep("__restore") end)
+                    end)
                 else
                     local curSlot = getgenv().Config.WeaponSlot or "Primary"
                     local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
@@ -3316,7 +3269,13 @@ do
 
             local originPos = desyncCF.Position
             local targetPos = targetPart.Position
-            local aimCF    = CFrame.lookAt(originPos, targetPos)
+            -- origin==targetのlookAt問題を回避（SnapPart==TargetPartの場合など）
+            local aimCF
+            if (originPos - targetPos).Magnitude < 0.5 then
+                aimCF = CFrame.lookAt(originPos, targetPos + Vector3.new(0, 0.001, 0))
+            else
+                aimCF = CFrame.lookAt(originPos, targetPos)
+            end
             local randomOffset = Vector3.new(
                 (math.random() - 0.5) * 0.1,
                 (math.random() - 0.5) * 0.1,
