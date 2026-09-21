@@ -2450,6 +2450,7 @@ do
     getgenv().Config.AntiHit = false
     getgenv().Config.NoDelay = getgenv().Config.NoDelay or false
     getgenv().Config.NoDelaySnapPart = getgenv().Config.NoDelaySnapPart or "HitboxHead"
+    getgenv().Config.MaxDistance = getgenv().Config.MaxDistance or 500
     getgenv().Config.TPOffsets = getgenv().Config.TPOffsets or {
         Primary   = { X = 0, Y = 5, Z = 0 },
         Secondary = { X = 0, Y = 5, Z = 0 },
@@ -2757,6 +2758,17 @@ do
     })
     NoDelayDep:SetupDependencies({ { NoDelayToggle, true } })
 
+    RageBotSection:AddSlider("RageBot_MaxDistance", {
+        Text = "Max Distance",
+        Default = 500,
+        Min = 1,
+        Max = 1000000000000,
+        Rounding = 0,
+        Callback = function(value)
+            getgenv().Config.MaxDistance = value
+        end
+    })
+
     task.spawn(function()
         local repS = cloneref(game:GetService("ReplicatedStorage"))
         local plrs = cloneref(game:GetService("Players"))
@@ -2989,7 +3001,7 @@ do
                 if not pTargetPart then continue end
 
                 local dist = (myRoot.Position - pRoot.Position).Magnitude
-                if dist > 500 then continue end
+                if dist > (getgenv().Config.MaxDistance or 500) then continue end
 
                 local mouseDist = 999999
                 if curCam then
