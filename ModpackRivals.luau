@@ -2435,8 +2435,6 @@ do
         FireRate = 0.0005,
         AntiHit = false,
         AntiHitDuration = 0.5,
-        NoDelay = false,
-        NoDelaySnapPart = "HitboxHead",
         TPOffsets = {
             Primary   = { X = 0, Y = 5, Z = 0 },
             Secondary = { X = 0, Y = 5, Z = 0 },
@@ -2448,7 +2446,6 @@ do
     getgenv().Config.TargetSort = getgenv().Config.TargetSort or "Distance (Closest)"
     if getgenv().Config.TeamCheck == nil then getgenv().Config.TeamCheck = true end
     getgenv().Config.AntiHit = false
-    getgenv().Config.MaxDistance = getgenv().Config.MaxDistance or 500
     getgenv().Config.TPOffsets = getgenv().Config.TPOffsets or {
         Primary   = { X = 0, Y = 5, Z = 0 },
         Secondary = { X = 0, Y = 5, Z = 0 },
@@ -2704,17 +2701,6 @@ do
     })
     AntiHitDep:SetupDependencies({ { AntiHitToggle, true } })
 
-    RageBotSection:AddSlider("RageBot_MaxDistance", {
-        Text = "Max Distance",
-        Default = 500,
-        Min = 1,
-        Max = 1000000000000,
-        Rounding = 0,
-        Callback = function(value)
-            getgenv().Config.MaxDistance = value
-        end
-    })
-
     task.spawn(function()
         local repS = cloneref(game:GetService("ReplicatedStorage"))
         local plrs = cloneref(game:GetService("Players"))
@@ -2947,7 +2933,7 @@ do
                 if not pTargetPart then continue end
 
                 local dist = (myRoot.Position - pRoot.Position).Magnitude
-                if dist > (getgenv().Config.MaxDistance or 500) then continue end
+                if dist > 500 then continue end
 
                 local mouseDist = 999999
                 if curCam then
@@ -3078,6 +3064,7 @@ do
                 local oz = (offsets and offsets.Z) or (curSlot == "Knife" and 1 or 0)
 
                 local desyncPos = (baseCFrame * CFrame.new(ox, oy, oz)).Position
+                -- Knife: 速度予測で高速移動中の相手にも追従
                 if curSlot == "Knife" then
                     local targetBasePart = targetPlayer.Character and (targetPlayer.Character:FindFirstChild("LowerTorso") or targetRoot)
                     if targetBasePart then
@@ -3100,21 +3087,6 @@ do
                         desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
                     end
                 end
-
-                local oldCF     = myRoot.CFrame
-                local oldVel    = myRoot.Velocity
-                local oldRotVel = myRoot.RotVelocity
-                myRoot.CFrame = desyncCF
-                currentDesyncCF = desyncCF
-                pcall(function() runS:UnbindFromRenderStep("__restore") end)
-                runS:BindToRenderStep("__restore", 101, function()
-                    if myRoot then
-                        myRoot.CFrame    = oldCF
-                        myRoot.Velocity  = oldVel
-                        myRoot.RotVelocity = oldRotVel
-                    end
-                    pcall(function() runS:UnbindFromRenderStep("__restore") end)
-                end)
             else
                 currentTargetYaw = nil
                 if tc == false then
@@ -3129,22 +3101,22 @@ do
                     local camPos = cam and cam.CFrame.Position or Vector3.new(0, 0, 0)
                     desyncCF = CFrame.new(camPos + randomDir * 7000000000000)
                 end
-
-                local oldCF     = myRoot.CFrame
-                local oldVel    = myRoot.Velocity
-                local oldRotVel = myRoot.RotVelocity
-                myRoot.CFrame = desyncCF
-                currentDesyncCF = desyncCF
-                pcall(function() runS:UnbindFromRenderStep("__restore") end)
-                runS:BindToRenderStep("__restore", 101, function()
-                    if myRoot then
-                        myRoot.CFrame    = oldCF
-                        myRoot.Velocity  = oldVel
-                        myRoot.RotVelocity = oldRotVel
-                    end
-                    pcall(function() runS:UnbindFromRenderStep("__restore") end)
-                end)
             end
+
+            local oldCF     = myRoot.CFrame
+            local oldVel    = myRoot.Velocity
+            local oldRotVel = myRoot.RotVelocity
+            myRoot.CFrame = desyncCF
+            currentDesyncCF = desyncCF
+            pcall(function() runS:UnbindFromRenderStep("__restore") end)
+            runS:BindToRenderStep("__restore", 101, function()
+                if myRoot then
+                    myRoot.CFrame    = oldCF
+                    myRoot.Velocity  = oldVel
+                    myRoot.RotVelocity = oldRotVel
+                end
+                pcall(function() runS:UnbindFromRenderStep("__restore") end)
+            end)
 
             if (not canTarget) or isAntiHitDelay then
                 lastTarget = nil
@@ -3179,13 +3151,7 @@ do
 
             local originPos = desyncCF.Position
             local targetPos = targetPart.Position
-            -- origin==targetのlookAt問題を回避（SnapPart==TargetPartの場合など）
-            local aimCF
-            if (originPos - targetPos).Magnitude < 0.5 then
-                aimCF = CFrame.lookAt(originPos, targetPos + Vector3.new(0, 0.001, 0))
-            else
-                aimCF = CFrame.lookAt(originPos, targetPos)
-            end
+            local aimCF    = CFrame.lookAt(originPos, targetPos)
             local randomOffset = Vector3.new(
                 (math.random() - 0.5) * 0.1,
                 (math.random() - 0.5) * 0.1,
