@@ -2448,8 +2448,6 @@ do
     getgenv().Config.TargetSort = getgenv().Config.TargetSort or "Distance (Closest)"
     if getgenv().Config.TeamCheck == nil then getgenv().Config.TeamCheck = true end
     getgenv().Config.AntiHit = false
-    getgenv().Config.NoDelay = getgenv().Config.NoDelay or false
-    getgenv().Config.NoDelaySnapPart = getgenv().Config.NoDelaySnapPart or "HitboxHead"
     getgenv().Config.MaxDistance = getgenv().Config.MaxDistance or 500
     getgenv().Config.TPOffsets = getgenv().Config.TPOffsets or {
         Primary   = { X = 0, Y = 5, Z = 0 },
@@ -2705,58 +2703,6 @@ do
         end
     })
     AntiHitDep:SetupDependencies({ { AntiHitToggle, true } })
-
-    -- ===== NoDelay Snap =====
-    local _noDelayEntry = { refCount = 0, connection = nil }
-    local _noDelayEnabled = false
-
-    local function _noDelayDisable()
-        _noDelayEnabled = false
-        if _noDelayEntry.connection then
-            _noDelayEntry.connection:Disconnect()
-            _noDelayEntry.connection = nil
-        end
-        _noDelayEntry.refCount = 0
-        local c = lp.Character
-        local hum = c and c:FindFirstChildOfClass("Humanoid")
-        local root = c and c:FindFirstChild("HumanoidRootPart")
-        if hum and root then
-            pcall(sethiddenproperty, hum, "PhysicsRepRootPart", root)
-        end
-    end
-
-    local function _noDelayEnable()
-        -- メインのRageBotHeartbeatがNoDelayを処理するのでここでは有効化フラグのみ
-        _noDelayEnabled = true
-    end
-
-    local NoDelayToggle = RageBotSection:AddToggle("RageBot_NoDelay", {
-        Text = "NoDelay Snap",
-        Default = false,
-        Callback = function(value)
-            getgenv().Config.NoDelay = value
-            if value then
-                _noDelayEnable()
-            else
-                _noDelayDisable()
-            end
-        end
-    })
-
-    local NoDelayDep = RageBotSection:AddDependencyBox()
-    NoDelayDep:AddDropdown("RageBot_NoDelaySnapPart", {
-        Values = {
-            "HitboxHead", "HitboxHeadSmall", "HitboxBody", "HitboxBodySmall",
-            "Head", "UpperTorso", "LowerTorso", "RootPart"
-        },
-        Default = 1,
-        Multi = false,
-        Text = "Snap先パーツ",
-        Callback = function(value)
-            getgenv().Config.NoDelaySnapPart = value
-        end
-    })
-    NoDelayDep:SetupDependencies({ { NoDelayToggle, true } })
 
     RageBotSection:AddSlider("RageBot_MaxDistance", {
         Text = "Max Distance",
@@ -3125,98 +3071,50 @@ do
                 local _, y, _ = baseCFrame:ToOrientation()
                 currentTargetYaw = y
 
-                -- NoDelay Snap モード: sethiddenproperty で物理レプリケーションをターゲットにバインド
-                if getgenv().Config.NoDelay then
-                    local snapPartName = getgenv().Config.NoDelaySnapPart or "HitboxHead"
-                    local snapTarget
-                    if snapPartName == "RootPart" then
-                        snapTarget = targetRoot
-                    else
-                        snapTarget = targetPlayer.Character and (
-                            targetPlayer.Character:FindFirstChild(snapPartName)
-                            or targetPlayer.Character:FindFirstChild("HitboxHead")
-                            or targetPlayer.Character:FindFirstChild("Head")
-                            or targetRoot
-                        )
+                local curSlot = getgenv().Config.WeaponSlot or "Primary"
+                local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
+                local ox = (offsets and offsets.X) or 0
+                local oy = (offsets and offsets.Y) or (curSlot == "Knife" and -5 or 5)
+                local oz = (offsets and offsets.Z) or (curSlot == "Knife" and 1 or 0)
+
+                local desyncPos = (baseCFrame * CFrame.new(ox, oy, oz)).Position
+                if curSlot == "Knife" then
+                    local targetBasePart = targetPlayer.Character and (targetPlayer.Character:FindFirstChild("LowerTorso") or targetRoot)
+                    if targetBasePart then
+                        local vel = targetBasePart.AssemblyLinearVelocity
+                        local predFactor = getgenv().Config.KnifePredictFactor or 0.08
+                        desyncPos = desyncPos + vel * predFactor
                     end
-
-                    -- Desync: 元位置保存 → TP → RenderStepped復元
-                    local oldCF     = myRoot.CFrame
-                    local oldVel    = myRoot.Velocity
-                    local oldRotVel = myRoot.RotVelocity
-
-                    if snapTarget then
-                        pcall(setsimulationradius, math.huge, math.huge)
-                        local hm = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
-                        if hm then
-                            pcall(sethiddenproperty, myRoot, "PhysicsRepRootPart", snapTarget)
-                        end
-                        myRoot.CFrame = snapTarget.CFrame
-                        local tVel = snapTarget.AssemblyLinearVelocity
-                        myRoot.AssemblyLinearVelocity = tVel
-                        myRoot.AssemblyAngularVelocity = Vector3.zero
-                        pcall(function() myRoot.Velocity = tVel end)
-                        desyncCF = myRoot.CFrame
-                    else
-                        desyncCF = oldCF
-                    end
-                    currentDesyncCF = desyncCF
-
-                    pcall(function() runS:UnbindFromRenderStep("__restore") end)
-                    runS:BindToRenderStep("__restore", 101, function()
-                        if myRoot then
-                            myRoot.CFrame      = oldCF
-                            myRoot.Velocity    = oldVel
-                            myRoot.RotVelocity = oldRotVel
-                        end
-                        pcall(function() runS:UnbindFromRenderStep("__restore") end)
-                    end)
-                else
-                    local curSlot = getgenv().Config.WeaponSlot or "Primary"
-                    local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
-                    local ox = (offsets and offsets.X) or 0
-                    local oy = (offsets and offsets.Y) or (curSlot == "Knife" and -5 or 5)
-                    local oz = (offsets and offsets.Z) or (curSlot == "Knife" and 1 or 0)
-
-                    local desyncPos = (baseCFrame * CFrame.new(ox, oy, oz)).Position
-                    if curSlot == "Knife" then
-                        local targetBasePart = targetPlayer.Character and (targetPlayer.Character:FindFirstChild("LowerTorso") or targetRoot)
-                        if targetBasePart then
-                            local vel = targetBasePart.AssemblyLinearVelocity
-                            local predFactor = getgenv().Config.KnifePredictFactor or 0.08
-                            desyncPos = desyncPos + vel * predFactor
-                        end
-                    end
-                    if curSlot == "Knife" then
-                        local lookTarget = Vector3.new(targetPart.Position.X, desyncPos.Y, targetPart.Position.Z)
-                        if (desyncPos - lookTarget).Magnitude > 0.001 then
-                            desyncCF = CFrame.lookAt(desyncPos, lookTarget)
-                        else
-                            desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
-                        end
-                    else
-                        if (desyncPos - targetPart.Position).Magnitude > 0.001 then
-                            desyncCF = CFrame.lookAt(desyncPos, targetPart.Position)
-                        else
-                            desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
-                        end
-                    end
-
-                    local oldCF     = myRoot.CFrame
-                    local oldVel    = myRoot.Velocity
-                    local oldRotVel = myRoot.RotVelocity
-                    myRoot.CFrame = desyncCF
-                    currentDesyncCF = desyncCF
-                    pcall(function() runS:UnbindFromRenderStep("__restore") end)
-                    runS:BindToRenderStep("__restore", 101, function()
-                        if myRoot then
-                            myRoot.CFrame    = oldCF
-                            myRoot.Velocity  = oldVel
-                            myRoot.RotVelocity = oldRotVel
-                        end
-                        pcall(function() runS:UnbindFromRenderStep("__restore") end)
-                    end)
                 end
+                if curSlot == "Knife" then
+                    local lookTarget = Vector3.new(targetPart.Position.X, desyncPos.Y, targetPart.Position.Z)
+                    if (desyncPos - lookTarget).Magnitude > 0.001 then
+                        desyncCF = CFrame.lookAt(desyncPos, lookTarget)
+                    else
+                        desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
+                    end
+                else
+                    if (desyncPos - targetPart.Position).Magnitude > 0.001 then
+                        desyncCF = CFrame.lookAt(desyncPos, targetPart.Position)
+                    else
+                        desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
+                    end
+                end
+
+                local oldCF     = myRoot.CFrame
+                local oldVel    = myRoot.Velocity
+                local oldRotVel = myRoot.RotVelocity
+                myRoot.CFrame = desyncCF
+                currentDesyncCF = desyncCF
+                pcall(function() runS:UnbindFromRenderStep("__restore") end)
+                runS:BindToRenderStep("__restore", 101, function()
+                    if myRoot then
+                        myRoot.CFrame    = oldCF
+                        myRoot.Velocity  = oldVel
+                        myRoot.RotVelocity = oldRotVel
+                    end
+                    pcall(function() runS:UnbindFromRenderStep("__restore") end)
+                end)
             else
                 currentTargetYaw = nil
                 if tc == false then
