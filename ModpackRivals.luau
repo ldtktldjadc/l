@@ -1468,55 +1468,75 @@ task.spawn(function()
         getgenv()._AimLockHooked = true
         local oldUpdate = CameraController.Update
         CameraController.Update = function(self, dt)
-            oldUpdate(self, dt)
-            if not AimLockSettings.Enabled then return end
-            
+            if not AimLockSettings.Enabled then
+                oldUpdate(self, dt)
+                return
+            end
+
             local target, targetFighter = AL_getTarget()
-            if target then
-                if (AimLockSettings.ReactionDelay or 0) > 0 and (os.clock() - AL_TargetStartTime) < AimLockSettings.ReactionDelay then
-                    return
-                end
+            if not target then
+                oldUpdate(self, dt)
+                return
+            end
 
-                local camera = workspace.CurrentCamera
-                local targetPos = target.Position
-                local camOrigin = camera.CFrame.Position
+            if (AimLockSettings.ReactionDelay or 0) > 0 and (os.clock() - AL_TargetStartTime) < AimLockSettings.ReactionDelay then
+                oldUpdate(self, dt)
+                return
+            end
 
-                if (AimLockSettings.AimJitter or 0) > 0 then
-                    local jitterMag = AimLockSettings.AimJitter * 0.08
-                    local jitter = Vector3.new(
-                        (math.random() - 0.5) * 2 * jitterMag,
-                        (math.random() - 0.5) * 2 * jitterMag,
-                        (math.random() - 0.5) * 2 * jitterMag
-                    )
-                    targetPos = targetPos + jitter
-                end
+            -- aimロック計算を先に行い、oldUpdateに上書きされないようにする
+            local camera = workspace.CurrentCamera
+            local targetPos = target.Position
+            local camOrigin = camera.CFrame.Position
 
-                local dir = (targetPos - camOrigin).Unit
-                local yaw = math.atan2(-dir.X, -dir.Z)
-                local pitch = math.asin(math.clamp(dir.Y, -1, 1))
-                local targetRot = Vector2.new(pitch, yaw)
-                local current = self.Rotation
-                local diffYaw = (targetRot.Y - current.Y + math.pi) % (2 * math.pi) - math.pi
-                local targetRotAdj = Vector2.new(targetRot.X, current.Y + diffYaw)
-                local inHitbox = false
-                if targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
-                    local char = targetFighter.Entity.Model
-                    local aimDir = Vector3.new(
-                        -math.sin(self.Rotation.Y) * math.cos(self.Rotation.X),
-                        math.sin(self.Rotation.X),
-                        -math.cos(self.Rotation.Y) * math.cos(self.Rotation.X)
-                    )
-                    local aimPoint = camOrigin + aimDir * (targetPos - camOrigin).Magnitude
-                    local clamped = AL_clampToHitboxes(char, aimPoint)
-                    inHitbox = clamped and (clamped - aimPoint).Magnitude < 0.5
-                end
-                local smoothness = inHitbox and AimLockSettings.SmoothnessIn or AimLockSettings.SmoothnessOut
-                if smoothness <= 0.001 then
-                    self.Rotation = targetRot
-                else
-                    local alpha = math.clamp(1 - smoothness, 0.01, 1)
-                    self.Rotation = self.Rotation:Lerp(targetRotAdj, alpha)
-                end
+            if (AimLockSettings.AimJitter or 0) > 0 then
+                local jitterMag = AimLockSettings.AimJitter * 0.08
+                local jitter = Vector3.new(
+                    (math.random() - 0.5) * 2 * jitterMag,
+                    (math.random() - 0.5) * 2 * jitterMag,
+                    (math.random() - 0.5) * 2 * jitterMag
+                )
+                targetPos = targetPos + jitter
+            end
+
+            local dir = (targetPos - camOrigin).Unit
+            local yaw = math.atan2(-dir.X, -dir.Z)
+            local pitch = math.asin(math.clamp(dir.Y, -1, 1))
+            local targetRot = Vector2.new(pitch, yaw)
+            local current = self.Rotation
+            local diffYaw = (targetRot.Y - current.Y + math.pi) % (2 * math.pi) - math.pi
+            local targetRotAdj = Vector2.new(targetRot.X, current.Y + diffYaw)
+            local inHitbox = false
+            if targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
+                local char = targetFighter.Entity.Model
+                local aimDir = Vector3.new(
+                    -math.sin(self.Rotation.Y) * math.cos(self.Rotation.X),
+                    math.sin(self.Rotation.X),
+                    -math.cos(self.Rotation.Y) * math.cos(self.Rotation.X)
+                )
+                local aimPoint = camOrigin + aimDir * (targetPos - camOrigin).Magnitude
+                local clamped = AL_clampToHitboxes(char, aimPoint)
+                inHitbox = clamped and (clamped - aimPoint).Magnitude < 0.5
+            end
+            local smoothness = inHitbox and AimLockSettings.SmoothnessIn or AimLockSettings.SmoothnessOut
+            local newRot
+            if smoothness <= 0.001 then
+                newRot = targetRot
+            else
+                local alpha = math.clamp(1 - smoothness, 0.01, 1)
+                newRot = self.Rotation:Lerp(targetRotAdj, alpha)
+            end
+
+            -- oldUpdateを呼んだ後にRotationを強制上書き
+            oldUpdate(self, dt)
+            self.Rotation = newRot
+
+            -- Smoothness=0のとき camera.CFrame も直接ロックして確実にホールド
+            if smoothness <= 0.001 then
+                pcall(function()
+                    camera.CFrame = CFrame.new(camOrigin)
+                        * CFrame.fromEulerAnglesYXZ(newRot.X, newRot.Y, 0)
+                end)
             end
         end
     end
@@ -3037,7 +3057,7 @@ do
 
             local now = tick()
             local isEscaping = getgenv().Config and getgenv().Config.AntiHit and (now >= antiHitStart and now < antiHitUntil)
-            local isAntiHitDelay = getgenv().Config and getgenv().Config.AntiHit and (now < antiHitStart)
+            local isAntiHitDelay = false -- 遅延なし（即時有効）
 
             local canTarget = getgenv().Config.Enabled
                 and (not isEscaping)
@@ -3101,6 +3121,11 @@ do
                     local camPos = cam and cam.CFrame.Position or Vector3.new(0, 0, 0)
                     desyncCF = CFrame.new(camPos + randomDir * 7000000000000)
                 end
+            end
+
+            -- AntiHit回避中はDesyncTP自体もスキップして早期return
+            if isEscaping then
+                return
             end
 
             local oldCF     = myRoot.CFrame
@@ -3173,10 +3198,10 @@ do
                 end)
             end
 
-            -- AntiHit: FireServer の前にタイマーをセット（撃つ前にTP予約）
+            -- AntiHit: FireServer直後に即時タイマーをセット
             if getgenv().Config and getgenv().Config.AntiHit then
-                local now = tick()
-                antiHitStart = now + 0.15
+                local now2 = tick()
+                antiHitStart = now2  -- 遅延なし、即時回避開始
                 antiHitUntil = antiHitStart + (getgenv().Config.AntiHitDuration or 0.5)
             end
 
