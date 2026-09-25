@@ -1778,6 +1778,67 @@ task.spawn(function()
     end)
 end)
 
+-- ========== ANTI FREEZE RAY ==========
+do
+    local AntiFreezeSection = Tabs.Combat:AddRightGroupbox("Anti Freeze Ray")
+
+    getgenv().AntiFreezeEnabled = false
+
+    local _afHooked = false
+
+    local function hookFreezeOnEntity(entity)
+        if not entity or _afHooked then return end
+        if type(entity._FreezeEffect) ~= "function" then return end
+        _afHooked = true
+        local oldFreeze = entity._FreezeEffect
+        entity._FreezeEffect = function(self, ...)
+            if getgenv().AntiFreezeEnabled then
+                -- エフェクトだけ通してFreeze動作を無効化
+                return
+            end
+            return oldFreeze(self, ...)
+        end
+    end
+
+    -- FighterControllerロード後にLocalFighterのエンティティをhook
+    task.spawn(function()
+        while true do
+            task.wait(1)
+            if not getgenv().AntiFreezeEnabled then continue end
+            if _afHooked then break end
+            pcall(function()
+                if FighterController and FighterController.LocalFighter then
+                    local lf = FighterController.LocalFighter
+                    if lf and lf.Entity then
+                        hookFreezeOnEntity(lf.Entity)
+                    end
+                end
+            end)
+        end
+    end)
+
+    AntiFreezeSection:AddToggle("AntiFreezeEnabled", {
+        Text = "Anti Freeze Ray",
+        Default = false,
+        Callback = function(v)
+            getgenv().AntiFreezeEnabled = v
+            -- 未hookなら即時試行
+            if v and not _afHooked then
+                pcall(function()
+                    if FighterController and FighterController.LocalFighter then
+                        hookFreezeOnEntity(FighterController.LocalFighter.Entity)
+                    end
+                end)
+            end
+        end
+    }):AddKeyPicker("AntiFreezeKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Anti Freeze Ray",
+    })
+end
+
 -- ===== VISUALS TAB =====
 local ESPSection = Tabs.Visuals:AddLeftGroupbox("ESP")
 
