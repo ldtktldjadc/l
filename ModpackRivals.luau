@@ -408,6 +408,11 @@ local espSettings = {
     HP = false, HPColor = Color3.fromRGB(50, 255, 50),
     RanDomEsp = false, RanDomEspDist = 300,
     TextStrokeColor = Color3.fromRGB(0, 0, 0),
+    -- Wall ESP
+    WallESP = false,
+    WallESPColor = Color3.fromRGB(255, 80, 80),       -- 壁越し時の色
+    WallESPNoWallColor = Color3.fromRGB(80, 255, 80), -- 壁なし時の色
+    WallESPTransparency = 0.5,                        -- ハイライト透明度
 }
 getgenv().ESPSettings_TeamCheck = false
 
@@ -635,6 +640,52 @@ local function updateBoneRefs(cache, char)
     }
 end
 
+-- Wall ESP: キャラクターと壁の間にレイキャストして壁越し判定
+local _wallRayParams = RaycastParams.new()
+_wallRayParams.FilterType = Enum.RaycastFilterType.Exclude
+_wallRayParams.IgnoreWater = true
+
+local function isPlayerBehindWall(char, cam)
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root or not cam then return false end
+    local myChar = lp.Character
+    local ignList = { cam }
+    if myChar then table.insert(ignList, myChar) end
+    table.insert(ignList, char)
+    _wallRayParams.FilterDescendantsInstances = ignList
+    local origin = cam.CFrame.Position
+    local dir = root.Position - origin
+    local ok, result = pcall(function() return workspace:Raycast(origin, dir, _wallRayParams) end)
+    if ok and result and result.Instance then
+        return true
+    end
+    return false
+end
+
+local wallEspHighlightCache = {}
+
+local function getOrCreateHighlight(p, char)
+    local h = wallEspHighlightCache[p]
+    if h and h.Parent == char then return h end
+    if h then pcall(function() h:Destroy() end) end
+    local nh = Instance.new("Highlight")
+    nh.Name = "KETY_WallESP"
+    nh.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    nh.FillTransparency = espSettings.WallESPTransparency
+    nh.OutlineTransparency = espSettings.WallESPTransparency
+    nh.Parent = char
+    wallEspHighlightCache[p] = nh
+    return nh
+end
+
+local function clearHighlight(p)
+    local h = wallEspHighlightCache[p]
+    if h then
+        pcall(function() h:Destroy() end)
+        wallEspHighlightCache[p] = nil
+    end
+end
+
 local _espLastTime = 0
 RunService.Heartbeat:Connect(function()
     local now = tick()
@@ -682,7 +733,31 @@ RunService.Heartbeat:Connect(function()
                 if c.HPBarBg then c.HPBarBg.Visible = false end
                 for _, b in pairs(c.Bones) do b.Visible = false end
             end
+            clearHighlight(p)
             continue
+        end
+
+        -- Wall ESP Highlight処理
+        if espSettings.WallESP then
+            local hl = getOrCreateHighlight(p, char)
+            local behindWall = isPlayerBehindWall(char, cam)
+            if behindWall then
+                -- 壁越し時のみ表示
+                hl.Enabled = true
+                hl.FillColor = espSettings.WallESPColor
+                hl.OutlineColor = espSettings.WallESPColor
+                hl.FillTransparency = espSettings.WallESPTransparency
+                hl.OutlineTransparency = espSettings.WallESPTransparency
+            else
+                -- 壁なし時は別色で表示
+                hl.Enabled = true
+                hl.FillColor = espSettings.WallESPNoWallColor
+                hl.OutlineColor = espSettings.WallESPNoWallColor
+                hl.FillTransparency = espSettings.WallESPTransparency
+                hl.OutlineTransparency = espSettings.WallESPTransparency
+            end
+        else
+            clearHighlight(p)
         end
 
         createPlayerEsp(p)
@@ -1468,75 +1543,55 @@ task.spawn(function()
         getgenv()._AimLockHooked = true
         local oldUpdate = CameraController.Update
         CameraController.Update = function(self, dt)
-            if not AimLockSettings.Enabled then
-                oldUpdate(self, dt)
-                return
-            end
-
-            local target, targetFighter = AL_getTarget()
-            if not target then
-                oldUpdate(self, dt)
-                return
-            end
-
-            if (AimLockSettings.ReactionDelay or 0) > 0 and (os.clock() - AL_TargetStartTime) < AimLockSettings.ReactionDelay then
-                oldUpdate(self, dt)
-                return
-            end
-
-            -- aimロック計算を先に行い、oldUpdateに上書きされないようにする
-            local camera = workspace.CurrentCamera
-            local targetPos = target.Position
-            local camOrigin = camera.CFrame.Position
-
-            if (AimLockSettings.AimJitter or 0) > 0 then
-                local jitterMag = AimLockSettings.AimJitter * 0.08
-                local jitter = Vector3.new(
-                    (math.random() - 0.5) * 2 * jitterMag,
-                    (math.random() - 0.5) * 2 * jitterMag,
-                    (math.random() - 0.5) * 2 * jitterMag
-                )
-                targetPos = targetPos + jitter
-            end
-
-            local dir = (targetPos - camOrigin).Unit
-            local yaw = math.atan2(-dir.X, -dir.Z)
-            local pitch = math.asin(math.clamp(dir.Y, -1, 1))
-            local targetRot = Vector2.new(pitch, yaw)
-            local current = self.Rotation
-            local diffYaw = (targetRot.Y - current.Y + math.pi) % (2 * math.pi) - math.pi
-            local targetRotAdj = Vector2.new(targetRot.X, current.Y + diffYaw)
-            local inHitbox = false
-            if targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
-                local char = targetFighter.Entity.Model
-                local aimDir = Vector3.new(
-                    -math.sin(self.Rotation.Y) * math.cos(self.Rotation.X),
-                    math.sin(self.Rotation.X),
-                    -math.cos(self.Rotation.Y) * math.cos(self.Rotation.X)
-                )
-                local aimPoint = camOrigin + aimDir * (targetPos - camOrigin).Magnitude
-                local clamped = AL_clampToHitboxes(char, aimPoint)
-                inHitbox = clamped and (clamped - aimPoint).Magnitude < 0.5
-            end
-            local smoothness = inHitbox and AimLockSettings.SmoothnessIn or AimLockSettings.SmoothnessOut
-            local newRot
-            if smoothness <= 0.001 then
-                newRot = targetRot
-            else
-                local alpha = math.clamp(1 - smoothness, 0.01, 1)
-                newRot = self.Rotation:Lerp(targetRotAdj, alpha)
-            end
-
-            -- oldUpdateを呼んだ後にRotationを強制上書き
             oldUpdate(self, dt)
-            self.Rotation = newRot
+            if not AimLockSettings.Enabled then return end
+            
+            local target, targetFighter = AL_getTarget()
+            if target then
+                if (AimLockSettings.ReactionDelay or 0) > 0 and (os.clock() - AL_TargetStartTime) < AimLockSettings.ReactionDelay then
+                    return
+                end
 
-            -- Smoothness=0のとき camera.CFrame も直接ロックして確実にホールド
-            if smoothness <= 0.001 then
-                pcall(function()
-                    camera.CFrame = CFrame.new(camOrigin)
-                        * CFrame.fromEulerAnglesYXZ(newRot.X, newRot.Y, 0)
-                end)
+                local camera = workspace.CurrentCamera
+                local targetPos = target.Position
+                local camOrigin = camera.CFrame.Position
+
+                if (AimLockSettings.AimJitter or 0) > 0 then
+                    local jitterMag = AimLockSettings.AimJitter * 0.08
+                    local jitter = Vector3.new(
+                        (math.random() - 0.5) * 2 * jitterMag,
+                        (math.random() - 0.5) * 2 * jitterMag,
+                        (math.random() - 0.5) * 2 * jitterMag
+                    )
+                    targetPos = targetPos + jitter
+                end
+
+                local dir = (targetPos - camOrigin).Unit
+                local yaw = math.atan2(-dir.X, -dir.Z)
+                local pitch = math.asin(math.clamp(dir.Y, -1, 1))
+                local targetRot = Vector2.new(pitch, yaw)
+                local current = self.Rotation
+                local diffYaw = (targetRot.Y - current.Y + math.pi) % (2 * math.pi) - math.pi
+                local targetRotAdj = Vector2.new(targetRot.X, current.Y + diffYaw)
+                local inHitbox = false
+                if targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
+                    local char = targetFighter.Entity.Model
+                    local aimDir = Vector3.new(
+                        -math.sin(self.Rotation.Y) * math.cos(self.Rotation.X),
+                        math.sin(self.Rotation.X),
+                        -math.cos(self.Rotation.Y) * math.cos(self.Rotation.X)
+                    )
+                    local aimPoint = camOrigin + aimDir * (targetPos - camOrigin).Magnitude
+                    local clamped = AL_clampToHitboxes(char, aimPoint)
+                    inHitbox = clamped and (clamped - aimPoint).Magnitude < 0.5
+                end
+                local smoothness = inHitbox and AimLockSettings.SmoothnessIn or AimLockSettings.SmoothnessOut
+                if smoothness <= 0.001 then
+                    self.Rotation = targetRot
+                else
+                    local alpha = math.clamp(1 - smoothness, 0.01, 1)
+                    self.Rotation = self.Rotation:Lerp(targetRotAdj, alpha)
+                end
             end
         end
     end
@@ -1802,6 +1857,55 @@ ESPDep:AddToggle("ESP_HP", { Text = "HP Bar", Default = false, Callback = functi
 ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callback = function(v) getgenv().ESPSettings_TeamCheck = v end })
 ESPDep:AddToggle("ESP_RanDomEsp", { Text = "RanDomEsp", Default = false, Callback = function(v) espSettings.RanDomEsp = v end })
 ESPDep:AddSlider("ESP_RanDomEspDist", { Text = "RanDomEsp Distance", Default = 300, Min = 50, Max = 1500, Rounding = 0, Callback = function(v) espSettings.RanDomEspDist = v end })
+
+-- Wall ESP UI
+local WallESPSection = Tabs.Visuals:AddLeftGroupbox("Wall ESP")
+
+local WallESPToggle = WallESPSection:AddToggle("WallESP_Enabled", {
+    Text = "Enabled", Default = false,
+    Callback = function(v)
+        espSettings.WallESP = v
+        if not v then
+            for _, p in pairs(Players:GetPlayers()) do
+                clearHighlight(p)
+            end
+        end
+    end
+})
+
+WallESPToggle:AddKeyPicker("WallESPKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "Wall ESP",
+})
+
+local WallESPDep = WallESPSection:AddDependencyBox()
+
+WallESPDep:AddColorPicker("WallESP_WallColor", {
+    Title = "壁越し時の色",
+    Default = espSettings.WallESPColor,
+    Callback = function(v) espSettings.WallESPColor = v end
+})
+
+WallESPDep:AddColorPicker("WallESP_NoWallColor", {
+    Title = "壁なし時の色",
+    Default = espSettings.WallESPNoWallColor,
+    Callback = function(v) espSettings.WallESPNoWallColor = v end
+})
+
+WallESPDep:AddSlider("WallESP_Transparency", {
+    Text = "透明度",
+    Default = 50,
+    Min = 0,
+    Max = 100,
+    Rounding = 0,
+    Callback = function(v)
+        espSettings.WallESPTransparency = v / 100
+    end
+})
+
+WallESPDep:SetupDependencies({ { WallESPToggle, true } })
 
 ESPDep:SetupDependencies({ { ESPToggle, true } })
 
@@ -3057,7 +3161,7 @@ do
 
             local now = tick()
             local isEscaping = getgenv().Config and getgenv().Config.AntiHit and (now >= antiHitStart and now < antiHitUntil)
-            local isAntiHitDelay = false -- 遅延なし（即時有効）
+            local isAntiHitDelay = getgenv().Config and getgenv().Config.AntiHit and (now < antiHitStart)
 
             local canTarget = getgenv().Config.Enabled
                 and (not isEscaping)
@@ -3121,11 +3225,6 @@ do
                     local camPos = cam and cam.CFrame.Position or Vector3.new(0, 0, 0)
                     desyncCF = CFrame.new(camPos + randomDir * 7000000000000)
                 end
-            end
-
-            -- AntiHit回避中はDesyncTP自体もスキップして早期return
-            if isEscaping then
-                return
             end
 
             local oldCF     = myRoot.CFrame
@@ -3198,10 +3297,10 @@ do
                 end)
             end
 
-            -- AntiHit: FireServer直後に即時タイマーをセット
+            -- AntiHit: FireServer の前にタイマーをセット（撃つ前にTP予約）
             if getgenv().Config and getgenv().Config.AntiHit then
-                local now2 = tick()
-                antiHitStart = now2  -- 遅延なし、即時回避開始
+                local now = tick()
+                antiHitStart = now + 0.15
                 antiHitUntil = antiHitStart + (getgenv().Config.AntiHitDuration or 0.5)
             end
 
