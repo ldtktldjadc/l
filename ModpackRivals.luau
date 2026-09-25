@@ -1858,11 +1858,9 @@ ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callba
 ESPDep:AddToggle("ESP_RanDomEsp", { Text = "RanDomEsp", Default = false, Callback = function(v) espSettings.RanDomEsp = v end })
 ESPDep:AddSlider("ESP_RanDomEspDist", { Text = "RanDomEsp Distance", Default = 300, Min = 50, Max = 1500, Rounding = 0, Callback = function(v) espSettings.RanDomEspDist = v end })
 
--- Wall ESP UI
-local WallESPSection = Tabs.Visuals:AddLeftGroupbox("Wall ESP")
-
-local WallESPToggle = WallESPSection:AddToggle("WallESP_Enabled", {
-    Text = "Enabled", Default = false,
+-- Wall ESP (ESP section内)
+local WallESPToggle = ESPDep:AddToggle("WallESP_Enabled", {
+    Text = "Wall ESP", Default = false,
     Callback = function(v)
         espSettings.WallESP = v
         if not v then
@@ -1872,30 +1870,19 @@ local WallESPToggle = WallESPSection:AddToggle("WallESP_Enabled", {
         end
     end
 })
+    :AddColorPicker("WallESP_WallColor", {
+        Title = "Wall Color",
+        Default = espSettings.WallESPColor,
+        Callback = function(v) espSettings.WallESPColor = v end
+    })
+    :AddColorPicker("WallESP_NoWallColor", {
+        Title = "No-Wall Color",
+        Default = espSettings.WallESPNoWallColor,
+        Callback = function(v) espSettings.WallESPNoWallColor = v end
+    })
 
-WallESPToggle:AddKeyPicker("WallESPKey", {
-    Default = "None",
-    SyncToggleState = true,
-    Mode = "Toggle",
-    Text = "Wall ESP",
-})
-
-local WallESPDep = WallESPSection:AddDependencyBox()
-
-WallESPDep:AddColorPicker("WallESP_WallColor", {
-    Title = "壁越し時の色",
-    Default = espSettings.WallESPColor,
-    Callback = function(v) espSettings.WallESPColor = v end
-})
-
-WallESPDep:AddColorPicker("WallESP_NoWallColor", {
-    Title = "壁なし時の色",
-    Default = espSettings.WallESPNoWallColor,
-    Callback = function(v) espSettings.WallESPNoWallColor = v end
-})
-
-WallESPDep:AddSlider("WallESP_Transparency", {
-    Text = "透明度",
+ESPDep:AddSlider("WallESP_Transparency", {
+    Text = "Wall ESP Transparency",
     Default = 50,
     Min = 0,
     Max = 100,
@@ -1904,8 +1891,6 @@ WallESPDep:AddSlider("WallESP_Transparency", {
         espSettings.WallESPTransparency = v / 100
     end
 })
-
-WallESPDep:SetupDependencies({ { WallESPToggle, true } })
 
 ESPDep:SetupDependencies({ { ESPToggle, true } })
 
