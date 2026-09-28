@@ -1834,88 +1834,21 @@ do
         return false
     end
 
-    -- Engine-level __newindex hook to block PlatformStand and zero WalkSpeed
-    if not getgenv()._AntiFreezeNewIndexHooked and hookmetamethod and newcclosure then
-        getgenv()._AntiFreezeNewIndexHooked = true
-        local oldNewIndex
-        oldNewIndex = hookmetamethod(game, "__newindex", newcclosure(function(self, key, val)
-            if getgenv().AntiFreezeEnabled and not (checkcaller and checkcaller()) then
-                if (key == "PlatformStand" or (type(key) == "string" and key:lower() == "platformstand")) and val == true then
-                    local char = lp.Character
-                    if char and (self == char or self:IsDescendantOf(char)) then
-                        return
-                    end
-                end
-                if key == "WalkSpeed" and (val == 0 or val == nil) then
-                    local char = lp.Character
-                    if char and (self == char or self:IsDescendantOf(char)) then
-                        return oldNewIndex(self, key, 16)
-                    end
-                end
-            end
-            return oldNewIndex(self, key, val)
-        end))
-    end
-
-    -- Engine-level __namecall hook to block SetStateEnabled(PlatformStanding) and ChangeState(PlatformStanding)
-    if not getgenv()._AntiFreezeNamecallHooked and hookmetamethod and newcclosure then
-        getgenv()._AntiFreezeNamecallHooked = true
-        local oldNC
-        oldNC = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-            local method = getnamecallmethod()
-            if getgenv().AntiFreezeEnabled and not (checkcaller and checkcaller()) then
-                if method == "SetStateEnabled" then
-                    local state, enabled = ...
-                    if state == Enum.HumanoidStateType.PlatformStanding and enabled == true then
-                        local char = lp.Character
-                        if char and (self == char or self:IsDescendantOf(char)) then
-                            return oldNC(self, state, false)
-                        end
-                    end
-                elseif method == "ChangeState" then
-                    local state = ...
-                    if state == Enum.HumanoidStateType.PlatformStanding then
-                        local char = lp.Character
-                        if char and (self == char or self:IsDescendantOf(char)) then
-                            return oldNC(self, Enum.HumanoidStateType.Running)
-                        end
-                    end
-                end
-            end
-            return oldNC(self, ...)
-        end))
-    end
-
     local function hookRC()
         local RC = getReplicatedClass()
-        if RC and not RC._afHooked then
+        if RC and type(RC.Get) == "function" and not RC._afHooked then
             RC._afHooked = true
-            if type(RC.Get) == "function" then
-                local oldGet = RC.Get
-                local function newGet(self, key, ...)
-                    if getgenv().AntiFreezeEnabled and key == "IsFrozen" and isLocalTarget(self) then
-                        return false
-                    end
-                    return oldGet(self, key, ...)
+            local oldGet = RC.Get
+            local function newGet(self, key, ...)
+                if getgenv().AntiFreezeEnabled and key == "IsFrozen" and isLocalTarget(self) then
+                    return false
                 end
-                if hookfunction then
-                    pcall(function() hookfunction(RC.Get, newGet) end)
-                end
-                RC.Get = newGet
+                return oldGet(self, key, ...)
             end
-            if type(RC.Set) == "function" then
-                local oldSet = RC.Set
-                local function newSet(self, key, val, ...)
-                    if getgenv().AntiFreezeEnabled and key == "IsFrozen" and isLocalTarget(self) then
-                        return oldSet(self, key, false, ...)
-                    end
-                    return oldSet(self, key, val, ...)
-                end
-                if hookfunction then
-                    pcall(function() hookfunction(RC.Set, newSet) end)
-                end
-                RC.Set = newSet
+            if hookfunction then
+                pcall(function() hookfunction(RC.Get, newGet) end)
             end
+            RC.Get = newGet
         end
     end
 
@@ -2006,7 +1939,7 @@ do
         end
     end
 
-    local function hookInstance(inst)
+    local function hookInstanceGet(inst)
         if not inst then return end
         if type(inst.Get) == "function" and not inst._afGetHooked then
             inst._afGetHooked = true
@@ -2016,53 +1949,6 @@ do
                     return false
                 end
                 return oldInstGet(self, key, ...)
-            end
-        end
-        if type(inst.Set) == "function" and not inst._afSetHooked then
-            inst._afSetHooked = true
-            local oldInstSet = inst.Set
-            inst.Set = function(self, key, val, ...)
-                if getgenv().AntiFreezeEnabled and key == "IsFrozen" then
-                    return oldInstSet(self, key, false, ...)
-                end
-                return oldInstSet(self, key, val, ...)
-            end
-        end
-    end
-
-    local function recoverHumanoid()
-        local char = lp.Character
-        if not char then return end
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum then return end
-
-        if hum.PlatformStand then
-            hum.PlatformStand = false
-        end
-        hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
-        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-        hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
-        hum:SetStateEnabled(Enum.HumanoidStateType.Running, true)
-
-        local st = hum:GetState()
-        if st == Enum.HumanoidStateType.PlatformStanding or st == Enum.HumanoidStateType.FallingDown or st == Enum.HumanoidStateType.Ragdoll then
-            hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-            hum:ChangeState(Enum.HumanoidStateType.Running)
-        end
-
-        if hum.WalkSpeed < 10 then
-            hum.WalkSpeed = 16
-        end
-
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            local up = hrp.CFrame.UpVector
-            if up.Y < 0.7 then
-                local _, yaw, _ = hrp.CFrame:ToOrientation()
-                hrp.CFrame = CFrame.new(hrp.Position + Vector3.new(0, 1.5, 0)) * CFrame.Angles(0, yaw, 0)
-                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
             end
         end
     end
@@ -2077,13 +1963,7 @@ do
         end
     end)
 
-    -- Pre-physics check
-    RunService.Stepped:Connect(function()
-        if not getgenv().AntiFreezeEnabled then return end
-        pcall(recoverHumanoid)
-    end)
-
-    -- Post-physics & render check
+    -- 毎フレームのフリーズ状態解除
     RunService.Heartbeat:Connect(function()
         if not getgenv().AntiFreezeEnabled then return end
 
@@ -2096,25 +1976,9 @@ do
             local fc = getController("FighterController") or FighterController
             if fc and fc.LocalFighter then
                 local lf = fc.LocalFighter
-                hookInstance(lf)
+                hookInstanceGet(lf)
                 if lf.Entity then
-                    hookInstance(lf.Entity)
-                    if not lf.Entity._afStateHooked then
-                        lf.Entity._afStateHooked = true
-                        local oldUHS = lf.Entity._UpdateHumanoidStates
-                        lf.Entity._UpdateHumanoidStates = function(self, ...)
-                            if getgenv().AntiFreezeEnabled then
-                                if self.Humanoid then
-                                    self.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-                                    self.Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-                                    self.Humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
-                                    self.Humanoid.PlatformStand = false
-                                end
-                                return
-                            end
-                            if oldUHS then return oldUHS(self, ...) end
-                        end
-                    end
+                    hookInstanceGet(lf.Entity)
                     if lf.Entity._thaw_callback then
                         pcall(lf.Entity._thaw_callback, lf.Entity)
                         lf.Entity._thaw_callback = nil
@@ -2124,7 +1988,7 @@ do
                     end
                 end
                 if lf.Character then
-                    hookInstance(lf.Character)
+                    hookInstanceGet(lf.Character)
                     if lf.Character._data and type(lf.Character._data) == "table" and lf.Character._data.IsFrozen then
                         lf.Character._data.IsFrozen = false
                     end
@@ -2142,24 +2006,35 @@ do
             end
         end)
 
-        pcall(recoverHumanoid)
-
         pcall(function()
             local char = lp.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                for _, m in pairs(workspace:GetChildren()) do
-                    if m:IsA("Model") and (m.Name == "Default" or m.Name == "Bubble" or m.Name == "Temporal" or m.Name == "Cocoon" or m.Name == "Wrapped" or m.Name:find("Freeze")) then
-                        local weld = m:FindFirstChildOfClass("WeldConstraint")
-                        if weld and (weld.Part0 == hrp or weld.Part1 == hrp) then
-                            m:Destroy()
-                        end
+            if char then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    if hum.PlatformStand then
+                        hum.PlatformStand = false
+                    end
+                    hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
+                    if hum.WalkSpeed == 0 then
+                        hum.WalkSpeed = 16
                     end
                 end
-                for _, child in pairs(hrp:GetChildren()) do
-                    if child:IsA("WeldConstraint") or child:IsA("Weld") then
-                        if child.Part1 and not child.Part1:IsDescendantOf(char) then
-                            child:Destroy()
+
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    for _, m in pairs(workspace:GetChildren()) do
+                        if m:IsA("Model") and (m.Name == "Default" or m.Name == "Bubble" or m.Name == "Temporal" or m.Name == "Cocoon" or m.Name == "Wrapped" or m.Name:find("Freeze")) then
+                            local weld = m:FindFirstChildOfClass("WeldConstraint")
+                            if weld and (weld.Part0 == hrp or weld.Part1 == hrp) then
+                                m:Destroy()
+                            end
+                        end
+                    end
+                    for _, child in pairs(hrp:GetChildren()) do
+                        if child:IsA("WeldConstraint") or child:IsA("Weld") then
+                            if child.Part1 and not child.Part1:IsDescendantOf(char) then
+                                child:Destroy()
+                            end
                         end
                     end
                 end
@@ -2183,9 +2058,6 @@ do
         Default = false,
         Callback = function(v)
             getgenv().AntiFreezeEnabled = v
-            if v then
-                pcall(recoverHumanoid)
-            end
         end
     }):AddKeyPicker("AntiFreezeKey", {
         Default = "None",
