@@ -1791,13 +1791,24 @@ do
     task.spawn(function()
     end)
 
+    -- entity:Get("IsFrozen")をhookしてローカルプレイヤーには常にfalseを返す
     local function hookEntity(ent)
+        if not ent or ent._afGetHooked then return end
+        ent._afGetHooked = true
+        local oldGet = ent.Get
+        ent.Get = function(self, key, ...)
+            if getgenv().AntiFreezeEnabled and key == "IsFrozen" then
+                return false
+            end
+            return oldGet(self, key, ...)
+        end
     end
 
-    -- 毎フレームのフリーズ状態解除
+    -- 毎フレーム：PlatformStand解除 + entityをhook
     RunService.Heartbeat:Connect(function()
         if not getgenv().AntiFreezeEnabled then return end
         pcall(function()
+            -- PlatformStand直接解除
             local char = lp.Character
             if char then
                 local hum = char:FindFirstChildOfClass("Humanoid")
@@ -1805,6 +1816,13 @@ do
                     if hum.PlatformStand then hum.PlatformStand = false end
                     hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
                 end
+            end
+            -- FighterController.LocalFighter.Entity の Get("IsFrozen") をhook
+            if FighterController and FighterController.LocalFighter then
+                local lf = FighterController.LocalFighter
+                hookEntity(lf)
+                if lf.Entity then hookEntity(lf.Entity) end
+                if lf.Character then hookEntity(lf.Character) end
             end
         end)
     end)
