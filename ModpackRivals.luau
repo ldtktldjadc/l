@@ -2012,6 +2012,71 @@ do
         end
     end)
 end
+-- ==========================================
+-- ViewModel Offset (FPS視点モデルを XYZ で移動)
+-- ==========================================
+local vmOffsetEnabled, vmOffsetX, vmOffsetY, vmOffsetZ
+local ensureVMHook
+do
+	vmOffsetEnabled = false
+	vmOffsetX, vmOffsetY, vmOffsetZ = 0, 0, 0
+	local _vmCVM = nil
+	local _vmOriginalSetCFrame = nil
+
+	ensureVMHook = function()
+		if _vmCVM then return true end
+		local scripts = lp:WaitForChild("PlayerScripts", 10)
+		if not scripts then return false end
+		local cvmM
+		for _, v in pairs(scripts:GetDescendants()) do
+			if v:IsA("ModuleScript") and (v.Name == "ClientViewModel" or v.Name == "ModuleScript_ClientViewModel") then
+				cvmM = v; break
+			end
+		end
+		if not cvmM then return false end
+		local ok, CVM = pcall(require, cvmM)
+		if not ok or type(CVM) ~= "table" then return false end
+		_vmCVM = CVM
+		_vmOriginalSetCFrame = CVM.SetCFrame
+		CVM.SetCFrame = function(self, cf)
+			if vmOffsetEnabled and typeof(cf) == "CFrame" then
+				cf = cf * CFrame.new(vmOffsetX, vmOffsetY, vmOffsetZ)
+			end
+			return _vmOriginalSetCFrame(self, cf)
+		end
+		return true
+	end
+end
+
+-- ViewModel Mover UI
+local VisVMBox = Tabs.Visuals:AddRightGroupbox("ViewModel Mover")
+local VMOffsetToggle = VisVMBox:AddToggle("VMOffsetEnabled", {
+	Text = "ViewModel Mover",
+	Default = false,
+	Callback = function(Value)
+		vmOffsetEnabled = Value
+		if Value then
+			task.spawn(ensureVMHook)
+		end
+	end,
+})
+local VisVMDepBox = VisVMBox:AddDependencyBox()
+VisVMDepBox:AddSlider("VMOffsetX", {
+	Text = "X (Left/Right)",
+	Default = 0, Min = -5, Max = 5, Rounding = 2,
+	Callback = function(Value) vmOffsetX = Value end,
+})
+VisVMDepBox:AddSlider("VMOffsetY", {
+	Text = "Y (Down/Up)",
+	Default = 0, Min = -5, Max = 5, Rounding = 2,
+	Callback = function(Value) vmOffsetY = Value end,
+})
+VisVMDepBox:AddSlider("VMOffsetZ", {
+	Text = "Z (Forward/Back)",
+	Default = 0, Min = -5, Max = 5, Rounding = 2,
+	Callback = function(Value) vmOffsetZ = Value end,
+})
+VisVMDepBox:SetupDependencies({ { VMOffsetToggle, true } })
 
 -- Team ESP
 local TeamESPSection = Tabs.Visuals:AddRightGroupbox("Team ESP")
