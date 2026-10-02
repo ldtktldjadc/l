@@ -4111,7 +4111,14 @@ do
     local SpinToggle = SpinBotSection:AddToggle("SpinBot_Enabled", {
         Text = "Enabled",
         Default = false,
-        Callback = function(v) spinEnabled = v end
+        Callback = function(v)
+            spinEnabled = v
+            local char = lp.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.AutoRotate = not v
+            end
+        end
     })
     SpinToggle:AddKeyPicker("SpinBotKey", {
         Default = "None",
@@ -4134,6 +4141,10 @@ do
     RunService.Heartbeat:Connect(function()
         if not spinEnabled then return end
         local char = lp.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.AutoRotate then
+            hum.AutoRotate = false
+        end
         local root = char and char:FindFirstChild("HumanoidRootPart")
         if not root then return end
         root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(spinSpeed), 0)
