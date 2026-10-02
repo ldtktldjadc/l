@@ -2081,149 +2081,212 @@ VisVMDepBox:SetupDependencies({ { VMOffsetToggle, true } })
 -- ========== NO VIEWMODEL ANIMATION ==========
 local noVMAnim = false
 local noFireSound = false
-local _nvmHooked = false
 local _muteFireSoundUntil = 0
+local _cvmHooked = false
+local _animHooked = false
+local _cfcHooked = false
+local _mcHooked = false
 
 local function _nvmFindModule(nameSet)
-    local scripts = lp:WaitForChild("PlayerScripts", 10)
-    if not scripts then return nil end
-    for _, v in pairs(scripts:GetDescendants()) do
+    local scripts = lp:FindFirstChild("PlayerScripts")
+    if scripts then
+        for _, v in pairs(scripts:GetDescendants()) do
+            if v:IsA("ModuleScript") and nameSet[v.Name] then return v end
+        end
+    end
+    local rep = game:GetService("ReplicatedStorage")
+    for _, v in pairs(rep:GetDescendants()) do
         if v:IsA("ModuleScript") and nameSet[v.Name] then return v end
     end
     return nil
 end
 
 local function ensureNoVMAnimHook()
-    if _nvmHooked then return true end
-    local cvmM = _nvmFindModule({ ClientViewModel = true, ModuleScript_ClientViewModel = true })
-    if not cvmM then return false end
-    local ok, CVM = pcall(require, cvmM)
-    if not ok or type(CVM) ~= "table" then return false end
+    if not _cvmHooked then
+        local cvmM = _nvmFindModule({ ClientViewModel = true, ModuleScript_ClientViewModel = true })
+        if cvmM then
+            local ok, CVM = pcall(require, cvmM)
+            if ok and type(CVM) == "table" then
+                local origApplyRecoil = CVM.ApplyRecoil
+                local origImpulse     = CVM.Impulse
+                local origUpdate      = CVM.Update
+                local origCreateSound = CVM.CreateSound
 
-    local origApplyRecoil = CVM.ApplyRecoil
-    local origImpulse     = CVM.Impulse
-    local origUpdate      = CVM.Update
-    local origCreateSound = CVM.CreateSound
+                CVM.ApplyRecoil = function(self, ...)
+                    if noVMAnim then return end
+                    return origApplyRecoil(self, ...)
+                end
+                CVM.Impulse = function(self, ...)
+                    if noVMAnim then return end
+                    return origImpulse(self, ...)
+                end
+                CVM.CreateSound = function(self, ...)
+                    if noFireSound and tick() < _muteFireSoundUntil then return nil end
+                    return origCreateSound(self, ...)
+                end
 
-    CVM.ApplyRecoil = function(self, ...)
-        if noVMAnim then return end
-        return origApplyRecoil(self, ...)
-    end
-    CVM.Impulse = function(self, ...)
-        if noVMAnim then return end
-        return origImpulse(self, ...)
-    end
-    CVM.CreateSound = function(self, ...)
-        if noFireSound and tick() < _muteFireSoundUntil then return nil end
-        return origCreateSound(self, ...)
-    end
-
-    local V3z = Vector3.new(0, 0, 0)
-    CVM.Update = function(self, ...)
-        if noVMAnim then
-            if not self._noVMAnimApplied then
-                self._noVMAnimApplied = true
-                task.delay(0.001, function()
-                    if not noVMAnim then return end
-                    pcall(function()
-                        local anim = self.Animator
-                        if anim and anim._animation_tracks and anim._idle_animation then
-                            local track = anim._animation_tracks[anim._idle_animation]
-                            if track and track.IsPlaying then track:AdjustSpeed(0) end
-                        end
-                    end)
-                end)
-            end
-            pcall(function()
-                if self._bobbing_value_spring then self._bobbing_value_spring.Target = Vector2.zero; self._bobbing_value_spring.Value = Vector2.zero end
-                if self._sway_spring        then self._sway_spring.Target = Vector2.zero; self._sway_spring.Value = Vector2.zero end
-                if self._jump_spring        then self._jump_spring.Target = 0; self._jump_spring.Value = 0; self._jump_spring.Velocity = 0 end
-                if self._landing_spring     then self._landing_spring.Target = 0; self._landing_spring.Value = 0; self._landing_spring.Velocity = 0 end
-                if self._tilt_spring        then self._tilt_spring.Target = Vector2.zero; self._tilt_spring.Value = Vector2.zero end
-                if self._sprinting_spring   then self._sprinting_spring.Target = 0; self._sprinting_spring.Value = 0 end
-                if self._bobbing_speed_spring then self._bobbing_speed_spring.Target = 0; self._bobbing_speed_spring.Value = 0 end
-                if self._recoil_spring      then self._recoil_spring.Target = V3z; self._recoil_spring.Value = V3z; self._recoil_spring.Velocity = V3z end
-                if self._unrecoil_spring    then self._unrecoil_spring.Target = V3z; self._unrecoil_spring.Value = V3z; self._unrecoil_spring.Velocity = V3z end
-                if self._impulse_position_spring then self._impulse_position_spring.Target = V3z; self._impulse_position_spring.Value = V3z; self._impulse_position_spring.Velocity = V3z end
-            end)
-        else
-            if self._noVMAnimApplied then
-                self._noVMAnimApplied = false
-                pcall(function()
-                    local anim = self.Animator
-                    if anim and anim._animation_tracks and anim._idle_animation then
-                        local track = anim._animation_tracks[anim._idle_animation]
-                        if track and track.IsPlaying then track:AdjustSpeed(1) end
-                    end
-                end)
-            end
-        end
-        return origUpdate(self, ...)
-    end
-
-    local AnimLib
-    pcall(function()
-        AnimLib = require(game:GetService("ReplicatedStorage").Modules.AnimationLibrary)
-    end)
-
-    local animM = _nvmFindModule({ ViewModelAnimator = true, ModuleScript_ViewModelAnimator = true })
-    if animM then
-        local okA, ANIM = pcall(require, animM)
-        if okA and type(ANIM) == "table" then
-            if type(ANIM.PlayAnimation) == "function" then
-                local origPlay = ANIM.PlayAnimation
-                ANIM.PlayAnimation = function(self, key, ...)
-                    if type(key) == "string" then
-                        local isShoot  = key == "QuickShot" or key == "FinalShoot" or key == "ShootAiming" or string.sub(key,1,5) == "Shoot"
-                        local isAttack = string.sub(key,1,6) == "Attack"
-                        if noVMAnim and (isShoot or isAttack) then
-                            if isShoot and not noFireSound and AnimLib and type(AnimLib.Info) == "table" then
+                local V3z = Vector3.new(0, 0, 0)
+                CVM.Update = function(self, ...)
+                    if noVMAnim then
+                        if not self._noVMAnimApplied then
+                            self._noVMAnimApplied = true
+                            task.delay(0.001, function()
+                                if not noVMAnim then return end
                                 pcall(function()
-                                    local animName = self._viewmodel_animations and self._viewmodel_animations[key]
-                                    if animName then
-                                        local info = AnimLib.Info[animName]
-                                        if info and type(info.SoundCallback) == "function" then
-                                            self._animation_hashes[animName] = (self._animation_hashes[animName] or 0) + 1
-                                            task.defer(info.SoundCallback, self.ClientViewModel, self._animation_hashes[animName], info.Speed or 1)
-                                        end
+                                    local anim = self.Animator
+                                    if anim and anim._animation_tracks and anim._idle_animation then
+                                        local track = anim._animation_tracks[anim._idle_animation]
+                                        if track and track.IsPlaying then track:AdjustSpeed(0) end
                                     end
                                 end)
-                            end
-                            if noFireSound and isShoot then _muteFireSoundUntil = tick() + 0.2 end
-                            return
+                            end)
+                        end
+                        pcall(function()
+                            if self._bobbing_value_spring then self._bobbing_value_spring.Target = Vector2.zero; self._bobbing_value_spring.Value = Vector2.zero end
+                            if self._sway_spring        then self._sway_spring.Target = Vector2.zero; self._sway_spring.Value = Vector2.zero end
+                            if self._jump_spring        then self._jump_spring.Target = 0; self._jump_spring.Value = 0; self._jump_spring.Velocity = 0 end
+                            if self._landing_spring     then self._landing_spring.Target = 0; self._landing_spring.Value = 0; self._landing_spring.Velocity = 0 end
+                            if self._tilt_spring        then self._tilt_spring.Target = Vector2.zero; self._tilt_spring.Value = Vector2.zero end
+                            if self._sprinting_spring   then self._sprinting_spring.Target = 0; self._sprinting_spring.Value = 0 end
+                            if self._bobbing_speed_spring then self._bobbing_speed_spring.Target = 0; self._bobbing_speed_spring.Value = 0 end
+                            if self._recoil_spring      then self._recoil_spring.Target = V3z; self._recoil_spring.Value = V3z; self._recoil_spring.Velocity = V3z end
+                            if self._unrecoil_spring    then self._unrecoil_spring.Target = V3z; self._unrecoil_spring.Value = V3z; self._unrecoil_spring.Velocity = V3z end
+                            if self._impulse_position_spring then self._impulse_position_spring.Target = V3z; self._impulse_position_spring.Value = V3z; self._impulse_position_spring.Velocity = V3z end
+                            if self._sliding_spring     then self._sliding_spring.Target = 0; self._sliding_spring.Value = 0; self._sliding_spring.Velocity = 0 end
+                            if self._equip_spring       then self._equip_spring.Target = 0; self._equip_spring.Value = 0; self._equip_spring.Velocity = 0 end
+                        end)
+                    else
+                        if self._noVMAnimApplied then
+                            self._noVMAnimApplied = false
+                            pcall(function()
+                                local anim = self.Animator
+                                if anim and anim._animation_tracks and anim._idle_animation then
+                                    local track = anim._animation_tracks[anim._idle_animation]
+                                    if track and track.IsPlaying then track:AdjustSpeed(1) end
+                                end
+                            end)
                         end
                     end
-                    return origPlay(self, key, ...)
+                    return origUpdate(self, ...)
                 end
-            end
-            if type(ANIM.PlaySprintAnimation) == "function" then
-                local origSprint = ANIM.PlaySprintAnimation
-                ANIM.PlaySprintAnimation = function(self, ...)
-                    if noVMAnim then return end
-                    return origSprint(self, ...)
-                end
-            end
-            if type(ANIM.PlayIdleAnimation) == "function" then
-                local origIdle = ANIM.PlayIdleAnimation
-                ANIM.PlayIdleAnimation = function(self, ...)
-                    local ret = origIdle(self, ...)
-                    if noVMAnim then
-                        task.delay(0.001, function()
-                            if not noVMAnim then return end
-                            pcall(function()
-                                local track = self._animation_tracks and self._animation_tracks[self._idle_animation]
-                                if track and track.IsPlaying then track:AdjustSpeed(0) end
-                            end)
-                        end)
-                    end
-                    return ret
-                end
+                _cvmHooked = true
             end
         end
     end
 
-    _nvmHooked = true
-    return true
+    if not _animHooked then
+        local AnimLib
+        pcall(function()
+            AnimLib = require(game:GetService("ReplicatedStorage").Modules.AnimationLibrary)
+        end)
+
+        local animM = _nvmFindModule({ ViewModelAnimator = true, ModuleScript_ViewModelAnimator = true })
+        if animM then
+            local okA, ANIM = pcall(require, animM)
+            if okA and type(ANIM) == "table" then
+                if type(ANIM.PlayAnimation) == "function" then
+                    local origPlay = ANIM.PlayAnimation
+                    ANIM.PlayAnimation = function(self, key, ...)
+                        if type(key) == "string" then
+                            local isShoot  = key == "QuickShot" or key == "FinalShoot" or key == "ShootAiming" or string.sub(key,1,5) == "Shoot"
+                            local isAttack = string.sub(key,1,6) == "Attack"
+                            local isReload = string.find(key, "Reload") ~= nil
+                            if noVMAnim and (isShoot or isAttack or isReload) then
+                                local shouldPlaySound = false
+                                if isShoot and not noFireSound then
+                                    shouldPlaySound = true
+                                elseif isReload then
+                                    shouldPlaySound = true
+                                end
+                                if shouldPlaySound and AnimLib and type(AnimLib.Info) == "table" then
+                                    pcall(function()
+                                        local animName = self._viewmodel_animations and self._viewmodel_animations[key]
+                                        if animName then
+                                            local info = AnimLib.Info[animName]
+                                            if info and type(info.SoundCallback) == "function" then
+                                                self._animation_hashes[animName] = (self._animation_hashes[animName] or 0) + 1
+                                                task.defer(info.SoundCallback, self.ClientViewModel, self._animation_hashes[animName], info.Speed or 1)
+                                            end
+                                        end
+                                    end)
+                                end
+                                if noFireSound and isShoot then _muteFireSoundUntil = tick() + 0.2 end
+                                if self.AnimationPlayed then
+                                    pcall(function() self.AnimationPlayed:Fire(key) end)
+                                end
+                                return
+                            end
+                        end
+                        return origPlay(self, key, ...)
+                    end
+                end
+                if type(ANIM.PlaySprintAnimation) == "function" then
+                    local origSprint = ANIM.PlaySprintAnimation
+                    ANIM.PlaySprintAnimation = function(self, ...)
+                        if noVMAnim then return end
+                        return origSprint(self, ...)
+                    end
+                end
+                if type(ANIM.PlayIdleAnimation) == "function" then
+                    local origIdle = ANIM.PlayIdleAnimation
+                    ANIM.PlayIdleAnimation = function(self, ...)
+                        local ret = origIdle(self, ...)
+                        if noVMAnim then
+                            task.delay(0.001, function()
+                                if not noVMAnim then return end
+                                pcall(function()
+                                    local track = self._animation_tracks and self._animation_tracks[self._idle_animation]
+                                    if track and track.IsPlaying then track:AdjustSpeed(0) end
+                                end)
+                            end)
+                        end
+                        return ret
+                    end
+                end
+                _animHooked = true
+            end
+        end
+    end
+
+    if not _cfcHooked then
+        local cfcM = _nvmFindModule({ ClientFighterCharacter = true, ModuleScript_ClientFighterCharacter = true })
+        if cfcM then
+            local okC, CFC = pcall(require, cfcM)
+            if okC and type(CFC) == "table" and type(CFC.PlaySlidingAnimation) == "function" then
+                local origPlaySlide = CFC.PlaySlidingAnimation
+                CFC.PlaySlidingAnimation = function(self, ...)
+                    if noVMAnim then
+                        pcall(function() self:StopSlidingAnimation() end)
+                        return
+                    end
+                    return origPlaySlide(self, ...)
+                end
+                _cfcHooked = true
+            end
+        end
+    end
+
+    if not _mcHooked then
+        pcall(function()
+            local controllers = lp:FindFirstChild("PlayerScripts") and lp.PlayerScripts:FindFirstChild("Controllers")
+            local mcM = controllers and controllers:FindFirstChild("MechanicsController")
+            if mcM then
+                local MC = require(mcM)
+                if MC and type(MC) == "table" and type(MC.Slide) == "function" then
+                    local origSlide = MC.Slide
+                    MC.Slide = function(self, ...)
+                        if noVMAnim and self.LocalFighter and self.LocalFighter.Entity then
+                            pcall(function() self.LocalFighter.Entity:StopSlidingAnimation() end)
+                        end
+                        return origSlide(self, ...)
+                    end
+                    _mcHooked = true
+                end
+            end
+        end)
+    end
+
+    return _cvmHooked and _animHooked
 end
 
 VisVMBox:AddToggle("NoVMAnim_Enabled", {
@@ -2231,7 +2294,19 @@ VisVMBox:AddToggle("NoVMAnim_Enabled", {
     Default = false,
     Callback = function(v)
         noVMAnim = v
-        if v then task.spawn(ensureNoVMAnimHook) end
+        if v then
+            task.spawn(ensureNoVMAnimHook)
+            pcall(function()
+                local controllers = lp:FindFirstChild("PlayerScripts") and lp.PlayerScripts:FindFirstChild("Controllers")
+                local mcM = controllers and controllers:FindFirstChild("MechanicsController")
+                if mcM then
+                    local MC = require(mcM)
+                    if MC and MC.LocalFighter and MC.LocalFighter.Entity then
+                        MC.LocalFighter.Entity:StopSlidingAnimation()
+                    end
+                end
+            end)
+        end
     end,
 })
 VisVMBox:AddToggle("NoFireSound_Enabled", {
@@ -4101,55 +4176,6 @@ do
     end)
 end
 
--- ========== SPINBOT ==========
-do
-    local SpinBotSection = Tabs.Rage:AddLeftGroupbox("SpinBot")
-
-    local spinEnabled = false
-    local spinSpeed   = 20  -- degrees per heartbeat
-
-    local SpinToggle = SpinBotSection:AddToggle("SpinBot_Enabled", {
-        Text = "Enabled",
-        Default = false,
-        Callback = function(v)
-            spinEnabled = v
-            local char = lp.Character
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum.AutoRotate = not v
-            end
-        end
-    })
-    SpinToggle:AddKeyPicker("SpinBotKey", {
-        Default = "None",
-        SyncToggleState = true,
-        Mode = "Toggle",
-        Text = "SpinBot",
-    })
-
-    local SpinDep = SpinBotSection:AddDependencyBox()
-    SpinDep:AddSlider("SpinBot_Speed", {
-        Text = "Speed",
-        Default = 20,
-        Min = 1,
-        Max = 360,
-        Rounding = 0,
-        Callback = function(v) spinSpeed = v end
-    })
-    SpinDep:SetupDependencies({ { SpinToggle, true } })
-
-    RunService.Heartbeat:Connect(function()
-        if not spinEnabled then return end
-        local char = lp.Character
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if hum and hum.AutoRotate then
-            hum.AutoRotate = false
-        end
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        if not root then return end
-        root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(spinSpeed), 0)
-    end)
-end
 
 
 do
