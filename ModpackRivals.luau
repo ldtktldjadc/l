@@ -2082,7 +2082,7 @@ VisVMDepBox:AddSlider("VMOffsetZ", {
 })
 VisVMDepBox:SetupDependencies({ { VMOffsetToggle, true } })
 
--- ========== NO VIEWMODEL ANIMATION & NO ARM ==========
+-- ========== NO VIEWMODEL ANIMATION, NO ARM & VM MATERIAL ==========
 local noVMAnim = false
 local noFireSound = false
 local noArmEnabled = false
@@ -2093,12 +2093,156 @@ local _animHooked = false
 local _cfcHooked = false
 local _mcHooked = false
 
+-- ViewModel Material Settings
+local armMaterialChoice = "Default"
+local armColorEnabled = false
+local armColorValue = Color3.fromRGB(0, 170, 255)
+local armFFAnimChoice = "Default"
+local armFFCustomID = ""
+
+local weaponMaterialChoice = "Default"
+local weaponColorEnabled = false
+local weaponColorValue = Color3.fromRGB(255, 85, 255)
+local weaponFFAnimChoice = "Default"
+local weaponFFCustomID = ""
+
+local _originalPartProps = setmetatable({}, { __mode = "k" })
+
+local MATERIAL_ENUM_MAP = {
+    ForceField = Enum.Material.ForceField,
+    Neon = Enum.Material.Neon,
+    Glass = Enum.Material.Glass,
+    SmoothPlastic = Enum.Material.SmoothPlastic,
+    Metal = Enum.Material.Metal,
+    Foil = Enum.Material.Foil,
+    DiamondPlate = Enum.Material.DiamondPlate,
+    Ice = Enum.Material.Ice,
+    CorrodedMetal = Enum.Material.CorrodedMetal,
+    Wood = Enum.Material.Wood,
+    Brick = Enum.Material.Brick,
+    Granite = Enum.Material.Granite,
+    Marble = Enum.Material.Marble,
+}
+
+local FORCEFIELD_ANIM_TEXTURES = {
+    ["Default"] = "",
+    ["Hexagon"] = "rbxassetid://5101923607",
+    ["Lightning"] = "rbxassetid://733527264",
+    ["Matrix"] = "rbxassetid://1088661278",
+    ["Waves"] = "rbxassetid://6354471929",
+    ["Grid"] = "rbxassetid://26974880",
+    ["Galaxy"] = "rbxassetid://159991444",
+    ["Noise"] = "rbxassetid://276060293",
+    ["Pulse"] = "rbxassetid://6686375902",
+    ["Custom"] = "CUSTOM",
+}
+
+local function formatAssetId(id)
+    if not id or id == "" then return "" end
+    id = tostring(id):gsub("%s+", "")
+    if id:find("rbxassetid://") then return id end
+    local num = id:gsub("%D", "")
+    if #num > 0 then return "rbxassetid://" .. num end
+    return id
+end
+
+local function getArmForceFieldTexture()
+    if armFFAnimChoice == "Custom" then
+        return formatAssetId(armFFCustomID)
+    end
+    return FORCEFIELD_ANIM_TEXTURES[armFFAnimChoice] or ""
+end
+
+local function getWeaponForceFieldTexture()
+    if weaponFFAnimChoice == "Custom" then
+        return formatAssetId(weaponFFCustomID)
+    end
+    return FORCEFIELD_ANIM_TEXTURES[weaponFFAnimChoice] or ""
+end
+
 local ARM_PART_NAMES = {
     LeftArm = true, RightArm = true,
     LeftArmWrapped = true, RightArmWrapped = true,
     LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
     RightUpperArm = true, RightLowerArm = true, RightHand = true,
 }
+
+local IGNORED_PART_NAMES = {
+    HumanoidRootPart = true,
+    Camera = true,
+    ViewModelRoot = true,
+    Primary = true,
+    _aim_position = true,
+    _aim_lookat = true,
+    _center = true,
+}
+
+local function isArmInstance(inst)
+    if not inst then return false end
+    if ARM_PART_NAMES[inst.Name] then return true end
+    local cur = inst.Parent
+    while cur and cur ~= workspace and cur ~= cur.Parent do
+        if ARM_PART_NAMES[cur.Name] then return true end
+        cur = cur.Parent
+    end
+    return false
+end
+
+local function recordPartOriginal(part)
+    if _originalPartProps[part] then return end
+    local info = {}
+    if part:IsA("BasePart") then
+        info.Material = part.Material
+        info.Color = part.Color
+        if part:IsA("MeshPart") then
+            info.TextureID = part.TextureID
+        end
+        local sm = part:FindFirstChildOfClass("SpecialMesh")
+        if sm then
+            info.MeshTextureId = sm.TextureId
+        end
+    elseif part:IsA("Decal") or part:IsA("Texture") then
+        info.Transparency = part.Transparency
+    end
+    _originalPartProps[part] = info
+end
+
+local function restorePart(part)
+    local info = _originalPartProps[part]
+    if not info then return end
+    if part:IsA("BasePart") then
+        if info.Material then part.Material = info.Material end
+        if info.Color then part.Color = info.Color end
+        if info.TextureID and part:IsA("MeshPart") then
+            part.TextureID = info.TextureID
+        end
+        local sm = part:FindFirstChildOfClass("SpecialMesh")
+        if sm and info.MeshTextureId then
+            sm.TextureId = info.MeshTextureId
+        end
+    elseif part:IsA("Decal") or part:IsA("Texture") then
+        if info.Transparency then
+            part.Transparency = info.Transparency
+        end
+    end
+    _originalPartProps[part] = nil
+end
+
+local function restoreAllArmParts()
+    for part, _ in pairs(_originalPartProps) do
+        if part and part.Parent and isArmInstance(part) then
+            restorePart(part)
+        end
+    end
+end
+
+local function restoreAllWeaponParts()
+    for part, _ in pairs(_originalPartProps) do
+        if part and part.Parent and not isArmInstance(part) then
+            restorePart(part)
+        end
+    end
+end
 
 local function setPartNoArm(part, hidden)
     if not part then return end
@@ -2117,6 +2261,59 @@ local function applyNoArmToModel(model, hidden)
             setPartNoArm(child, hidden)
             for _, d in ipairs(child:GetDescendants()) do
                 setPartNoArm(d, hidden)
+            end
+        end
+    end
+end
+
+local function processViewModelMaterials(model)
+    if not model then return end
+    for _, d in ipairs(model:GetDescendants()) do
+        if (d:IsA("BasePart") or d:IsA("Decal") or d:IsA("Texture")) and not IGNORED_PART_NAMES[d.Name] then
+            if isArmInstance(d) then
+                if not noArmEnabled then
+                    if armMaterialChoice == "Default" then
+                        restorePart(d)
+                    else
+                        recordPartOriginal(d)
+                        local matEnum = MATERIAL_ENUM_MAP[armMaterialChoice]
+                        if d:IsA("BasePart") then
+                            if matEnum and d.Material ~= matEnum then d.Material = matEnum end
+                            if armColorEnabled and d.Color ~= armColorValue then d.Color = armColorValue end
+                            if matEnum == Enum.Material.ForceField then
+                                local tex = getArmForceFieldTexture()
+                                if d:IsA("MeshPart") and d.TextureID ~= tex then d.TextureID = tex end
+                                local sm = d:FindFirstChildOfClass("SpecialMesh")
+                                if sm and sm.TextureId ~= tex then sm.TextureId = tex end
+                            end
+                        elseif d:IsA("Decal") or d:IsA("Texture") then
+                            if d.Transparency ~= 1 then d.Transparency = 1 end
+                        end
+                    end
+                end
+            else
+                if weaponMaterialChoice == "Default" then
+                    restorePart(d)
+                else
+                    recordPartOriginal(d)
+                    local matEnum = MATERIAL_ENUM_MAP[weaponMaterialChoice]
+                    if d:IsA("BasePart") then
+                        if matEnum and d.Material ~= matEnum then d.Material = matEnum end
+                        if weaponColorEnabled and d.Color ~= weaponColorValue then d.Color = weaponColorValue end
+                        if matEnum == Enum.Material.ForceField then
+                            local tex = getWeaponForceFieldTexture()
+                            if d:IsA("MeshPart") and d.TextureID ~= tex then d.TextureID = tex end
+                            local sm = d:FindFirstChildOfClass("SpecialMesh")
+                            if sm and sm.TextureId ~= tex then sm.TextureId = tex end
+                        else
+                            if d:IsA("MeshPart") and d.TextureID ~= "" then d.TextureID = "" end
+                            local sm = d:FindFirstChildOfClass("SpecialMesh")
+                            if sm and sm.TextureId ~= "" then sm.TextureId = "" end
+                        end
+                    elseif d:IsA("Decal") or d:IsA("Texture") then
+                        if d.Transparency ~= 1 then d.Transparency = 1 end
+                    end
+                end
             end
         end
     end
@@ -2143,6 +2340,54 @@ local function updateNoArmInWorld(hidden)
             if m:IsA("Model") and (m:FindFirstChild("LeftArm") or m:FindFirstChild("RightArm") or m:FindFirstChild("LeftUpperArm")) then
                 applyNoArmToModel(m, hidden)
             end
+        end
+    end
+end
+
+local function updateVMWorldMaterials()
+    local vmFolder = workspace:FindFirstChild("ViewModels")
+    if vmFolder then
+        local fp = vmFolder:FindFirstChild("FirstPerson")
+        if fp then
+            for _, m in ipairs(fp:GetChildren()) do
+                if m:IsA("Model") then processViewModelMaterials(m) end
+            end
+        end
+        for _, m in ipairs(vmFolder:GetChildren()) do
+            if m:IsA("Model") and m.Name ~= "FirstPerson" then
+                processViewModelMaterials(m)
+            end
+        end
+    end
+    local curCam = workspace.CurrentCamera
+    if curCam then
+        for _, m in ipairs(curCam:GetChildren()) do
+            if m:IsA("Model") and (m:FindFirstChild("LeftArm") or m:FindFirstChild("RightArm") or m:FindFirstChild("ItemVisual")) then
+                processViewModelMaterials(m)
+            end
+        end
+    end
+end
+
+local function checkVMLoopState()
+    local shouldRun = noArmEnabled or (armMaterialChoice and armMaterialChoice ~= "Default") or (weaponMaterialChoice and weaponMaterialChoice ~= "Default")
+    if shouldRun then
+        if not noArmConnection then
+            noArmConnection = RunService.RenderStepped:Connect(function()
+                if noArmEnabled then
+                    updateNoArmInWorld(true)
+                end
+                if (armMaterialChoice and armMaterialChoice ~= "Default") or (weaponMaterialChoice and weaponMaterialChoice ~= "Default") then
+                    updateVMWorldMaterials()
+                end
+            end)
+            getgenv().KETY_NoArmConnection = noArmConnection
+        end
+    else
+        if noArmConnection then
+            noArmConnection:Disconnect()
+            noArmConnection = nil
+            getgenv().KETY_NoArmConnection = nil
         end
     end
 end
@@ -2303,6 +2548,11 @@ local function ensureNoVMAnimHook()
                             end
                         end)
                     end
+                    if (armMaterialChoice and armMaterialChoice ~= "Default") or (weaponMaterialChoice and weaponMaterialChoice ~= "Default") then
+                        pcall(function()
+                            if self.Model then processViewModelMaterials(self.Model) end
+                        end)
+                    end
                     return ret
                 end
                 _cvmHooked = true
@@ -2461,25 +2711,142 @@ VisVMBox:AddToggle("NoArm_Enabled", {
         noArmEnabled = v
         if v then
             task.spawn(ensureNoVMAnimHook)
-            if not noArmConnection then
-                noArmConnection = RunService.RenderStepped:Connect(function()
-                    if noArmEnabled then
-                        updateNoArmInWorld(true)
-                    end
-                end)
-                getgenv().KETY_NoArmConnection = noArmConnection
-            end
             updateNoArmInWorld(true)
         else
-            if noArmConnection then
-                noArmConnection:Disconnect()
-                noArmConnection = nil
-                getgenv().KETY_NoArmConnection = nil
-            end
             updateNoArmInWorld(false)
+            if armMaterialChoice and armMaterialChoice ~= "Default" then
+                updateVMWorldMaterials()
+            else
+                restoreAllArmParts()
+            end
         end
+        checkVMLoopState()
     end,
 })
+
+VisVMBox:AddDivider()
+
+-- Arm Material
+local ArmMaterialDropdown = VisVMBox:AddDropdown("ArmMaterial", {
+    Values = {"Default", "ForceField", "Neon", "Glass", "SmoothPlastic", "Metal", "Foil", "DiamondPlate", "Ice", "CorrodedMetal", "Wood", "Brick", "Granite", "Marble"},
+    Default = 1,
+    Multi = false,
+    Text = "Arm Material",
+    Tooltip = "腕のMaterialを変更",
+    Callback = function(v)
+        armMaterialChoice = v
+        if v == "Default" then
+            restoreAllArmParts()
+        else
+            task.spawn(ensureNoVMAnimHook)
+        end
+        checkVMLoopState()
+        updateVMWorldMaterials()
+    end,
+})
+
+VisVMBox:AddToggle("ArmColorEnabled", {
+    Text = "Arm Custom Color",
+    Default = false,
+    Tooltip = "腕にカスタムカラーを適用",
+    Callback = function(v)
+        armColorEnabled = v
+        if not v then restoreAllArmParts() end
+        updateVMWorldMaterials()
+    end,
+}):AddColorPicker("ArmColor", {
+    Default = Color3.fromRGB(0, 170, 255),
+    Callback = function(v)
+        armColorValue = v
+        updateVMWorldMaterials()
+    end,
+})
+
+local ArmFFDep = VisVMBox:AddDependencyBox()
+ArmFFDep:AddDropdown("ArmFFAnim", {
+    Values = {"Default", "Hexagon", "Lightning", "Matrix", "Waves", "Grid", "Galaxy", "Noise", "Pulse", "Custom"},
+    Default = 1,
+    Multi = false,
+    Text = "Arm FF Animation",
+    Tooltip = "ForceFieldのアニメーションパターンを選択",
+    Callback = function(v)
+        armFFAnimChoice = v
+        updateVMWorldMaterials()
+    end,
+})
+ArmFFDep:AddInput("ArmFFCustomID", {
+    Default = "",
+    Text = "Custom Texture ID",
+    Tooltip = "カスタムForceField用のTexture ID",
+    Placeholder = "例: 5101923607",
+    Callback = function(v)
+        armFFCustomID = v
+        updateVMWorldMaterials()
+    end,
+})
+ArmFFDep:SetupDependencies({ { ArmMaterialDropdown, "ForceField" } })
+
+VisVMBox:AddDivider()
+
+-- Weapon Material
+local WeaponMaterialDropdown = VisVMBox:AddDropdown("WeaponMaterial", {
+    Values = {"Default", "ForceField", "Neon", "Glass", "SmoothPlastic", "Metal", "Foil", "DiamondPlate", "Ice", "CorrodedMetal", "Wood", "Brick", "Granite", "Marble"},
+    Default = 1,
+    Multi = false,
+    Text = "Weapon Material",
+    Tooltip = "武器のMaterialを変更",
+    Callback = function(v)
+        weaponMaterialChoice = v
+        if v == "Default" then
+            restoreAllWeaponParts()
+        else
+            task.spawn(ensureNoVMAnimHook)
+        end
+        checkVMLoopState()
+        updateVMWorldMaterials()
+    end,
+})
+
+VisVMBox:AddToggle("WeaponColorEnabled", {
+    Text = "Weapon Custom Color",
+    Default = false,
+    Tooltip = "武器にカスタムカラーを適用",
+    Callback = function(v)
+        weaponColorEnabled = v
+        if not v then restoreAllWeaponParts() end
+        updateVMWorldMaterials()
+    end,
+}):AddColorPicker("WeaponColor", {
+    Default = Color3.fromRGB(255, 85, 255),
+    Callback = function(v)
+        weaponColorValue = v
+        updateVMWorldMaterials()
+    end,
+})
+
+local WeaponFFDep = VisVMBox:AddDependencyBox()
+WeaponFFDep:AddDropdown("WeaponFFAnim", {
+    Values = {"Default", "Hexagon", "Lightning", "Matrix", "Waves", "Grid", "Galaxy", "Noise", "Pulse", "Custom"},
+    Default = 1,
+    Multi = false,
+    Text = "Weapon FF Animation",
+    Tooltip = "ForceFieldのアニメーションパターンを選択",
+    Callback = function(v)
+        weaponFFAnimChoice = v
+        updateVMWorldMaterials()
+    end,
+})
+WeaponFFDep:AddInput("WeaponFFCustomID", {
+    Default = "",
+    Text = "Custom Texture ID",
+    Tooltip = "カスタムForceField用のTexture ID",
+    Placeholder = "例: 5101923607",
+    Callback = function(v)
+        weaponFFCustomID = v
+        updateVMWorldMaterials()
+    end,
+})
+WeaponFFDep:SetupDependencies({ { WeaponMaterialDropdown, "ForceField" } })
 
 -- Team ESP
 local TeamESPSection = Tabs.Visuals:AddRightGroupbox("Team ESP")
