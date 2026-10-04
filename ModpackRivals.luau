@@ -3219,6 +3219,254 @@ EnvSection:AddSlider("Env_Snow_Speed", {
 })
 end
 
+-- ===== WORLD: LIGHTING CONTROL / POST FX / SKY CHANGER =====
+do
+    local Lighting = game:GetService("Lighting")
+    local LightSection = Tabs.World:AddLeftGroupbox("Lighting Control")
+    local FxSection    = Tabs.World:AddLeftGroupbox("Post Processing")
+    local SkySection   = Tabs.World:AddRightGroupbox("Sky Changer")
+
+    local PROPS = { "Brightness", "ExposureCompensation", "OutdoorAmbient", "Ambient", "ClockTime",
+        "ColorShift_Top", "ColorShift_Bottom", "EnvironmentDiffuseScale", "EnvironmentSpecularScale",
+        "GlobalShadows", "ShadowSoftness", "FogColor", "FogStart", "FogEnd" }
+    local orig = {}
+    for _, p in ipairs(PROPS) do orig[p] = Lighting[p] end
+
+    local lightOn, skyOn = false, false
+    local lv = {}
+    for _, p in ipairs(PROPS) do lv[p] = Lighting[p] end
+
+    -- ===== Sky Changer データ =====
+    local C3 = Color3.fromRGB
+    local PRESETS = {
+        ["GraySky"]        = { Clock = 14, Atmo = C3(150,150,155), Density = 0.35, Haze = 1.5, Ambient = C3(130,130,135), Fog = C3(165,165,170), FogEnd = 900,  Stars = 0,    Celestial = false },
+        ["Sunset"]         = { Clock = 18, Atmo = C3(255,140,80),  Density = 0.3,  Haze = 2,   Ambient = C3(120,70,60),   Fog = C3(255,150,100), FogEnd = 1200, Stars = 0,    Celestial = true },
+        ["Dusk Purple"]    = { Clock = 19, Atmo = C3(150,90,200),  Density = 0.35, Haze = 2.5, Ambient = C3(90,50,140),   Fog = C3(130,80,180),  FogEnd = 1000, Stars = 1000, Celestial = true },
+        ["Midnight"]       = { Clock = 0,  Atmo = C3(20,25,60),    Density = 0.3,  Haze = 1,   Ambient = C3(25,30,70),    Fog = C3(10,12,35),    FogEnd = 1000, Stars = 5000, Celestial = true },
+        ["Blood Red"]      = { Clock = 20, Atmo = C3(200,20,20),   Density = 0.4,  Haze = 3,   Ambient = C3(120,10,10),   Fog = C3(150,10,10),   FogEnd = 700,  Stars = 0,    Celestial = false },
+        ["Toxic Green"]    = { Clock = 12, Atmo = C3(120,255,80),  Density = 0.4,  Haze = 2.5, Ambient = C3(60,140,40),   Fog = C3(90,200,60),   FogEnd = 700,  Stars = 0,    Celestial = false },
+        ["Ocean Blue"]     = { Clock = 13, Atmo = C3(60,160,255),  Density = 0.25, Haze = 1,   Ambient = C3(60,110,170),  Fog = C3(110,180,255), FogEnd = 1500, Stars = 0,    Celestial = true },
+        ["Pink Dream"]     = { Clock = 17, Atmo = C3(255,150,210), Density = 0.3,  Haze = 2,   Ambient = C3(190,110,160), Fog = C3(255,170,220), FogEnd = 1200, Stars = 500,  Celestial = true },
+        ["Golden Hour"]    = { Clock = 17, Atmo = C3(255,200,100), Density = 0.3,  Haze = 2,   Ambient = C3(170,130,70),  Fog = C3(255,210,130), FogEnd = 1400, Stars = 0,    Celestial = true },
+        ["Overcast Storm"] = { Clock = 15, Atmo = C3(90,95,105),   Density = 0.5,  Haze = 3,   Ambient = C3(80,85,95),    Fog = C3(100,105,115), FogEnd = 500,  Stars = 0,    Celestial = false },
+        ["Void Black"]     = { Clock = 0,  Atmo = C3(0,0,0),       Density = 0,    Haze = 0,   Ambient = C3(30,30,30),    Fog = C3(0,0,0),       FogEnd = 400,  Stars = 0,    Celestial = false },
+        ["Arctic White"]   = { Clock = 12, Atmo = C3(230,240,255), Density = 0.45, Haze = 4,   Ambient = C3(200,210,225), Fog = C3(235,243,255), FogEnd = 600,  Stars = 0,    Celestial = false },
+        ["Default Roblox"] = { Clock = 14, Atmo = C3(199,170,107), Density = 0.3,  Haze = 0,   Ambient = C3(70,70,70),    Fog = C3(192,192,192), FogEnd = 100000, Stars = 3000, Celestial = true,
+            Faces = { Bk = "rbxasset://textures/sky/sky512_bk.tex", Dn = "rbxasset://textures/sky/sky512_dn.tex", Ft = "rbxasset://textures/sky/sky512_ft.tex",
+                      Lf = "rbxasset://textures/sky/sky512_lf.tex", Rt = "rbxasset://textures/sky/sky512_rt.tex", Up = "rbxasset://textures/sky/sky512_up.tex" } },
+    }
+    local PRESET_LIST = { "GraySky", "Sunset", "Dusk Purple", "Midnight", "Blood Red", "Toxic Green", "Ocean Blue", "Pink Dream", "Golden Hour", "Overcast Storm", "Void Black", "Arctic White", "Default Roblox", "Custom" }
+    local FACES = { "Bk", "Dn", "Ft", "Lf", "Rt", "Up" }
+
+    local skyChoice = "GraySky"
+    local custom = { Clock = 14, Atmo = C3(150,150,200), Density = 0.3, Haze = 1, Ambient = C3(150,150,200), Fog = C3(150,150,200), FogEnd = 1000, Stars = 0, Celestial = false, AllID = "", Faces = {} }
+
+    local function normID(id)
+        local n = tostring(id or ""):gsub("%D", "")
+        return #n > 0 and ("rbxassetid://" .. n) or ""
+    end
+
+    local function currentSky()
+        if skyChoice ~= "Custom" then return PRESETS[skyChoice] end
+        local faces = {}
+        local all = normID(custom.AllID)
+        for _, f in ipairs(FACES) do
+            local own = normID(custom.Faces[f])
+            faces[f] = own ~= "" and own or all
+        end
+        return setmetatable({ Faces = faces }, { __index = custom })
+    end
+
+    local mySky, myAtmo
+    local hidden = {}
+
+    local function applySkyObjects()
+        if skyOn then
+            local cfg = currentSky()
+            for _, c in ipairs(Lighting:GetChildren()) do
+                if (c:IsA("Sky") and c ~= mySky) or (c:IsA("Atmosphere") and c ~= myAtmo) then
+                    table.insert(hidden, c)
+                    c.Parent = nil
+                end
+            end
+            if not mySky or mySky.Parent ~= Lighting then
+                mySky = mySky or Instance.new("Sky")
+                mySky.Name = "KETYSky"
+                mySky.Parent = Lighting
+            end
+            if not myAtmo or myAtmo.Parent ~= Lighting then
+                myAtmo = myAtmo or Instance.new("Atmosphere")
+                myAtmo.Name = "KETYAtmosphere"
+                myAtmo.Parent = Lighting
+            end
+            local faces = cfg.Faces or {}
+            for _, f in ipairs(FACES) do
+                local want = faces[f] or ""
+                if mySky["Skybox" .. f] ~= want then mySky["Skybox" .. f] = want end
+            end
+            mySky.CelestialBodiesShown = cfg.Celestial
+            mySky.StarCount = cfg.Stars
+            myAtmo.Color = cfg.Atmo
+            myAtmo.Decay = cfg.Atmo
+            myAtmo.Density = cfg.Density
+            myAtmo.Haze = cfg.Haze
+            myAtmo.Glare = 0
+        else
+            if mySky then mySky:Destroy(); mySky = nil end
+            if myAtmo then myAtmo:Destroy(); myAtmo = nil end
+            for _, c in ipairs(hidden) do pcall(function() c.Parent = Lighting end) end
+            hidden = {}
+        end
+    end
+
+    local function desired()
+        local d = {}
+        if skyOn then
+            local cfg = currentSky()
+            d.ClockTime = cfg.Clock
+            d.Ambient = cfg.Ambient
+            d.OutdoorAmbient = cfg.Ambient
+            d.FogColor = cfg.Fog
+            d.FogStart = 0
+            d.FogEnd = cfg.FogEnd
+        end
+        if lightOn then
+            for k, v in pairs(lv) do d[k] = v end
+        end
+        return d
+    end
+
+    local worldConn
+    local function step()
+        local d = desired()
+        for _, p in ipairs(PROPS) do
+            local want = d[p]
+            if want == nil then want = orig[p] end
+            if Lighting[p] ~= want then pcall(function() Lighting[p] = want end) end
+        end
+        applySkyObjects()
+    end
+
+    local function refresh()
+        if lightOn or skyOn then
+            if not worldConn then worldConn = RunService.Heartbeat:Connect(step) end
+        else
+            if worldConn then worldConn:Disconnect(); worldConn = nil end
+            step()
+        end
+    end
+
+    -- ===== Lighting Control UI =====
+    local LightToggle = LightSection:AddToggle("WorldLight_Enabled", {
+        Text = "Enable Lighting Override", Default = false,
+        Callback = function(v) lightOn = v; refresh() end
+    })
+    LightToggle:AddKeyPicker("WorldLightKey", { Default = "None", SyncToggleState = true, Mode = "Toggle", Text = "Lighting Override" })
+
+    local function lslider(prop, text, min, max, rounding)
+        LightSection:AddSlider("WorldLight_" .. prop, {
+            Text = text, Default = math.clamp(Lighting[prop], min, max), Min = min, Max = max, Rounding = rounding,
+            Callback = function(v) lv[prop] = v end
+        })
+    end
+    lslider("Brightness", "Brightness", 0, 10, 2)
+    lslider("ExposureCompensation", "Exposure", -3, 3, 2)
+    lslider("EnvironmentDiffuseScale", "Env Diffuse", 0, 1, 2)
+    lslider("EnvironmentSpecularScale", "Env Specular", 0, 1, 2)
+    lslider("ShadowSoftness", "Shadow Softness", 0, 1, 2)
+    lslider("FogStart", "Fog Start", 0, 5000, 0)
+    lslider("FogEnd", "Fog End", 0, 100000, 0)
+    LightSection:AddToggle("WorldLight_GlobalShadows", {
+        Text = "Global Shadows", Default = Lighting.GlobalShadows,
+        Callback = function(v) lv.GlobalShadows = v end
+    })
+    local function lcolor(prop, text)
+        LightSection:AddLabel(text):AddColorPicker("WorldLightColor_" .. prop, {
+            Default = Lighting[prop], Title = text,
+            Callback = function(v) lv[prop] = v end
+        })
+    end
+    lcolor("Ambient", "Ambient")
+    lcolor("OutdoorAmbient", "Outdoor Ambient")
+    lcolor("ColorShift_Top", "Color Shift Top")
+    lcolor("ColorShift_Bottom", "Color Shift Bottom")
+    lcolor("FogColor", "Fog Color")
+    LightSection:AddSlider("WorldLight_ClockTime", {
+        Text = "Clock Time", Default = math.clamp(Lighting.ClockTime, 0, 24), Min = 0, Max = 24, Rounding = 1,
+        Callback = function(v) lv.ClockTime = v end
+    })
+
+    -- ===== Post Processing =====
+    local function getFx(class, name)
+        local fx = Lighting:FindFirstChild(name)
+        if not fx then
+            fx = Instance.new(class)
+            fx.Name = name
+            fx.Enabled = false
+            fx.Parent = Lighting
+        end
+        return fx
+    end
+    local function fxToggle(id, text, class, name)
+        FxSection:AddToggle(id, { Text = text, Default = false,
+            Callback = function(v) getFx(class, name).Enabled = v end })
+    end
+    local function fxSlider(id, text, class, name, prop, def, min, max, rounding)
+        FxSection:AddSlider(id, { Text = text, Default = def, Min = min, Max = max, Rounding = rounding,
+            Callback = function(v) getFx(class, name)[prop] = v end })
+    end
+    fxToggle("FX_Bloom", "Bloom", "BloomEffect", "KETYBloom")
+    fxSlider("FX_BloomIntensity", "Bloom Intensity", "BloomEffect", "KETYBloom", "Intensity", 1, 0, 5, 2)
+    fxSlider("FX_BloomSize", "Bloom Size", "BloomEffect", "KETYBloom", "Size", 24, 0, 56, 0)
+    fxSlider("FX_BloomThreshold", "Bloom Threshold", "BloomEffect", "KETYBloom", "Threshold", 0.8, 0, 3, 2)
+    fxToggle("FX_Blur", "Blur", "BlurEffect", "KETYBlur")
+    fxSlider("FX_BlurSize", "Blur Size", "BlurEffect", "KETYBlur", "Size", 8, 0, 56, 0)
+    fxToggle("FX_SunRays", "Sun Rays", "SunRaysEffect", "KETYSunRays")
+    fxSlider("FX_SunRaysIntensity", "Sun Rays Intensity", "SunRaysEffect", "KETYSunRays", "Intensity", 0.25, 0, 1, 2)
+    fxSlider("FX_SunRaysSpread", "Sun Rays Spread", "SunRaysEffect", "KETYSunRays", "Spread", 1, 0, 1, 2)
+    fxToggle("FX_DOF", "Depth Of Field", "DepthOfFieldEffect", "KETYDOF")
+    fxSlider("FX_DOFFar", "DOF Far Intensity", "DepthOfFieldEffect", "KETYDOF", "FarIntensity", 0.75, 0, 1, 2)
+    fxSlider("FX_DOFFocus", "DOF Focus Distance", "DepthOfFieldEffect", "KETYDOF", "FocusDistance", 50, 0, 500, 0)
+    fxSlider("FX_DOFRadius", "DOF In Focus Radius", "DepthOfFieldEffect", "KETYDOF", "InFocusRadius", 30, 0, 200, 0)
+
+    -- ===== Sky Changer UI =====
+    local SkyToggle = SkySection:AddToggle("SkyChanger_Enabled", {
+        Text = "Enable Sky Changer", Default = false,
+        Callback = function(v) skyOn = v; refresh() end
+    })
+    SkyToggle:AddKeyPicker("SkyChangerKey", { Default = "None", SyncToggleState = true, Mode = "Toggle", Text = "Sky Changer" })
+
+    local SkyDrop = SkySection:AddDropdown("SkyChanger_Preset", {
+        Values = PRESET_LIST, Default = 1, Multi = false, Text = "Sky Preset",
+        Callback = function(v) skyChoice = v end
+    })
+
+    local CustomDep = SkySection:AddDependencyBox()
+    CustomDep:AddLabel("Atmosphere Color"):AddColorPicker("SkyCustom_Atmo", { Default = custom.Atmo, Title = "Atmosphere",
+        Callback = function(v) custom.Atmo = v end })
+    CustomDep:AddLabel("Ambient / Fog Color"):AddColorPicker("SkyCustom_Fog", { Default = custom.Fog, Title = "Ambient / Fog",
+        Callback = function(v) custom.Fog = v; custom.Ambient = v end })
+    CustomDep:AddSlider("SkyCustom_Clock", { Text = "Clock Time", Default = 14, Min = 0, Max = 24, Rounding = 1,
+        Callback = function(v) custom.Clock = v end })
+    CustomDep:AddSlider("SkyCustom_Density", { Text = "Atmosphere Density", Default = 0.3, Min = 0, Max = 1, Rounding = 2,
+        Callback = function(v) custom.Density = v end })
+    CustomDep:AddSlider("SkyCustom_Haze", { Text = "Atmosphere Haze", Default = 1, Min = 0, Max = 10, Rounding = 1,
+        Callback = function(v) custom.Haze = v end })
+    CustomDep:AddSlider("SkyCustom_FogEnd", { Text = "Fog End", Default = 1000, Min = 50, Max = 100000, Rounding = 0,
+        Callback = function(v) custom.FogEnd = v end })
+    CustomDep:AddSlider("SkyCustom_Stars", { Text = "Star Count", Default = 0, Min = 0, Max = 5000, Rounding = 0,
+        Callback = function(v) custom.Stars = v end })
+    CustomDep:AddToggle("SkyCustom_Celestial", { Text = "Sun / Moon", Default = false,
+        Callback = function(v) custom.Celestial = v end })
+    CustomDep:AddInput("SkyCustom_AllID", { Default = "", Text = "Skybox ID (All Faces)", Placeholder = "5101923607",
+        Callback = function(v) custom.AllID = v end })
+    for _, f in ipairs(FACES) do
+        CustomDep:AddInput("SkyCustom_Face" .. f, { Default = "", Text = "Face " .. f .. " ID", Placeholder = "optional",
+            Callback = function(v) custom.Faces[f] = v end })
+    end
+    CustomDep:SetupDependencies({ { SkyDrop, "Custom" } })
+end
+
 
 do
     local RageBotSection = Tabs.Rage:AddRightGroupbox("RageBot")
