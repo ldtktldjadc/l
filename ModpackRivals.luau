@@ -3223,7 +3223,7 @@ end
 do
     local Lighting = game:GetService("Lighting")
     local LightSection = Tabs.World:AddLeftGroupbox("Lighting Control")
-    local FxSection    = Tabs.World:AddLeftGroupbox("Post Processing")
+    local FxSection    = Tabs.World:AddRightGroupbox("Post Processing")
     local SkySection   = Tabs.World:AddRightGroupbox("Sky Changer")
 
     local PROPS = { "Brightness", "ExposureCompensation", "OutdoorAmbient", "Ambient", "ClockTime",
@@ -3239,35 +3239,70 @@ do
     -- ===== Sky Changer データ =====
     local C3 = Color3.fromRGB
     local PRESETS = {
-        ["GraySky"]        = { Clock = 14, Atmo = C3(150,150,155), Density = 0.35, Haze = 1.5, Ambient = C3(130,130,135), Fog = C3(165,165,170), FogEnd = 900,  Stars = 0,    Celestial = false },
-        ["Sunset"]         = { Clock = 18, Atmo = C3(255,140,80),  Density = 0.3,  Haze = 2,   Ambient = C3(120,70,60),   Fog = C3(255,150,100), FogEnd = 1200, Stars = 0,    Celestial = true },
-        ["Dusk Purple"]    = { Clock = 19, Atmo = C3(150,90,200),  Density = 0.35, Haze = 2.5, Ambient = C3(90,50,140),   Fog = C3(130,80,180),  FogEnd = 1000, Stars = 1000, Celestial = true },
-        ["Midnight"]       = { Clock = 0,  Atmo = C3(20,25,60),    Density = 0.3,  Haze = 1,   Ambient = C3(25,30,70),    Fog = C3(10,12,35),    FogEnd = 1000, Stars = 5000, Celestial = true },
-        ["Blood Red"]      = { Clock = 20, Atmo = C3(200,20,20),   Density = 0.4,  Haze = 3,   Ambient = C3(120,10,10),   Fog = C3(150,10,10),   FogEnd = 700,  Stars = 0,    Celestial = false },
-        ["Toxic Green"]    = { Clock = 12, Atmo = C3(120,255,80),  Density = 0.4,  Haze = 2.5, Ambient = C3(60,140,40),   Fog = C3(90,200,60),   FogEnd = 700,  Stars = 0,    Celestial = false },
-        ["Ocean Blue"]     = { Clock = 13, Atmo = C3(60,160,255),  Density = 0.25, Haze = 1,   Ambient = C3(60,110,170),  Fog = C3(110,180,255), FogEnd = 1500, Stars = 0,    Celestial = true },
-        ["Pink Dream"]     = { Clock = 17, Atmo = C3(255,150,210), Density = 0.3,  Haze = 2,   Ambient = C3(190,110,160), Fog = C3(255,170,220), FogEnd = 1200, Stars = 500,  Celestial = true },
-        ["Golden Hour"]    = { Clock = 17, Atmo = C3(255,200,100), Density = 0.3,  Haze = 2,   Ambient = C3(170,130,70),  Fog = C3(255,210,130), FogEnd = 1400, Stars = 0,    Celestial = true },
-        ["Overcast Storm"] = { Clock = 15, Atmo = C3(90,95,105),   Density = 0.5,  Haze = 3,   Ambient = C3(80,85,95),    Fog = C3(100,105,115), FogEnd = 500,  Stars = 0,    Celestial = false },
-        ["Void Black"]     = { Clock = 0,  Atmo = C3(0,0,0),       Density = 0,    Haze = 0,   Ambient = C3(30,30,30),    Fog = C3(0,0,0),       FogEnd = 400,  Stars = 0,    Celestial = false },
-        ["Arctic White"]   = { Clock = 12, Atmo = C3(230,240,255), Density = 0.45, Haze = 4,   Ambient = C3(200,210,225), Fog = C3(235,243,255), FogEnd = 600,  Stars = 0,    Celestial = false },
-        ["Default Roblox"] = { Clock = 14, Atmo = C3(199,170,107), Density = 0.3,  Haze = 0,   Ambient = C3(70,70,70),    Fog = C3(192,192,192), FogEnd = 100000, Stars = 3000, Celestial = true,
+        ["GraySky"] = {
+            Clock = 14, Ambient = C3(135,135,135), Fog = C3(135,135,135), FogEnd = 100000, Stars = 0, Celestial = false, NoClouds = true, RemoveAtmo = true,
+            Faces = { Bk = "rbxassetid://583726590", Dn = "rbxassetid://583726590", Ft = "rbxassetid://583726590", Lf = "rbxassetid://583726590", Rt = "rbxassetid://583726590", Up = "rbxassetid://583726590" },
+        },
+        ["Purple Nebula"] = {
+            Clock = 18, Atmo = C3(150,0,255), Density = 0.3, Haze = 1, Ambient = C3(100,50,150), Fog = C3(120,40,180), FogEnd = 3000, Stars = 3000, Celestial = true, NoClouds = true,
+            Faces = { Bk = "rbxassetid://6444884337", Dn = "rbxassetid://6444884784", Ft = "rbxassetid://6444884001", Lf = "rbxassetid://6444883479", Rt = "rbxassetid://6444883163", Up = "rbxassetid://6444883712" },
+        },
+        ["Galaxy"] = {
+            Clock = 0, Atmo = C3(30,10,60), Density = 0.25, Haze = 0.5, Ambient = C3(40,20,70), Fog = C3(20,10,40), FogEnd = 4000, Stars = 5000, Celestial = true, NoClouds = true,
+            Faces = { Bk = "rbxassetid://159454299", Dn = "rbxassetid://159454296", Ft = "rbxassetid://159454293", Lf = "rbxassetid://159454286", Rt = "rbxassetid://159454300", Up = "rbxassetid://159454288" },
+        },
+        ["Midnight"] = {
+            Clock = 0, Atmo = C3(20,25,60), Density = 0.2, Haze = 0.5, Ambient = C3(25,30,70), Fog = C3(15,20,45), FogEnd = 2500, Stars = 5000, Celestial = true, NoClouds = false,
+            Faces = { Bk = "rbxassetid://12064107", Dn = "rbxassetid://12064152", Ft = "rbxassetid://12064121", Lf = "rbxassetid://12064115", Rt = "rbxassetid://12064131", Up = "rbxassetid://12064147" },
+        },
+        ["Sunset"] = {
+            Clock = 18, Atmo = C3(255,140,80), Density = 0.3, Haze = 1.5, Ambient = C3(130,80,60), Fog = C3(220,120,70), FogEnd = 2000, Stars = 0, Celestial = true, NoClouds = false,
+            Faces = { Bk = "rbxassetid://600830446", Dn = "rbxassetid://600831635", Ft = "rbxassetid://600832720", Lf = "rbxassetid://600886090", Rt = "rbxassetid://600833862", Up = "rbxassetid://600835177" },
+        },
+        ["Blood Red"] = {
+            Clock = 20, Atmo = C3(200,20,20), Density = 0.4, Haze = 2, Ambient = C3(120,20,20), Fog = C3(150,20,20), FogEnd = 1200, Stars = 0, Celestial = false, NoClouds = true,
+            Faces = { Bk = "rbxassetid://733527264", Dn = "rbxassetid://733527264", Ft = "rbxassetid://733527264", Lf = "rbxassetid://733527264", Rt = "rbxassetid://733527264", Up = "rbxassetid://733527264" },
+        },
+        ["Toxic Green"] = {
+            Clock = 12, Atmo = C3(100,230,60), Density = 0.4, Haze = 2, Ambient = C3(70,140,50), Fog = C3(80,180,50), FogEnd = 1200, Stars = 0, Celestial = false, NoClouds = true,
+            Faces = { Bk = "rbxassetid://1088661278", Dn = "rbxassetid://1088661278", Ft = "rbxassetid://1088661278", Lf = "rbxassetid://1088661278", Rt = "rbxassetid://1088661278", Up = "rbxassetid://1088661278" },
+        },
+        ["Ocean Blue"] = {
+            Clock = 13, Atmo = C3(60,160,255), Density = 0.25, Haze = 1, Ambient = C3(70,120,180), Fog = C3(100,170,240), FogEnd = 2500, Stars = 0, Celestial = true, NoClouds = false,
+            Faces = { Bk = "rbxassetid://6354471929", Dn = "rbxassetid://6354471929", Ft = "rbxassetid://6354471929", Lf = "rbxassetid://6354471929", Rt = "rbxassetid://6354471929", Up = "rbxassetid://6354471929" },
+        },
+        ["Pink Dream"] = {
+            Clock = 17, Atmo = C3(255,150,210), Density = 0.3, Haze = 1.5, Ambient = C3(180,110,160), Fog = C3(240,160,210), FogEnd = 2000, Stars = 500, Celestial = true, NoClouds = false,
+            Faces = { Bk = "rbxassetid://271042516", Dn = "rbxassetid://271077243", Ft = "rbxassetid://271042556", Lf = "rbxassetid://271042310", Rt = "rbxassetid://271042467", Up = "rbxassetid://271077958" },
+        },
+        ["Golden Hour"] = {
+            Clock = 17, Atmo = C3(255,200,100), Density = 0.3, Haze = 1.5, Ambient = C3(170,130,70), Fog = C3(240,190,110), FogEnd = 2500, Stars = 0, Celestial = true, NoClouds = false,
+            Faces = { Bk = "rbxassetid://1013853", Dn = "rbxassetid://1013856", Ft = "rbxassetid://1013854", Lf = "rbxassetid://1013852", Rt = "rbxassetid://1013855", Up = "rbxassetid://1013857" },
+        },
+        ["Void Black"] = {
+            Clock = 0, Ambient = C3(20,20,20), Fog = C3(0,0,0), FogEnd = 1500, Stars = 0, Celestial = false, NoClouds = true, RemoveAtmo = true,
+            Faces = { Bk = "rbxassetid://0", Dn = "rbxassetid://0", Ft = "rbxassetid://0", Lf = "rbxassetid://0", Rt = "rbxassetid://0", Up = "rbxassetid://0" },
+        },
+        ["Default Roblox"] = {
+            Clock = 14, Atmo = C3(199,170,107), Density = 0.3, Haze = 0, Ambient = C3(70,70,70), Fog = C3(192,192,192), FogEnd = 100000, Stars = 3000, Celestial = true, NoClouds = false,
             Faces = { Bk = "rbxasset://textures/sky/sky512_bk.tex", Dn = "rbxasset://textures/sky/sky512_dn.tex", Ft = "rbxasset://textures/sky/sky512_ft.tex",
-                      Lf = "rbxasset://textures/sky/sky512_lf.tex", Rt = "rbxasset://textures/sky/sky512_rt.tex", Up = "rbxasset://textures/sky/sky512_up.tex" } },
+                      Lf = "rbxasset://textures/sky/sky512_lf.tex", Rt = "rbxasset://textures/sky/sky512_rt.tex", Up = "rbxasset://textures/sky/sky512_up.tex" },
+        },
     }
-    local PRESET_LIST = { "GraySky", "Sunset", "Dusk Purple", "Midnight", "Blood Red", "Toxic Green", "Ocean Blue", "Pink Dream", "Golden Hour", "Overcast Storm", "Void Black", "Arctic White", "Default Roblox", "Custom" }
+    local PRESET_LIST = { "GraySky", "Purple Nebula", "Galaxy", "Midnight", "Sunset", "Blood Red", "Toxic Green", "Ocean Blue", "Pink Dream", "Golden Hour", "Void Black", "Default Roblox", "Custom" }
     local FACES = { "Bk", "Dn", "Ft", "Lf", "Rt", "Up" }
 
     local skyChoice = "GraySky"
     local custom = { Clock = 14, Atmo = C3(150,150,200), Density = 0.3, Haze = 1, Ambient = C3(150,150,200), Fog = C3(150,150,200), FogEnd = 1000, Stars = 0, Celestial = false, AllID = "", Faces = {} }
 
     local function normID(id)
-        local n = tostring(id or ""):gsub("%D", "")
+        if not id or id == "" or id == "0" then return "" end
+        local n = tostring(id):gsub("%D", "")
         return #n > 0 and ("rbxassetid://" .. n) or ""
     end
 
     local function currentSky()
-        if skyChoice ~= "Custom" then return PRESETS[skyChoice] end
+        if skyChoice ~= "Custom" then return PRESETS[skyChoice] or PRESETS["GraySky"] end
         local faces = {}
         local all = normID(custom.AllID)
         for _, f in ipairs(FACES) do
@@ -3277,7 +3312,7 @@ do
         return setmetatable({ Faces = faces }, { __index = custom })
     end
 
-    local mySky, myAtmo
+    local mySky, myAtmo, cloudsWas
     local hidden = {}
 
     local function applySkyObjects()
@@ -3290,28 +3325,47 @@ do
                 end
             end
             if not mySky or mySky.Parent ~= Lighting then
-                mySky = mySky or Instance.new("Sky")
+                mySky = Instance.new("Sky")
                 mySky.Name = "KETYSky"
                 mySky.Parent = Lighting
-            end
-            if not myAtmo or myAtmo.Parent ~= Lighting then
-                myAtmo = myAtmo or Instance.new("Atmosphere")
-                myAtmo.Name = "KETYAtmosphere"
-                myAtmo.Parent = Lighting
             end
             local faces = cfg.Faces or {}
             for _, f in ipairs(FACES) do
                 local want = faces[f] or ""
                 if mySky["Skybox" .. f] ~= want then mySky["Skybox" .. f] = want end
             end
-            mySky.CelestialBodiesShown = cfg.Celestial
-            mySky.StarCount = cfg.Stars
-            myAtmo.Color = cfg.Atmo
-            myAtmo.Decay = cfg.Atmo
-            myAtmo.Density = cfg.Density
-            myAtmo.Haze = cfg.Haze
-            myAtmo.Glare = 0
+            mySky.CelestialBodiesShown = cfg.Celestial or false
+            mySky.StarCount = cfg.Stars or 0
+
+            if cfg.RemoveAtmo then
+                if myAtmo then myAtmo:Destroy(); myAtmo = nil end
+            else
+                if not myAtmo or myAtmo.Parent ~= Lighting then
+                    myAtmo = Instance.new("Atmosphere")
+                    myAtmo.Name = "KETYAtmosphere"
+                    myAtmo.Parent = Lighting
+                end
+                if cfg.Atmo then
+                    myAtmo.Color = cfg.Atmo
+                    myAtmo.Decay = cfg.Atmo
+                end
+                myAtmo.Density = cfg.Density or 0.3
+                myAtmo.Haze = cfg.Haze or 1
+                myAtmo.Glare = 0
+                myAtmo.Offset = cfg.Offset or 0.25
+            end
+
+            local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds")
+            if clouds then
+                if cfg.NoClouds then
+                    if clouds.Enabled then cloudsWas = true; clouds.Enabled = false end
+                elseif cloudsWas then
+                    clouds.Enabled = true; cloudsWas = nil
+                end
+            end
         else
+            local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds")
+            if clouds and cloudsWas then clouds.Enabled = true; cloudsWas = nil end
             if mySky then mySky:Destroy(); mySky = nil end
             if myAtmo then myAtmo:Destroy(); myAtmo = nil end
             for _, c in ipairs(hidden) do pcall(function() c.Parent = Lighting end) end
@@ -3438,31 +3492,34 @@ do
 
     local SkyDrop = SkySection:AddDropdown("SkyChanger_Preset", {
         Values = PRESET_LIST, Default = 1, Multi = false, Text = "Sky Preset",
-        Callback = function(v) skyChoice = v end
+        Callback = function(v)
+            skyChoice = v
+            if skyOn then step() end
+        end
     })
 
     local CustomDep = SkySection:AddDependencyBox()
     CustomDep:AddLabel("Atmosphere Color"):AddColorPicker("SkyCustom_Atmo", { Default = custom.Atmo, Title = "Atmosphere",
-        Callback = function(v) custom.Atmo = v end })
+        Callback = function(v) custom.Atmo = v; if skyOn and skyChoice == "Custom" then step() end end })
     CustomDep:AddLabel("Ambient / Fog Color"):AddColorPicker("SkyCustom_Fog", { Default = custom.Fog, Title = "Ambient / Fog",
-        Callback = function(v) custom.Fog = v; custom.Ambient = v end })
+        Callback = function(v) custom.Fog = v; custom.Ambient = v; if skyOn and skyChoice == "Custom" then step() end end })
     CustomDep:AddSlider("SkyCustom_Clock", { Text = "Clock Time", Default = 14, Min = 0, Max = 24, Rounding = 1,
-        Callback = function(v) custom.Clock = v end })
+        Callback = function(v) custom.Clock = v; if skyOn and skyChoice == "Custom" then step() end end })
     CustomDep:AddSlider("SkyCustom_Density", { Text = "Atmosphere Density", Default = 0.3, Min = 0, Max = 1, Rounding = 2,
-        Callback = function(v) custom.Density = v end })
+        Callback = function(v) custom.Density = v; if skyOn and skyChoice == "Custom" then step() end end })
     CustomDep:AddSlider("SkyCustom_Haze", { Text = "Atmosphere Haze", Default = 1, Min = 0, Max = 10, Rounding = 1,
-        Callback = function(v) custom.Haze = v end })
+        Callback = function(v) custom.Haze = v; if skyOn and skyChoice == "Custom" then step() end end })
     CustomDep:AddSlider("SkyCustom_FogEnd", { Text = "Fog End", Default = 1000, Min = 50, Max = 100000, Rounding = 0,
-        Callback = function(v) custom.FogEnd = v end })
+        Callback = function(v) custom.FogEnd = v; if skyOn and skyChoice == "Custom" then step() end end })
     CustomDep:AddSlider("SkyCustom_Stars", { Text = "Star Count", Default = 0, Min = 0, Max = 5000, Rounding = 0,
-        Callback = function(v) custom.Stars = v end })
+        Callback = function(v) custom.Stars = v; if skyOn and skyChoice == "Custom" then step() end end })
     CustomDep:AddToggle("SkyCustom_Celestial", { Text = "Sun / Moon", Default = false,
-        Callback = function(v) custom.Celestial = v end })
+        Callback = function(v) custom.Celestial = v; if skyOn and skyChoice == "Custom" then step() end end })
     CustomDep:AddInput("SkyCustom_AllID", { Default = "", Text = "Skybox ID (All Faces)", Placeholder = "5101923607",
-        Callback = function(v) custom.AllID = v end })
+        Callback = function(v) custom.AllID = v; if skyOn and skyChoice == "Custom" then step() end end })
     for _, f in ipairs(FACES) do
         CustomDep:AddInput("SkyCustom_Face" .. f, { Default = "", Text = "Face " .. f .. " ID", Placeholder = "optional",
-            Callback = function(v) custom.Faces[f] = v end })
+            Callback = function(v) custom.Faces[f] = v; if skyOn and skyChoice == "Custom" then step() end end })
     end
     CustomDep:SetupDependencies({ { SkyDrop, "Custom" } })
 end
