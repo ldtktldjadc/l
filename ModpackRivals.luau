@@ -101,6 +101,10 @@ end
 if getgenv().MyKETYESP then
     pcall(function() getgenv().MyKETYESP:Destroy() end)
 end
+if getgenv().KETY_NoArmConnection then
+    pcall(function() getgenv().KETY_NoArmConnection:Disconnect() end)
+    getgenv().KETY_NoArmConnection = nil
+end
 
 -- ========== SILENT AIM CONFIG ==========
 getgenv().SilentConfig = {
@@ -2078,14 +2082,70 @@ VisVMDepBox:AddSlider("VMOffsetZ", {
 })
 VisVMDepBox:SetupDependencies({ { VMOffsetToggle, true } })
 
--- ========== NO VIEWMODEL ANIMATION ==========
+-- ========== NO VIEWMODEL ANIMATION & NO ARM ==========
 local noVMAnim = false
 local noFireSound = false
+local noArmEnabled = false
+local noArmConnection = nil
 local _muteFireSoundUntil = 0
 local _cvmHooked = false
 local _animHooked = false
 local _cfcHooked = false
 local _mcHooked = false
+
+local ARM_PART_NAMES = {
+    LeftArm = true, RightArm = true,
+    LeftArmWrapped = true, RightArmWrapped = true,
+    LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
+    RightUpperArm = true, RightLowerArm = true, RightHand = true,
+}
+
+local function setPartNoArm(part, hidden)
+    if not part then return end
+    if part:IsA("BasePart") then
+        part.Transparency = hidden and 1 or 0
+        part.LocalTransparencyModifier = hidden and 1 or 0
+    elseif part:IsA("Decal") or part:IsA("Texture") then
+        part.Transparency = hidden and 1 or 0
+    end
+end
+
+local function applyNoArmToModel(model, hidden)
+    if not model then return end
+    for _, child in ipairs(model:GetChildren()) do
+        if ARM_PART_NAMES[child.Name] then
+            setPartNoArm(child, hidden)
+            for _, d in ipairs(child:GetDescendants()) do
+                setPartNoArm(d, hidden)
+            end
+        end
+    end
+end
+
+local function updateNoArmInWorld(hidden)
+    local vmFolder = workspace:FindFirstChild("ViewModels")
+    if vmFolder then
+        local fp = vmFolder:FindFirstChild("FirstPerson")
+        if fp then
+            for _, m in ipairs(fp:GetChildren()) do
+                if m:IsA("Model") then applyNoArmToModel(m, hidden) end
+            end
+        end
+        for _, m in ipairs(vmFolder:GetChildren()) do
+            if m:IsA("Model") and m.Name ~= "FirstPerson" then
+                applyNoArmToModel(m, hidden)
+            end
+        end
+    end
+    local curCam = workspace.CurrentCamera
+    if curCam then
+        for _, m in ipairs(curCam:GetChildren()) do
+            if m:IsA("Model") and (m:FindFirstChild("LeftArm") or m:FindFirstChild("RightArm") or m:FindFirstChild("LeftUpperArm")) then
+                applyNoArmToModel(m, hidden)
+            end
+        end
+    end
+end
 
 local function _nvmFindModule(nameSet)
     local scripts = lp:FindFirstChild("PlayerScripts")
@@ -2167,7 +2227,83 @@ local function ensureNoVMAnimHook()
                             end)
                         end
                     end
-                    return origUpdate(self, ...)
+                    local ret = origUpdate(self, ...)
+                    if noArmEnabled then
+                        pcall(function()
+                            if self._left_arm then
+                                self._left_arm.Transparency = 1
+                                self._left_arm.LocalTransparencyModifier = 1
+                            end
+                            if self._right_arm then
+                                self._right_arm.Transparency = 1
+                                self._right_arm.LocalTransparencyModifier = 1
+                            end
+                            if self._left_arm_shirt_texture then self._left_arm_shirt_texture.Transparency = 1 end
+                            if self._right_arm_shirt_texture then self._right_arm_shirt_texture.Transparency = 1 end
+                            if self._left_arm_wrapped_part then
+                                self._left_arm_wrapped_part.Transparency = 1
+                                self._left_arm_wrapped_part.LocalTransparencyModifier = 1
+                            end
+                            if self._right_arm_wrapped_part then
+                                self._right_arm_wrapped_part.Transparency = 1
+                                self._right_arm_wrapped_part.LocalTransparencyModifier = 1
+                            end
+                            if self._arm_submodels then
+                                for submodel, _ in pairs(self._arm_submodels) do
+                                    for _, p in ipairs(submodel:GetDescendants()) do
+                                        if p:IsA("BasePart") then
+                                            p.Transparency = 1
+                                            p.LocalTransparencyModifier = 1
+                                        elseif p:IsA("Decal") or p:IsA("Texture") then
+                                            p.Transparency = 1
+                                        end
+                                    end
+                                end
+                            end
+                            if self.Model then
+                                applyNoArmToModel(self.Model, true)
+                            end
+                            self._noArmActive = true
+                        end)
+                    elseif self._noArmActive then
+                        self._noArmActive = false
+                        pcall(function()
+                            if self._left_arm then
+                                self._left_arm.Transparency = 0
+                                self._left_arm.LocalTransparencyModifier = 0
+                            end
+                            if self._right_arm then
+                                self._right_arm.Transparency = 0
+                                self._right_arm.LocalTransparencyModifier = 0
+                            end
+                            if self._left_arm_shirt_texture then self._left_arm_shirt_texture.Transparency = 0 end
+                            if self._right_arm_shirt_texture then self._right_arm_shirt_texture.Transparency = 0 end
+                            if self._left_arm_wrapped_part then
+                                self._left_arm_wrapped_part.Transparency = 0
+                                self._left_arm_wrapped_part.LocalTransparencyModifier = 0
+                            end
+                            if self._right_arm_wrapped_part then
+                                self._right_arm_wrapped_part.Transparency = 0
+                                self._right_arm_wrapped_part.LocalTransparencyModifier = 0
+                            end
+                            if self._arm_submodels then
+                                for submodel, _ in pairs(self._arm_submodels) do
+                                    for _, p in ipairs(submodel:GetDescendants()) do
+                                        if p:IsA("BasePart") then
+                                            p.Transparency = 0
+                                            p.LocalTransparencyModifier = 0
+                                        elseif p:IsA("Decal") or p:IsA("Texture") then
+                                            p.Transparency = 0
+                                        end
+                                    end
+                                end
+                            end
+                            if self.Model then
+                                applyNoArmToModel(self.Model, false)
+                            end
+                        end)
+                    end
+                    return ret
                 end
                 _cvmHooked = true
             end
@@ -2315,6 +2451,33 @@ VisVMBox:AddToggle("NoFireSound_Enabled", {
     Callback = function(v)
         noFireSound = v
         if v then task.spawn(ensureNoVMAnimHook) end
+    end,
+})
+VisVMBox:AddToggle("NoArm_Enabled", {
+    Text = "No Arm",
+    Default = false,
+    Tooltip = "Viewmodelの腕を非表示にする",
+    Callback = function(v)
+        noArmEnabled = v
+        if v then
+            task.spawn(ensureNoVMAnimHook)
+            if not noArmConnection then
+                noArmConnection = RunService.RenderStepped:Connect(function()
+                    if noArmEnabled then
+                        updateNoArmInWorld(true)
+                    end
+                end)
+                getgenv().KETY_NoArmConnection = noArmConnection
+            end
+            updateNoArmInWorld(true)
+        else
+            if noArmConnection then
+                noArmConnection:Disconnect()
+                noArmConnection = nil
+                getgenv().KETY_NoArmConnection = nil
+            end
+            updateNoArmInWorld(false)
+        end
     end,
 })
 
