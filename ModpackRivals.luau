@@ -1547,13 +1547,12 @@ task.spawn(function()
         getgenv()._AimLockHooked = true
         local oldUpdate = CameraController.Update
         CameraController.Update = function(self, dt)
-            oldUpdate(self, dt)
-            if not AimLockSettings.Enabled then return end
+            if self.IsFrozen or not AimLockSettings.Enabled then return oldUpdate(self, dt) end
             
             local target, targetFighter = AL_getTarget()
             if target then
                 if (AimLockSettings.ReactionDelay or 0) > 0 and (os.clock() - AL_TargetStartTime) < AimLockSettings.ReactionDelay then
-                    return
+                    return oldUpdate(self, dt)
                 end
 
                 local camera = workspace.CurrentCamera
@@ -1597,6 +1596,7 @@ task.spawn(function()
                     self.Rotation = self.Rotation:Lerp(targetRotAdj, alpha)
                 end
             end
+            return oldUpdate(self, dt)
         end
     end
 end)
