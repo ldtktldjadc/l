@@ -1543,61 +1543,64 @@ task.spawn(function()
         end
     end)
     
-    if CameraController and type(CameraController.Update) == "function" and not getgenv()._AimLockHooked then
+    if CameraController and CameraController.Rotation and not getgenv()._AimLockHooked then
         getgenv()._AimLockHooked = true
-        local oldUpdate = CameraController.Update
-        CameraController.Update = function(self, dt)
-            if self.IsFrozen or not AimLockSettings.Enabled then return oldUpdate(self, dt) end
-            
+        local RunService = game:GetService("RunService")
+        pcall(function() RunService:UnbindFromRenderStep("AimLockLate") end)
+        RunService:BindToRenderStep("AimLockLate", Enum.RenderPriority.Last.Value, function()
+            local self = CameraController
+            if self.IsFrozen or not AimLockSettings.Enabled then return end
+
             local target, targetFighter = AL_getTarget()
-            if target then
-                if (AimLockSettings.ReactionDelay or 0) > 0 and (os.clock() - AL_TargetStartTime) < AimLockSettings.ReactionDelay then
-                    return oldUpdate(self, dt)
-                end
-
-                local camera = workspace.CurrentCamera
-                local targetPos = target.Position
-                local camOrigin = camera.CFrame.Position
-
-                if (AimLockSettings.AimJitter or 0) > 0 then
-                    local jitterMag = AimLockSettings.AimJitter * 0.08
-                    local jitter = Vector3.new(
-                        (math.random() - 0.5) * 2 * jitterMag,
-                        (math.random() - 0.5) * 2 * jitterMag,
-                        (math.random() - 0.5) * 2 * jitterMag
-                    )
-                    targetPos = targetPos + jitter
-                end
-
-                local dir = (targetPos - camOrigin).Unit
-                local yaw = math.atan2(-dir.X, -dir.Z)
-                local pitch = math.asin(math.clamp(dir.Y, -1, 1))
-                local targetRot = Vector2.new(pitch, yaw)
-                local current = self.Rotation
-                local diffYaw = (targetRot.Y - current.Y + math.pi) % (2 * math.pi) - math.pi
-                local targetRotAdj = Vector2.new(targetRot.X, current.Y + diffYaw)
-                local inHitbox = false
-                if targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
-                    local char = targetFighter.Entity.Model
-                    local aimDir = Vector3.new(
-                        -math.sin(self.Rotation.Y) * math.cos(self.Rotation.X),
-                        math.sin(self.Rotation.X),
-                        -math.cos(self.Rotation.Y) * math.cos(self.Rotation.X)
-                    )
-                    local aimPoint = camOrigin + aimDir * (targetPos - camOrigin).Magnitude
-                    local clamped = AL_clampToHitboxes(char, aimPoint)
-                    inHitbox = clamped and (clamped - aimPoint).Magnitude < 0.5
-                end
-                local smoothness = inHitbox and AimLockSettings.SmoothnessIn or AimLockSettings.SmoothnessOut
-                if smoothness <= 0.001 then
-                    self.Rotation = targetRot
-                else
-                    local alpha = math.clamp(1 - smoothness, 0.01, 1)
-                    self.Rotation = self.Rotation:Lerp(targetRotAdj, alpha)
-                end
+            if not target then return end
+            if (AimLockSettings.ReactionDelay or 0) > 0 and (os.clock() - AL_TargetStartTime) < AimLockSettings.ReactionDelay then
+                return
             end
-            return oldUpdate(self, dt)
-        end
+
+            local camera = workspace.CurrentCamera
+            local targetPos = target.Position
+            local camOrigin = camera.CFrame.Position
+
+            if (AimLockSettings.AimJitter or 0) > 0 then
+                local jitterMag = AimLockSettings.AimJitter * 0.08
+                targetPos = targetPos + Vector3.new(
+                    (math.random() - 0.5) * 2 * jitterMag,
+                    (math.random() - 0.5) * 2 * jitterMag,
+                    (math.random() - 0.5) * 2 * jitterMag
+                )
+            end
+
+            local offset = targetPos - camOrigin
+            if offset.Magnitude < 0.001 then return end
+            local dir = offset.Unit
+            local targetRot = Vector2.new(math.asin(math.clamp(dir.Y, -1, 1)), math.atan2(-dir.X, -dir.Z))
+            local current = self.Rotation
+            local diffYaw = (targetRot.Y - current.Y + math.pi) % (2 * math.pi) - math.pi
+            local targetRotAdj = Vector2.new(targetRot.X, current.Y + diffYaw)
+
+            local inHitbox = false
+            if targetFighter and targetFighter.Entity and targetFighter.Entity.Model then
+                local look = camera.CFrame.LookVector
+                local aimPoint = camOrigin + look * offset.Magnitude
+                local clamped = AL_clampToHitboxes(targetFighter.Entity.Model, aimPoint)
+                inHitbox = clamped and (clamped - aimPoint).Magnitude < 0.5
+            end
+
+            local smoothness = inHitbox and AimLockSettings.SmoothnessIn or AimLockSettings.SmoothnessOut
+            local newRot
+            if smoothness <= 0.001 then
+                newRot = targetRotAdj
+            else
+                newRot = current:Lerp(targetRotAdj, math.clamp(1 - smoothness, 0.01, 1))
+            end
+            newRot = Vector2.new(math.clamp(newRot.X, -1.5690509975429023, 1.5690509975429023), newRot.Y)
+
+            local oldCF = CFrame.Angles(0, current.Y, 0) * CFrame.Angles(current.X, 0, 0)
+            local newCF = CFrame.Angles(0, newRot.Y, 0) * CFrame.Angles(newRot.X, 0, 0)
+            local delta = newCF * oldCF:Inverse()
+            camera.CFrame = CFrame.new(camOrigin) * (delta * camera.CFrame.Rotation)
+            self.Rotation = newRot
+        end)
     end
 end)
 
