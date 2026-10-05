@@ -3241,7 +3241,14 @@ do
     local PRESETS = {
         ["GraySky"] = {
             Clock = 14, Ambient = C3(135,135,135), Fog = C3(135,135,135), FogEnd = 100000, Stars = 0, Celestial = false, NoClouds = true, RemoveAtmo = true,
-            Faces = { Bk = "rbxassetid://583726590", Dn = "rbxassetid://583726590", Ft = "rbxassetid://583726590", Lf = "rbxassetid://583726590", Rt = "rbxassetid://583726590", Up = "rbxassetid://583726590" },
+            Faces = {
+                Bk = "rbxassetid://8833267735",
+                Dn = "rbxassetid://8833267735",
+                Ft = "rbxassetid://8833267735",
+                Lf = "rbxassetid://8833267735",
+                Rt = "rbxassetid://8833267735",
+                Up = "rbxassetid://8833267735"
+            },
         },
         ["Purple Nebula"] = {
             Clock = 18, Atmo = C3(150,0,255), Density = 0.3, Haze = 1, Ambient = C3(100,50,150), Fog = C3(120,40,180), FogEnd = 3000, Stars = 3000, Celestial = true, NoClouds = true,
@@ -3295,6 +3302,19 @@ do
     local skyChoice = "GraySky"
     local custom = { Clock = 14, Atmo = C3(150,150,200), Density = 0.3, Haze = 1, Ambient = C3(150,150,200), Fog = C3(150,150,200), FogEnd = 1000, Stars = 0, Celestial = false, AllID = "", Faces = {} }
 
+    task.spawn(function()
+        pcall(function()
+            game:GetService("ContentProvider"):PreloadAsync({ "rbxassetid://8833267735", "rbxassetid://122619816920309" })
+        end)
+    end)
+
+    local function setDebugSkyGray(enabled)
+        pcall(function()
+            local fn = setfflag or set_fflag or setfastflag
+            if fn then fn("FFlagDebugSkyGray", enabled and "true" or "false") end
+        end)
+    end
+
     local function normID(id)
         if not id or id == "" or id == "0" then return "" end
         local n = tostring(id):gsub("%D", "")
@@ -3318,24 +3338,50 @@ do
     local function applySkyObjects()
         if skyOn then
             local cfg = currentSky()
+            if skyChoice == "GraySky" then
+                setDebugSkyGray(true)
+            else
+                setDebugSkyGray(false)
+            end
+
             for _, c in ipairs(Lighting:GetChildren()) do
                 if (c:IsA("Sky") and c ~= mySky) or (c:IsA("Atmosphere") and c ~= myAtmo) then
-                    table.insert(hidden, c)
+                    if not table.find(hidden, c) then table.insert(hidden, c) end
                     c.Parent = nil
                 end
             end
+
+            local faces = cfg.Faces or {}
+            local needNew = false
             if not mySky or mySky.Parent ~= Lighting then
+                needNew = true
+            else
+                for _, f in ipairs(FACES) do
+                    if mySky["Skybox" .. f] ~= (faces[f] or "") then
+                        needNew = true
+                        break
+                    end
+                end
+            end
+
+            if needNew then
+                if mySky then mySky:Destroy(); mySky = nil end
                 mySky = Instance.new("Sky")
                 mySky.Name = "KETYSky"
+                for _, f in ipairs(FACES) do
+                    mySky["Skybox" .. f] = faces[f] or ""
+                end
+                mySky.CelestialBodiesShown = cfg.Celestial or false
+                mySky.StarCount = cfg.Stars or 0
+                mySky.SunAngularSize = cfg.Celestial and 21 or 0
+                mySky.MoonAngularSize = cfg.Celestial and 11 or 0
+                mySky.SunTextureId = ""
+                mySky.MoonTextureId = ""
                 mySky.Parent = Lighting
+            else
+                mySky.CelestialBodiesShown = cfg.Celestial or false
+                mySky.StarCount = cfg.Stars or 0
             end
-            local faces = cfg.Faces or {}
-            for _, f in ipairs(FACES) do
-                local want = faces[f] or ""
-                if mySky["Skybox" .. f] ~= want then mySky["Skybox" .. f] = want end
-            end
-            mySky.CelestialBodiesShown = cfg.Celestial or false
-            mySky.StarCount = cfg.Stars or 0
 
             if cfg.RemoveAtmo then
                 if myAtmo then myAtmo:Destroy(); myAtmo = nil end
@@ -3355,17 +3401,27 @@ do
                 myAtmo.Offset = cfg.Offset or 0.25
             end
 
-            local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds")
-            if clouds then
-                if cfg.NoClouds then
-                    if clouds.Enabled then cloudsWas = true; clouds.Enabled = false end
-                elseif cloudsWas then
-                    clouds.Enabled = true; cloudsWas = nil
+            if cfg.NoClouds then
+                for _, clouds in ipairs(workspace:GetDescendants()) do
+                    if clouds:IsA("Clouds") and clouds.Enabled then
+                        cloudsWas = true
+                        clouds.Enabled = false
+                    end
                 end
+            elseif cloudsWas then
+                for _, clouds in ipairs(workspace:GetDescendants()) do
+                    if clouds:IsA("Clouds") then clouds.Enabled = true end
+                end
+                cloudsWas = nil
             end
         else
-            local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds")
-            if clouds and cloudsWas then clouds.Enabled = true; cloudsWas = nil end
+            setDebugSkyGray(false)
+            if cloudsWas then
+                for _, clouds in ipairs(workspace:GetDescendants()) do
+                    if clouds:IsA("Clouds") then clouds.Enabled = true end
+                end
+                cloudsWas = nil
+            end
             if mySky then mySky:Destroy(); mySky = nil end
             if myAtmo then myAtmo:Destroy(); myAtmo = nil end
             for _, c in ipairs(hidden) do pcall(function() c.Parent = Lighting end) end
