@@ -1223,15 +1223,14 @@ local Window = Library:CreateWindow({
 })
 
 local Tabs = {
-    Combat   = Window:AddTab("Combat"),
-    Visuals  = Window:AddTab("Visuals"),
-    World    = Window:AddTab("World"),
-    Rage     = Window:AddTab("Rage"),
-    Misc     = Window:AddTab("Misc"),
-    Changer  = Window:AddTab("Changer"),
-    Settings = Window:AddTab("Settings"),
+    Combat  = Window:AddTab("Combat"),
+    Visuals = Window:AddTab("Visuals"),
+    World   = Window:AddTab("World"),
+    Rage    = Window:AddTab("Rage"),
+    Misc    = Window:AddTab("Misc"),
+    Changer = Window:AddTab("Changer"),
+    Config  = Window:AddTab("Config"),
 }
-Tabs.Config = Tabs.Settings
 
 -- ===== COMBAT TAB =====
 local AimSection = Tabs.Combat:AddLeftGroupbox("Silent Aim")
@@ -6045,6 +6044,8 @@ ThemeManager:ApplyTheme("Default")
 Library.AccentColor = Color3.fromRGB(0, 180, 255)
 Library:UpdateColorsUsingRegistry()
 
+local ThemeSection = Tabs.Config:AddLeftGroupbox("Theme")
+ThemeManager:ApplyToGroupbox(ThemeSection)
 
 -- ========== FLY & NOCLIP ==========
 do
@@ -7814,75 +7815,8 @@ do
     end)
 end -- do Changer
 
--- ========== SETTINGS TAB ==========
--- Left Top: Menu & Notifications
-local LeftMenuTabBox = Tabs.Settings:AddLeftTabbox()
-local MenuTab = LeftMenuTabBox:AddTab("Menu")
-local NotifTab = LeftMenuTabBox:AddTab("Notifications")
-
-MenuTab:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", {
-    Default = "RightShift",
-    NoUI = true,
-    Text = "Menu keybind"
-})
-Library.ToggleKeybind = Options.MenuKeybind
-
-MenuTab:AddToggle("KeybindMenuOpen", {
-    Text = "Keybind Menu",
-    Default = false,
-    Callback = function(v)
-        if Library.KeybindFrame then Library.KeybindFrame.Visible = v end
-    end
-})
-
-MenuTab:AddSlider("MenuTransparency", {
-    Text = "Menu Transparency",
-    Default = 100,
-    Min = 0,
-    Max = 100,
-    Rounding = 0,
-    Callback = function(v)
-        if Library.Holder then
-            Library.Holder.GroupTransparency = 1 - (v / 100)
-        end
-    end
-})
-
-MenuTab:AddDropdown("KeybindMenuMode", {
-    Text = "Keybind Menu Mode",
-    Values = { "Toggled", "Hold", "Always" },
-    Default = 1
-})
-
-NotifTab:AddToggle("NotifEnabled", {
-    Text = "Notifications",
-    Default = true,
-    Callback = function(v)
-        Library.NotifyOnError = v
-    end
-})
-
--- Left Bottom: Themes & Background
-local LeftThemeTabBox = Tabs.Settings:AddLeftTabbox()
-local ThemesTab = LeftThemeTabBox:AddTab("Themes")
-local BgTab = LeftThemeTabBox:AddTab("Background")
-
-ThemeManager:ApplyToGroupbox(ThemesTab)
-
-BgTab:AddInput("VideoLink", {
-    Text = ".webm Video Background (Link)",
-    Default = ""
-})
-
--- Right Top: Configuration (SaveManager)
-SaveManager:SetLibrary(Library)
-SaveManager:SetFolder("KETY")
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({"AutoExecuteToggle", "MenuKeybind"})
-SaveManager:BuildConfigSection(Tabs.Settings)
-
--- Right Middle: Auto Execute
-local AutoExecSection = Tabs.Settings:AddRightGroupbox("Auto Execute")
+-- ========== AUTO EXECUTE ==========
+local AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
 
 local pastebinCode = "loadstring(game:HttpGet('https://raw.githubusercontent.com/ldtktldjadc/l/refs/heads/main/ModpackRivals.luau'))()"
 
@@ -7893,7 +7827,7 @@ pcall(function()
     end
 end)
 
--- 起動時にファイルが存在していれば queue_on_teleport を再登録
+-- 襍ｷ蜍墓凾縺ｫ繝輔ぃ繧､繝ｫ縺悟ｭ伜惠縺励※縺・ｌ縺ｰ queue_on_teleport 繧貞・逋ｻ骭ｲ
 if _autoExecOn then
     pcall(function()
         if queue_on_teleport then queue_on_teleport(pastebinCode)
@@ -7925,10 +7859,98 @@ AutoExecSection:AddToggle("AutoExecuteToggle", {
     end
 })
 
--- Right Bottom: Lua
-local LuaSection = Tabs.Settings:AddRightGroupbox("lua")
-LuaSection:AddLabel("in development")
+-- ========== SAVE MANAGER ==========
+SaveManager:SetLibrary(Library)
+SaveManager:SetFolder("KETY")
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({"AutoExecuteToggle"})
+do
+    local cfgDir = "KETY/settings"
+    local function listConfigs()
+        local out = {}
+        local ok, files = pcall(listfiles, cfgDir)
+        if ok and type(files) == "table" then
+            for _, f in ipairs(files) do
+                if f:sub(-5) == ".json" then
+                    local n = f:sub(1, -6):match("([^/\\]+)$")
+                    if n and n ~= "" then out[#out + 1] = n end
+                end
+            end
+        end
+        return out
+    end
 
+    local CfgSection = Tabs.Config:AddRightGroupbox("Configuration")
+    CfgSection:AddInput("SaveManager_ConfigName", { Text = "Config name" })
+    CfgSection:AddDropdown("SaveManager_ConfigList", { Text = "Config list", Values = listConfigs(), AllowNull = true })
+
+    local function refreshList()
+        Options.SaveManager_ConfigList:SetValues(listConfigs())
+        Options.SaveManager_ConfigList:SetValue(nil)
+    end
+
+    CfgSection:AddButton("Create config", function()
+        local name = Options.SaveManager_ConfigName.Value
+        if not name or name:gsub(" ", "") == "" then
+            return Library:Notify("Invalid config name (empty)", 2)
+        end
+        local ok, err = SaveManager:Save(name)
+        if not ok then return Library:Notify("Failed to save config: " .. tostring(err)) end
+        Library:Notify(string.format("Created config %q", name))
+        refreshList()
+    end)
+
+    CfgSection:AddButton("Load config", function()
+        local name = Options.SaveManager_ConfigList.Value
+        local ok, err = SaveManager:Load(name)
+        if not ok then return Library:Notify("Failed to load config: " .. tostring(err)) end
+        Library:Notify(string.format("Loaded config %q", name))
+    end)
+
+    CfgSection:AddButton("Overwrite config", function()
+        local name = Options.SaveManager_ConfigList.Value
+        local ok, err = SaveManager:Save(name)
+        if not ok then return Library:Notify("Failed to overwrite config: " .. tostring(err)) end
+        Library:Notify(string.format("Overwrote config %q", name))
+    end)
+
+    CfgSection:AddButton("Delete config", function()
+        local name = Options.SaveManager_ConfigList.Value
+        if not name then return Library:Notify("No config selected", 2) end
+        pcall(delfile, cfgDir .. "/" .. name .. ".json")
+        Library:Notify(string.format("Deleted config %q", name))
+        refreshList()
+    end)
+
+    CfgSection:AddButton("Refresh list", refreshList)
+
+    local AutoloadLabel = CfgSection:AddLabel("Current autoload config: none", true)
+
+    CfgSection:AddButton("Set autoload", function()
+        local name = Options.SaveManager_ConfigList.Value
+        if not name then return Library:Notify("No config selected", 2) end
+        pcall(writefile, cfgDir .. "/autoload.txt", name)
+        AutoloadLabel:SetText("Current autoload config: " .. name)
+        Library:Notify(string.format("Set %q to auto load", name))
+    end)
+
+    CfgSection:AddButton("Remove autoload", function()
+        pcall(delfile, cfgDir .. "/autoload.txt")
+        AutoloadLabel:SetText("Current autoload config: none")
+        Library:Notify("Removed autoload")
+    end)
+
+    pcall(function()
+        if isfile(cfgDir .. "/autoload.txt") then
+            local name = readfile(cfgDir .. "/autoload.txt")
+            if name and name ~= "" then
+                AutoloadLabel:SetText("Current autoload config: " .. name)
+            end
+        end
+    end)
+
+    SaveManager:SetIgnoreIndexes({ "SaveManager_ConfigName", "SaveManager_ConfigList" })
+end
 SaveManager:LoadAutoloadConfig()
 
 getgenv().ModpackLoaded = true
