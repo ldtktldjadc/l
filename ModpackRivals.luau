@@ -113,6 +113,10 @@ if getgenv()._AimLockFOVContainer then
     pcall(function() getgenv()._AimLockFOVContainer:Destroy() end)
     getgenv()._AimLockFOVContainer = nil
 end
+if getgenv()._KETY_RageAttackButton then
+    pcall(function() getgenv()._KETY_RageAttackButton:Destroy() end)
+    getgenv()._KETY_RageAttackButton = nil
+end
 
 -- ========== SILENT AIM CONFIG ==========
 getgenv().SilentConfig = {
@@ -3853,6 +3857,7 @@ do
     getgenv().Config = getgenv().Config or {
         Enabled = false,
         AutoAttack = true,
+        ShowAttackButton = true,
         WeaponSlot = "Primary",
         TargetPart = "HitboxHead",
         TargetSort = "Distance (Closest)",
@@ -3868,6 +3873,7 @@ do
         },
     }
     if getgenv().Config.AutoAttack == nil then getgenv().Config.AutoAttack = true end
+    if getgenv().Config.ShowAttackButton == nil then getgenv().Config.ShowAttackButton = true end
     getgenv().Config.TargetPart = getgenv().Config.TargetPart or "HitboxHead"
     getgenv().Config.TargetSort = getgenv().Config.TargetSort or "Distance (Closest)"
     if getgenv().Config.TeamCheck == nil then getgenv().Config.TeamCheck = true end
@@ -3889,6 +3895,167 @@ do
     local currentDesyncCF = nil
     local currentTargetYaw = nil
 
+    -- ========== ON-SCREEN ATTACK BUTTON ==========
+    if getgenv()._KETY_RageAttackButton then
+        pcall(function() getgenv()._KETY_RageAttackButton:Destroy() end)
+        getgenv()._KETY_RageAttackButton = nil
+    end
+
+    getgenv()._RageAttackHeld = false
+
+    local targetGui = screenGui or getgenv().MyKETYESP
+    local attackBtnContainer = Instance.new("Frame")
+    attackBtnContainer.Name = "KETY_RageAttackContainer"
+    attackBtnContainer.Size = UDim2.new(0, 80, 0, 80)
+    attackBtnContainer.Position = UDim2.new(1, -100, 0.65, -40)
+    attackBtnContainer.BackgroundTransparency = 1
+    attackBtnContainer.Active = true
+    attackBtnContainer.ZIndex = 50
+    attackBtnContainer.Visible = (getgenv().Config.ShowAttackButton ~= false)
+    if targetGui then
+        attackBtnContainer.Parent = targetGui
+    end
+    getgenv()._KETY_RageAttackButton = attackBtnContainer
+
+    local attackBtn = Instance.new("TextButton")
+    attackBtn.Name = "AttackButton"
+    attackBtn.Size = UDim2.new(1, 0, 1, 0)
+    attackBtn.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
+    attackBtn.BackgroundTransparency = 0.15
+    attackBtn.Text = ""
+    attackBtn.AutoButtonColor = false
+    attackBtn.ZIndex = 51
+    attackBtn.Parent = attackBtnContainer
+
+    local attackCorner = Instance.new("UICorner")
+    attackCorner.CornerRadius = UDim.new(0, 20)
+    attackCorner.Parent = attackBtn
+
+    local attackStroke = Instance.new("UIStroke")
+    attackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    attackStroke.Color = Color3.fromRGB(255, 60, 60)
+    attackStroke.Thickness = 2
+    attackStroke.Transparency = 0.2
+    attackStroke.Parent = attackBtn
+
+    local attackTitle = Instance.new("TextLabel")
+    attackTitle.Name = "Title"
+    attackTitle.Size = UDim2.new(1, 0, 0, 24)
+    attackTitle.Position = UDim2.new(0, 0, 0, 14)
+    attackTitle.BackgroundTransparency = 1
+    attackTitle.Text = "ATTACK"
+    attackTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+    attackTitle.Font = Enum.Font.GothamBold
+    attackTitle.TextSize = 13
+    attackTitle.ZIndex = 52
+    attackTitle.Parent = attackBtn
+
+    local attackSub = Instance.new("TextLabel")
+    attackSub.Name = "SubText"
+    attackSub.Size = UDim2.new(1, 0, 0, 18)
+    attackSub.Position = UDim2.new(0, 0, 0, 40)
+    attackSub.BackgroundTransparency = 1
+    attackSub.Text = "AUTO"
+    attackSub.TextColor3 = Color3.fromRGB(80, 255, 120)
+    attackSub.Font = Enum.Font.GothamMedium
+    attackSub.TextSize = 10
+    attackSub.ZIndex = 52
+    attackSub.Parent = attackBtn
+
+    local function updateAttackBtnVisual()
+        local auto = (getgenv().Config and getgenv().Config.AutoAttack ~= false)
+        local isHeld = (getgenv()._RageAttackHeld == true)
+        if isHeld then
+            attackBtn.BackgroundColor3 = Color3.fromRGB(180, 30, 30)
+            attackStroke.Color = Color3.fromRGB(255, 90, 90)
+            attackStroke.Thickness = 3
+            attackTitle.Text = "FIRE"
+            attackTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+            attackSub.Text = "FIRING"
+            attackSub.TextColor3 = Color3.fromRGB(255, 220, 220)
+        elseif auto then
+            attackBtn.BackgroundColor3 = Color3.fromRGB(22, 26, 24)
+            attackStroke.Color = Color3.fromRGB(60, 220, 120)
+            attackStroke.Thickness = 2
+            attackTitle.Text = "ATTACK"
+            attackTitle.TextColor3 = Color3.fromRGB(240, 240, 240)
+            attackSub.Text = "[AUTO]"
+            attackSub.TextColor3 = Color3.fromRGB(80, 255, 120)
+        else
+            attackBtn.BackgroundColor3 = Color3.fromRGB(28, 22, 22)
+            attackStroke.Color = Color3.fromRGB(255, 70, 70)
+            attackStroke.Thickness = 2
+            attackTitle.Text = "ATTACK"
+            attackTitle.TextColor3 = Color3.fromRGB(240, 240, 240)
+            attackSub.Text = "[HOLD]"
+            attackSub.TextColor3 = Color3.fromRGB(255, 110, 110)
+        end
+    end
+    updateAttackBtnVisual()
+
+    local isDragging = false
+    local dragInput = nil
+    local dragStart = nil
+    local startPos = nil
+
+    local function updateDrag(input)
+        local delta = input.Position - dragStart
+        attackBtnContainer.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+
+    attackBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            getgenv()._RageAttackHeld = true
+            updateAttackBtnVisual()
+
+            isDragging = false
+            dragStart = input.Position
+            startPos = attackBtnContainer.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    isDragging = false
+                    getgenv()._RageAttackHeld = false
+                    updateAttackBtnVisual()
+                end
+            end)
+        end
+    end)
+
+    attackBtn.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    local UserInputService = game:GetService("UserInputService")
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragStart and startPos then
+            local delta = input.Position - dragStart
+            if delta.Magnitude > 6 then
+                isDragging = true
+            end
+            if isDragging then
+                updateDrag(input)
+            end
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragStart = nil
+            isDragging = false
+            getgenv()._RageAttackHeld = false
+            updateAttackBtnVisual()
+        end
+    end)
+
+    -- ========== RAGEBOT TOGGLES ==========
     local RageBotToggle = RageBotSection:AddToggle("RageBot_Enabled", {
         Text = "Enable RageBot",
         Default = false,
@@ -3905,21 +4072,13 @@ do
         Text = "RageBot",
     })
 
-    local RageBotTeamCheckToggle = RageBotSection:AddToggle("RageBot_TeamCheck", {
-        Text = "FFA",
-        Default = false,
-        Callback = function(value)
-            getgenv().Config.TeamCheck = not value
-            if getgenv().RageBotConfig then getgenv().RageBotConfig.TeamCheck = not value end
-        end
-    })
-
     local RageBotAutoAttackToggle = RageBotSection:AddToggle("RageBot_AutoAttack", {
         Text = "Auto Attack",
         Default = true,
         Callback = function(value)
             getgenv().Config.AutoAttack = value
             if getgenv().RageBotConfig then getgenv().RageBotConfig.AutoAttack = value end
+            updateAttackBtnVisual()
         end
     })
 
@@ -3928,6 +4087,27 @@ do
         SyncToggleState = true,
         Mode = "Toggle",
         Text = "Auto Attack",
+    })
+
+    local RageBotShowBtnToggle = RageBotSection:AddToggle("RageBot_ShowButton", {
+        Text = "Screen Attack Button",
+        Default = true,
+        Callback = function(value)
+            getgenv().Config.ShowAttackButton = value
+            if getgenv().RageBotConfig then getgenv().RageBotConfig.ShowAttackButton = value end
+            if attackBtnContainer then
+                attackBtnContainer.Visible = (value == true)
+            end
+        end
+    })
+
+    local RageBotTeamCheckToggle = RageBotSection:AddToggle("RageBot_TeamCheck", {
+        Text = "FFA",
+        Default = false,
+        Callback = function(value)
+            getgenv().Config.TeamCheck = not value
+            if getgenv().RageBotConfig then getgenv().RageBotConfig.TeamCheck = not value end
+        end
     })
 
     local WeaponSlotDropdown = RageBotSection:AddDropdown("RageBot_Slot", {
@@ -4482,7 +4662,18 @@ do
             local isEscaping = getgenv().Config and getgenv().Config.AntiHit and (now >= antiHitStart and now < antiHitUntil)
             local isAntiHitDelay = getgenv().Config and getgenv().Config.AntiHit and (now < antiHitStart)
 
+            local autoAttack = (getgenv().Config and getgenv().Config.AutoAttack ~= false)
+            local isManualClick = false
+            pcall(function()
+                if uis then
+                    isManualClick = uis:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+                end
+            end)
+            local isAttackButtonHeld = (getgenv()._RageAttackHeld == true)
+            local canAttack = autoAttack or isAttackButtonHeld or isManualClick
+
             local canTarget = getgenv().Config.Enabled
+                and canAttack
                 and (not isEscaping)
                 and (not isReloading)
                 and (not myFF)
@@ -4580,11 +4771,22 @@ do
                 tpStartTime = tick()
             end
 
-            if tick() - tpStartTime < 0.15 then return end
-            if tick() - lastFire < getgenv().Config.FireRate then return end
-            lastFire = tick()
+            local minTpDelay = (autoAttack and 0.15) or 0.05
+            if tick() - tpStartTime < minTpDelay then return end
 
             local isKnife = (getgenv().Config.WeaponSlot == "Knife")
+
+            if not canAttack then
+                if isKnife and MechanicsController then
+                    pcall(function()
+                        MechanicsController:EquippedItemInput("FinishAiming")
+                    end)
+                end
+                return
+            end
+
+            if tick() - lastFire < getgenv().Config.FireRate then return end
+            lastFire = tick()
 
             if isKnife and MechanicsController then
                 pcall(function()
