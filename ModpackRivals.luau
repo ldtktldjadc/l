@@ -1306,6 +1306,19 @@ local AimLockSettings = {
     SmoothX = 0,
     SmoothY = 0,
     Sensitivity = 1,
+    -- FOV Settings
+    FovEnabled = false,
+    FovSize = 150,
+    FovShape = "Circle",
+    FovStyle = "Smooth",
+    FovGlow = false,
+    FovFilled = false,
+    FovFillTransparency = 0.85,
+    FovColor = Color3.fromRGB(255, 255, 255),
+    FovColor2 = Color3.fromRGB(0, 170, 255),
+    FovGradient = false,
+    FovThickness = 1.5,
+    FovTransparency = 0,
 }
 
 local AL_LockedTarget = nil
@@ -1426,9 +1439,16 @@ local function AL_getTarget()
 			end
 		end
 
-		local _, onScreen = camera:WorldToViewportPoint(AL_LockedTarget.Position)
+		local sp, onScreen = camera:WorldToViewportPoint(AL_LockedTarget.Position)
+		local outOfFov = false
+		if AimLockSettings.FovEnabled then
+			local dist = (Vector2.new(sp.X, sp.Y) - screenCenter).Magnitude
+			if dist > AimLockSettings.FovSize then
+				outOfFov = true
+			end
+		end
 
-		if not ok or wallFailed or outOfRange or not onScreen then
+		if not ok or wallFailed or outOfRange or not onScreen or outOfFov then
 			AL_LockedTarget = nil
 			AL_BlatantLockedFighter = nil
 			AL_LastTarget = nil
@@ -1436,7 +1456,8 @@ local function AL_getTarget()
 	end
 
 	if not AL_LockedTarget then
-		local best, bestFighter, bestDist = nil, nil, math.huge
+		local best, bestFighter = nil, nil
+		local bestDist = AimLockSettings.FovEnabled and AimLockSettings.FovSize or math.huge
 		if not FighterController or type(FighterController.Objects) ~= "table" then return nil, nil end
 		for _, fighter in pairs(FighterController.Objects or {}) do
 			local isAlive = fighter.Entity and (AL_getHealth(fighter.Entity) > 0)
@@ -1452,7 +1473,7 @@ local function AL_getTarget()
 							local sp, onScreen = camera:WorldToViewportPoint(part.Position)
 							if onScreen and not isBehindWall(part, char) then
 								local mouseDist = (Vector2.new(sp.X, sp.Y) - screenCenter).Magnitude
-								if mouseDist < bestDist then
+								if mouseDist <= bestDist then
 									bestDist = mouseDist
 									best = part
 									bestFighter = fighter
@@ -1532,6 +1553,272 @@ task.spawn(function()
     end
 end)
 
+-- ===== AIMLOCK FOV RENDERING =====
+if getgenv()._AimLockFOVConn then
+    pcall(function() getgenv()._AimLockFOVConn:Disconnect() end)
+    getgenv()._AimLockFOVConn = nil
+end
+if getgenv()._AimLockFOVContainer then
+    pcall(function() getgenv()._AimLockFOVContainer:Destroy() end)
+    getgenv()._AimLockFOVContainer = nil
+end
+
+local fovContainer = Instance.new("Frame")
+fovContainer.Name = "AimLock_FOV_Container"
+fovContainer.BackgroundTransparency = 1
+fovContainer.Size = UDim2.new(1, 0, 1, 0)
+fovContainer.Parent = screenGui
+getgenv()._AimLockFOVContainer = fovContainer
+
+local fovMainFrame = Instance.new("Frame")
+fovMainFrame.Name = "FOV_Main"
+fovMainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+fovMainFrame.BorderSizePixel = 0
+fovMainFrame.Visible = false
+fovMainFrame.ZIndex = 5
+fovMainFrame.Parent = fovContainer
+
+local fovCorner = Instance.new("UICorner")
+fovCorner.CornerRadius = UDim.new(1, 0)
+fovCorner.Parent = fovMainFrame
+
+local fovStroke = Instance.new("UIStroke")
+fovStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+fovStroke.Thickness = 1.5
+fovStroke.Parent = fovMainFrame
+
+local fovStrokeGradient = Instance.new("UIGradient")
+fovStrokeGradient.Parent = fovStroke
+
+local fovFillGradient = Instance.new("UIGradient")
+fovFillGradient.Parent = fovMainFrame
+
+local fovGlowImage = Instance.new("ImageLabel")
+fovGlowImage.Name = "FOV_Glow"
+fovGlowImage.AnchorPoint = Vector2.new(0.5, 0.5)
+fovGlowImage.BackgroundTransparency = 1
+fovGlowImage.Image = "rbxassetid://5028857084"
+fovGlowImage.BorderSizePixel = 0
+fovGlowImage.Visible = false
+fovGlowImage.ZIndex = 4
+fovGlowImage.Parent = fovContainer
+
+local fovGlowGradient = Instance.new("UIGradient")
+fovGlowGradient.Parent = fovGlowImage
+
+local fovPolyLines = {}
+local fovPolyGlowLines = {}
+for i = 1, 16 do
+    local line = Instance.new("Frame")
+    line.Name = "FOV_PolyLine_" .. i
+    line.AnchorPoint = Vector2.new(0.5, 0.5)
+    line.BorderSizePixel = 0
+    line.ZIndex = 5
+    line.Visible = false
+    line.Parent = fovContainer
+    table.insert(fovPolyLines, line)
+
+    local gLine = Instance.new("Frame")
+    gLine.Name = "FOV_PolyGlowLine_" .. i
+    gLine.AnchorPoint = Vector2.new(0.5, 0.5)
+    gLine.BorderSizePixel = 0
+    gLine.ZIndex = 4
+    gLine.Visible = false
+    gLine.Parent = fovContainer
+    table.insert(fovPolyGlowLines, gLine)
+end
+
+local function drawFovLine(frame, p1, p2, color, thickness, trans)
+    local dir = p2 - p1
+    local len = dir.Magnitude
+    if len < 0.001 then
+        frame.Visible = false
+        return
+    end
+    frame.Position = UDim2.new(0, (p1.X + p2.X) / 2, 0, (p1.Y + p2.Y) / 2)
+    frame.Size = UDim2.new(0, len, 0, thickness or 2)
+    frame.Rotation = math.deg(math.atan2(dir.Y, dir.X))
+    frame.BackgroundColor3 = color
+    frame.BackgroundTransparency = trans or 0
+    frame.Visible = true
+end
+
+local function hideFovElements()
+    fovMainFrame.Visible = false
+    fovGlowImage.Visible = false
+    for _, l in ipairs(fovPolyLines) do l.Visible = false end
+    for _, gl in ipairs(fovPolyGlowLines) do gl.Visible = false end
+end
+
+getgenv()._AimLockFOVConn = RunService.RenderStepped:Connect(function()
+    if not (AimLockSettings.Enabled and AimLockSettings.FovEnabled) then
+        hideFovElements()
+        return
+    end
+
+    local camera = workspace.CurrentCamera
+    if not camera then
+        hideFovElements()
+        return
+    end
+
+    local center = camera.ViewportSize / 2
+    local baseSize = AimLockSettings.FovSize or 150
+    local currentRadius = baseSize
+    local style = AimLockSettings.FovStyle or "Smooth"
+    local shape = AimLockSettings.FovShape or "Circle"
+    local gradRot = 0
+    local shapeRot = 0
+
+    local col1 = AimLockSettings.FovColor or Color3.fromRGB(255, 255, 255)
+    local col2 = AimLockSettings.FovColor2 or Color3.fromRGB(0, 170, 255)
+
+    if style == "Smooth" then
+        currentRadius = baseSize + math.sin(tick() * 2.5) * (baseSize * 0.025)
+        gradRot = (tick() * 50) % 360
+    elseif style == "Pulse" then
+        currentRadius = baseSize + math.sin(tick() * 6) * (baseSize * 0.08)
+        gradRot = (tick() * 100) % 360
+    elseif style == "Rotate" then
+        gradRot = (tick() * 150) % 360
+        shapeRot = math.rad((tick() * 60) % 360)
+    elseif style == "Rainbow" then
+        col1 = Color3.fromHSV((tick() * 0.2) % 1, 0.85, 1)
+        col2 = Color3.fromHSV(((tick() * 0.2) + 0.33) % 1, 0.85, 1)
+        gradRot = (tick() * 60) % 360
+    end
+
+    local isGradient = AimLockSettings.FovGradient or (style == "Rainbow")
+    local colorSeq = isGradient and ColorSequence.new({
+        ColorSequenceKeypoint.new(0, col1),
+        ColorSequenceKeypoint.new(1, col2)
+    }) or ColorSequence.new(col1)
+
+    local thickness = AimLockSettings.FovThickness or 1.5
+    local trans = AimLockSettings.FovTransparency or 0
+
+    if shape == "Circle" or shape == "Square" then
+        for _, l in ipairs(fovPolyLines) do l.Visible = false end
+        for _, gl in ipairs(fovPolyGlowLines) do gl.Visible = false end
+
+        fovMainFrame.Visible = true
+        fovMainFrame.Size = UDim2.new(0, currentRadius * 2, 0, currentRadius * 2)
+        fovMainFrame.Position = UDim2.new(0, center.X, 0, center.Y)
+        fovMainFrame.Rotation = (shape == "Square" and math.deg(shapeRot)) or 0
+        fovCorner.CornerRadius = (shape == "Circle") and UDim.new(1, 0) or UDim.new(0, 0)
+
+        fovStroke.Thickness = thickness
+        fovStroke.Transparency = trans
+        fovStrokeGradient.Color = colorSeq
+        fovStrokeGradient.Rotation = gradRot
+
+        if AimLockSettings.FovFilled then
+            fovMainFrame.BackgroundTransparency = math.clamp(AimLockSettings.FovFillTransparency or 0.85, 0, 1)
+            fovMainFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            fovFillGradient.Color = colorSeq
+            fovFillGradient.Rotation = gradRot
+        else
+            fovMainFrame.BackgroundTransparency = 1
+        end
+
+        if AimLockSettings.FovGlow then
+            fovGlowImage.Visible = true
+            local glowSize = currentRadius * 2.35
+            fovGlowImage.Size = UDim2.new(0, glowSize, 0, glowSize)
+            fovGlowImage.Position = UDim2.new(0, center.X, 0, center.Y)
+            fovGlowImage.ImageTransparency = math.clamp(0.55 + trans * 0.4, 0, 1)
+            fovGlowGradient.Color = colorSeq
+            fovGlowGradient.Rotation = gradRot
+        else
+            fovGlowImage.Visible = false
+        end
+    else
+        local numVertices = 3
+        local startAngle = -math.pi / 2 + shapeRot
+        local isStar = false
+
+        if shape == "Triangle" then
+            numVertices = 3
+            startAngle = -math.pi / 2 + shapeRot
+        elseif shape == "Hexagon" then
+            numVertices = 6
+            startAngle = shapeRot
+        elseif shape == "Octagon" then
+            numVertices = 8
+            startAngle = math.pi / 8 + shapeRot
+        elseif shape == "Star" then
+            numVertices = 10
+            startAngle = -math.pi / 2 + shapeRot
+            isStar = true
+        end
+
+        local vertices = {}
+        for i = 1, numVertices do
+            local angle = startAngle + (i - 1) * (2 * math.pi / numVertices)
+            local r = currentRadius
+            if isStar and (i % 2 == 0) then
+                r = currentRadius * 0.45
+            end
+            local vx = center.X + math.cos(angle) * r
+            local vy = center.Y + math.sin(angle) * r
+            table.insert(vertices, Vector2.new(vx, vy))
+        end
+
+        for i = 1, numVertices do
+            local p1 = vertices[i]
+            local p2 = vertices[(i % numVertices) + 1]
+            local segColor = col1
+            if isGradient then
+                local midX = (p1.X + p2.X) / 2 - center.X
+                local midY = (p1.Y + p2.Y) / 2 - center.Y
+                local angle = math.atan2(midY, midX)
+                local ratio = (math.sin(angle + math.rad(gradRot)) + 1) / 2
+                segColor = col1:Lerp(col2, ratio)
+            end
+
+            drawFovLine(fovPolyLines[i], p1, p2, segColor, thickness, trans)
+
+            if AimLockSettings.FovGlow then
+                drawFovLine(fovPolyGlowLines[i], p1, p2, segColor, thickness + 4, 0.75)
+            else
+                fovPolyGlowLines[i].Visible = false
+            end
+        end
+
+        for i = numVertices + 1, #fovPolyLines do
+            fovPolyLines[i].Visible = false
+            fovPolyGlowLines[i].Visible = false
+        end
+
+        if AimLockSettings.FovFilled then
+            fovMainFrame.Visible = true
+            fovCorner.CornerRadius = UDim.new(1, 0)
+            fovMainFrame.Size = UDim2.new(0, currentRadius * 1.6, 0, currentRadius * 1.6)
+            fovMainFrame.Position = UDim2.new(0, center.X, 0, center.Y)
+            fovMainFrame.Rotation = 0
+            fovStroke.Transparency = 1
+            fovMainFrame.BackgroundTransparency = math.clamp(AimLockSettings.FovFillTransparency or 0.88, 0, 1)
+            fovMainFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            fovFillGradient.Color = colorSeq
+            fovFillGradient.Rotation = gradRot
+        else
+            fovMainFrame.Visible = false
+        end
+
+        if AimLockSettings.FovGlow then
+            fovGlowImage.Visible = true
+            local glowSize = currentRadius * 2.35
+            fovGlowImage.Size = UDim2.new(0, glowSize, 0, glowSize)
+            fovGlowImage.Position = UDim2.new(0, center.X, 0, center.Y)
+            fovGlowImage.ImageTransparency = math.clamp(0.6 + trans * 0.35, 0, 1)
+            fovGlowGradient.Color = colorSeq
+            fovGlowGradient.Rotation = gradRot
+        else
+            fovGlowImage.Visible = false
+        end
+    end
+end)
+
 local AimLockToggle = AimLockSection:AddToggle("AimLockEnabled", {
     Text = "Enabled",
     Default = false,
@@ -1580,6 +1867,88 @@ AimLockSmoothDep:AddSlider("AimLockSmoothX", { Text = "Smoothness X", Default = 
 AimLockSmoothDep:AddSlider("AimLockSmoothY", { Text = "Smoothness Y", Default = 0, Min = 0, Max = 50, Rounding = 1, Callback = function(v) AimLockSettings.SmoothY = v end })
 AimLockSmoothDep:AddSlider("AimLockSensitivity", { Text = "Sensitivity", Default = 1, Min = 0, Max = 2, Rounding = 2, Callback = function(v) AimLockSettings.Sensitivity = v end })
 AimLockSmoothDep:SetupDependencies({ { AimLockSmoothToggle, true } })
+
+AimLockDep:AddDivider()
+local AimLockFovToggle = AimLockDep:AddToggle("AimLock_FovEnabled", {
+    Text = "FOV Enabled",
+    Default = false,
+    Callback = function(v) AimLockSettings.FovEnabled = v end
+})
+:AddColorPicker("AimLock_FovColor", {
+    Default = AimLockSettings.FovColor,
+    Title = "FOV Color",
+    Callback = function(v) AimLockSettings.FovColor = v end
+})
+:AddColorPicker("AimLock_FovColor2", {
+    Default = AimLockSettings.FovColor2,
+    Title = "Gradient Color",
+    Callback = function(v) AimLockSettings.FovColor2 = v end
+})
+
+local AimLockFovDep = AimLockDep:AddDependencyBox()
+
+AimLockFovDep:AddSlider("AimLock_FovSize", {
+    Text = "Size",
+    Default = 150,
+    Min = 20,
+    Max = 1000,
+    Rounding = 0,
+    Callback = function(v) AimLockSettings.FovSize = v end
+})
+
+AimLockFovDep:AddDropdown("AimLock_FovShape", {
+    Text = "Shape",
+    Values = {"Circle", "Square", "Hexagon", "Octagon", "Triangle", "Star"},
+    Default = 1,
+    Multi = false,
+    Callback = function(v) AimLockSettings.FovShape = v end
+})
+
+AimLockFovDep:AddDropdown("AimLock_FovStyle", {
+    Text = "Style",
+    Values = {"Smooth", "Static", "Pulse", "Rainbow", "Rotate"},
+    Default = 1,
+    Multi = false,
+    Callback = function(v) AimLockSettings.FovStyle = v end
+})
+
+AimLockFovDep:AddToggle("AimLock_FovFilled", {
+    Text = "Filled",
+    Default = false,
+    Callback = function(v) AimLockSettings.FovFilled = v end
+})
+
+AimLockFovDep:AddToggle("AimLock_FovGlow", {
+    Text = "Glow",
+    Default = false,
+    Callback = function(v) AimLockSettings.FovGlow = v end
+})
+
+AimLockFovDep:AddToggle("AimLock_FovGradient", {
+    Text = "Gradient",
+    Default = false,
+    Callback = function(v) AimLockSettings.FovGradient = v end
+})
+
+AimLockFovDep:AddSlider("AimLock_FovThickness", {
+    Text = "Thickness",
+    Default = 1.5,
+    Min = 1,
+    Max = 10,
+    Rounding = 1,
+    Callback = function(v) AimLockSettings.FovThickness = v end
+})
+
+AimLockFovDep:AddSlider("AimLock_FovTransparency", {
+    Text = "Transparency",
+    Default = 0,
+    Min = 0,
+    Max = 1,
+    Rounding = 2,
+    Callback = function(v) AimLockSettings.FovTransparency = v end
+})
+
+AimLockFovDep:SetupDependencies({ { AimLockFovToggle, true } })
 
 AimLockDep:SetupDependencies({ { AimLockToggle, true } })
 
