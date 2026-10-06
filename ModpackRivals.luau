@@ -1223,14 +1223,15 @@ local Window = Library:CreateWindow({
 })
 
 local Tabs = {
-    Combat  = Window:AddTab("Combat"),
-    Visuals = Window:AddTab("Visuals"),
-    World   = Window:AddTab("World"),
-    Rage    = Window:AddTab("Rage"),
-    Misc    = Window:AddTab("Misc"),
-    Changer = Window:AddTab("Changer"),
-    Config  = Window:AddTab("Config"),
+    Combat   = Window:AddTab("Combat"),
+    Visuals  = Window:AddTab("Visuals"),
+    World    = Window:AddTab("World"),
+    Rage     = Window:AddTab("Rage"),
+    Misc     = Window:AddTab("Misc"),
+    Changer  = Window:AddTab("Changer"),
+    Settings = Window:AddTab("Settings"),
 }
+Tabs.Config = Tabs.Settings
 
 -- ===== COMBAT TAB =====
 local AimSection = Tabs.Combat:AddLeftGroupbox("Silent Aim")
@@ -6044,8 +6045,6 @@ ThemeManager:ApplyTheme("Default")
 Library.AccentColor = Color3.fromRGB(0, 180, 255)
 Library:UpdateColorsUsingRegistry()
 
-local ThemeSection = Tabs.Config:AddLeftGroupbox("Theme")
-ThemeManager:ApplyToGroupbox(ThemeSection)
 
 -- ========== FLY & NOCLIP ==========
 do
@@ -7815,8 +7814,75 @@ do
     end)
 end -- do Changer
 
--- ========== AUTO EXECUTE ==========
-local AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
+-- ========== SETTINGS TAB ==========
+-- Left Top: Menu & Notifications
+local LeftMenuTabBox = Tabs.Settings:AddLeftTabbox()
+local MenuTab = LeftMenuTabBox:AddTab("Menu")
+local NotifTab = LeftMenuTabBox:AddTab("Notifications")
+
+MenuTab:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", {
+    Default = "RightShift",
+    NoUI = true,
+    Text = "Menu keybind"
+})
+Library.ToggleKeybind = Options.MenuKeybind
+
+MenuTab:AddToggle("KeybindMenuOpen", {
+    Text = "Keybind Menu",
+    Default = false,
+    Callback = function(v)
+        if Library.KeybindFrame then Library.KeybindFrame.Visible = v end
+    end
+})
+
+MenuTab:AddSlider("MenuTransparency", {
+    Text = "Menu Transparency",
+    Default = 100,
+    Min = 0,
+    Max = 100,
+    Rounding = 0,
+    Callback = function(v)
+        if Library.Holder then
+            Library.Holder.GroupTransparency = 1 - (v / 100)
+        end
+    end
+})
+
+MenuTab:AddDropdown("KeybindMenuMode", {
+    Text = "Keybind Menu Mode",
+    Values = { "Toggled", "Hold", "Always" },
+    Default = 1
+})
+
+NotifTab:AddToggle("NotifEnabled", {
+    Text = "Notifications",
+    Default = true,
+    Callback = function(v)
+        Library.NotifyOnError = v
+    end
+})
+
+-- Left Bottom: Themes & Background
+local LeftThemeTabBox = Tabs.Settings:AddLeftTabbox()
+local ThemesTab = LeftThemeTabBox:AddTab("Themes")
+local BgTab = LeftThemeTabBox:AddTab("Background")
+
+ThemeManager:ApplyToGroupbox(ThemesTab)
+
+BgTab:AddInput("VideoLink", {
+    Text = ".webm Video Background (Link)",
+    Default = ""
+})
+
+-- Right Top: Configuration (SaveManager)
+SaveManager:SetLibrary(Library)
+SaveManager:SetFolder("KETY")
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({"AutoExecuteToggle", "MenuKeybind"})
+SaveManager:BuildConfigSection(Tabs.Settings)
+
+-- Right Middle: Auto Execute
+local AutoExecSection = Tabs.Settings:AddRightGroupbox("Auto Execute")
 
 local pastebinCode = "loadstring(game:HttpGet('https://raw.githubusercontent.com/ldtktldjadc/l/refs/heads/main/ModpackRivals.luau'))()"
 
@@ -7827,7 +7893,7 @@ pcall(function()
     end
 end)
 
--- 襍ｷ蜍墓凾縺ｫ繝輔ぃ繧､繝ｫ縺悟ｭ伜惠縺励※縺・ｌ縺ｰ queue_on_teleport 繧貞・逋ｻ骭ｲ
+-- 起動時にファイルが存在していれば queue_on_teleport を再登録
 if _autoExecOn then
     pcall(function()
         if queue_on_teleport then queue_on_teleport(pastebinCode)
@@ -7859,12 +7925,10 @@ AutoExecSection:AddToggle("AutoExecuteToggle", {
     end
 })
 
--- ========== SAVE MANAGER ==========
-SaveManager:SetLibrary(Library)
-SaveManager:SetFolder("KETY")
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({"AutoExecuteToggle"})
-SaveManager:BuildConfigSection(Tabs.Config)
+-- Right Bottom: Lua
+local LuaSection = Tabs.Settings:AddRightGroupbox("lua")
+LuaSection:AddLabel("in development")
+
 SaveManager:LoadAutoloadConfig()
 
 getgenv().ModpackLoaded = true
