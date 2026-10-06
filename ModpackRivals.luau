@@ -1442,8 +1442,10 @@ local function AL_getTarget()
 		local sp, onScreen = camera:WorldToViewportPoint(AL_LockedTarget.Position)
 		local outOfFov = false
 		if AimLockSettings.FovEnabled then
-			local dist = (Vector2.new(sp.X, sp.Y) - screenCenter).Magnitude
-			if dist > AimLockSettings.FovSize then
+			local sDist = (AimLockSettings.FovShape == "Square")
+				and math.max(math.abs(sp.X - screenCenter.X), math.abs(sp.Y - screenCenter.Y))
+				or (Vector2.new(sp.X, sp.Y) - screenCenter).Magnitude
+			if sDist > AimLockSettings.FovSize then
 				outOfFov = true
 			end
 		end
@@ -1472,7 +1474,9 @@ local function AL_getTarget()
 						if part then
 							local sp, onScreen = camera:WorldToViewportPoint(part.Position)
 							if onScreen and not isBehindWall(part, char) then
-								local mouseDist = (Vector2.new(sp.X, sp.Y) - screenCenter).Magnitude
+								local mouseDist = (AimLockSettings.FovShape == "Square")
+									and math.max(math.abs(sp.X - screenCenter.X), math.abs(sp.Y - screenCenter.Y))
+									or (Vector2.new(sp.X, sp.Y) - screenCenter).Magnitude
 								if mouseDist <= bestDist then
 									bestDist = mouseDist
 									best = part
@@ -1595,131 +1599,53 @@ fovStrokeGradient.Parent = fovStroke
 local fovFillGradient = Instance.new("UIGradient")
 fovFillGradient.Parent = fovMainFrame
 
--- Circle Glow
-local fovGlowImage = Instance.new("ImageLabel")
-fovGlowImage.Name = "FOV_Glow"
-fovGlowImage.AnchorPoint = Vector2.new(0.5, 0.5)
-fovGlowImage.BackgroundTransparency = 1
-fovGlowImage.Image = "rbxassetid://5028857084"
-fovGlowImage.BorderSizePixel = 0
-fovGlowImage.Visible = false
-fovGlowImage.ZIndex = 4
-fovGlowImage.Parent = fovContainer
+-- Geometric Concentric Glow Layers (Never Square when Circle!)
+local GLOW_CONFIG = {
+    { Thickness = 3,  Transparency = 0.50 },
+    { Thickness = 7,  Transparency = 0.70 },
+    { Thickness = 13, Transparency = 0.85 },
+    { Thickness = 20, Transparency = 0.94 },
+}
 
-local fovGlowGradient = Instance.new("UIGradient")
-fovGlowGradient.Parent = fovGlowImage
+local glowLayers = {}
+for i, cfg in ipairs(GLOW_CONFIG) do
+    local gf = Instance.new("Frame")
+    gf.Name = "FOV_Glow_" .. i
+    gf.AnchorPoint = Vector2.new(0.5, 0.5)
+    gf.BackgroundTransparency = 1
+    gf.BorderSizePixel = 0
+    gf.Visible = false
+    gf.ZIndex = 4
+    gf.Parent = fovContainer
 
--- Square Glow Layers
-local fovSquareGlow1 = Instance.new("Frame")
-fovSquareGlow1.Name = "FOV_SquareGlow1"
-fovSquareGlow1.AnchorPoint = Vector2.new(0.5, 0.5)
-fovSquareGlow1.BackgroundTransparency = 1
-fovSquareGlow1.BorderSizePixel = 0
-fovSquareGlow1.Visible = false
-fovSquareGlow1.ZIndex = 4
-fovSquareGlow1.Parent = fovContainer
+    local gc = Instance.new("UICorner")
+    gc.CornerRadius = UDim.new(1, 0)
+    gc.Parent = gf
 
-local sqCorner1 = Instance.new("UICorner", fovSquareGlow1)
-sqCorner1.CornerRadius = UDim.new(0, 0)
+    local gs = Instance.new("UIStroke")
+    gs.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    gs.Thickness = cfg.Thickness
+    gs.Transparency = cfg.Transparency
+    gs.Color = Color3.fromRGB(255, 255, 255)
+    gs.Parent = gf
 
-local sqStroke1 = Instance.new("UIStroke", fovSquareGlow1)
-sqStroke1.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-sqStroke1.Thickness = 4
-sqStroke1.Transparency = 0.55
-sqStroke1.Color = Color3.fromRGB(255, 255, 255)
+    local gg = Instance.new("UIGradient")
+    gg.Parent = gs
 
-local sqStrokeGrad1 = Instance.new("UIGradient", sqStroke1)
-
-local fovSquareGlow2 = Instance.new("Frame")
-fovSquareGlow2.Name = "FOV_SquareGlow2"
-fovSquareGlow2.AnchorPoint = Vector2.new(0.5, 0.5)
-fovSquareGlow2.BackgroundTransparency = 1
-fovSquareGlow2.BorderSizePixel = 0
-fovSquareGlow2.Visible = false
-fovSquareGlow2.ZIndex = 4
-fovSquareGlow2.Parent = fovContainer
-
-local sqCorner2 = Instance.new("UICorner", fovSquareGlow2)
-sqCorner2.CornerRadius = UDim.new(0, 0)
-
-local sqStroke2 = Instance.new("UIStroke", fovSquareGlow2)
-sqStroke2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-sqStroke2.Thickness = 10
-sqStroke2.Transparency = 0.8
-sqStroke2.Color = Color3.fromRGB(255, 255, 255)
-
-local sqStrokeGrad2 = Instance.new("UIGradient", sqStroke2)
-
--- Polygon Pools (Outline, Glow Layer 1, Glow Layer 2, Geometric Fill)
-local fovPolyLines = {}
-local fovPolyGlowLines1 = {}
-local fovPolyGlowLines2 = {}
-local fovPolyFillLines = {}
-
-for i = 1, 10 do
-    local line = Instance.new("Frame")
-    line.Name = "FOV_PolyLine_" .. i
-    line.AnchorPoint = Vector2.new(0.5, 0.5)
-    line.BorderSizePixel = 0
-    line.ZIndex = 5
-    line.Visible = false
-    line.Parent = fovContainer
-    table.insert(fovPolyLines, line)
-
-    local g1 = Instance.new("Frame")
-    g1.Name = "FOV_PolyGlow1_" .. i
-    g1.AnchorPoint = Vector2.new(0.5, 0.5)
-    g1.BorderSizePixel = 0
-    g1.ZIndex = 4
-    g1.Visible = false
-    g1.Parent = fovContainer
-    table.insert(fovPolyGlowLines1, g1)
-
-    local g2 = Instance.new("Frame")
-    g2.Name = "FOV_PolyGlow2_" .. i
-    g2.AnchorPoint = Vector2.new(0.5, 0.5)
-    g2.BorderSizePixel = 0
-    g2.ZIndex = 3
-    g2.Visible = false
-    g2.Parent = fovContainer
-    table.insert(fovPolyGlowLines2, g2)
-end
-
-for i = 1, 50 do
-    local fLine = Instance.new("Frame")
-    fLine.Name = "FOV_PolyFill_" .. i
-    fLine.AnchorPoint = Vector2.new(0.5, 0.5)
-    fLine.BorderSizePixel = 0
-    fLine.ZIndex = 2
-    fLine.Visible = false
-    fLine.Parent = fovContainer
-    table.insert(fovPolyFillLines, fLine)
-end
-
-local function drawFovLine(frame, p1, p2, color, thickness, trans)
-    local dir = p2 - p1
-    local len = dir.Magnitude
-    if len < 0.001 then
-        frame.Visible = false
-        return
-    end
-    frame.Position = UDim2.new(0, (p1.X + p2.X) / 2, 0, (p1.Y + p2.Y) / 2)
-    frame.Size = UDim2.new(0, len, 0, thickness or 2)
-    frame.Rotation = math.deg(math.atan2(dir.Y, dir.X))
-    frame.BackgroundColor3 = color
-    frame.BackgroundTransparency = trans or 0
-    frame.Visible = true
+    table.insert(glowLayers, {
+        Frame = gf,
+        Corner = gc,
+        Stroke = gs,
+        Gradient = gg,
+        BaseTrans = cfg.Transparency
+    })
 end
 
 local function hideFovElements()
     fovMainFrame.Visible = false
-    fovGlowImage.Visible = false
-    fovSquareGlow1.Visible = false
-    fovSquareGlow2.Visible = false
-    for _, l in ipairs(fovPolyLines) do l.Visible = false end
-    for _, gl in ipairs(fovPolyGlowLines1) do gl.Visible = false end
-    for _, gl in ipairs(fovPolyGlowLines2) do gl.Visible = false end
-    for _, fl in ipairs(fovPolyFillLines) do fl.Visible = false end
+    for _, g in ipairs(glowLayers) do
+        g.Frame.Visible = false
+    end
 end
 
 getgenv()._AimLockFOVConn = RunService.RenderStepped:Connect(function()
@@ -1776,204 +1702,69 @@ getgenv()._AimLockFOVConn = RunService.RenderStepped:Connect(function()
 
     local thickness = AimLockSettings.FovThickness or 1.5
     local trans = AimLockSettings.FovTransparency or 0
+    local isCircle = (shape == "Circle")
+    local cornerRad = isCircle and UDim.new(1, 0) or UDim.new(0, 0)
+    local frameRot = isCircle and 0 or math.deg(shapeRot)
 
-    if shape == "Circle" or shape == "Square" then
-        for _, l in ipairs(fovPolyLines) do l.Visible = false end
-        for _, gl in ipairs(fovPolyGlowLines1) do gl.Visible = false end
-        for _, gl in ipairs(fovPolyGlowLines2) do gl.Visible = false end
-        for _, fl in ipairs(fovPolyFillLines) do fl.Visible = false end
+    -- Main Outline & Fill
+    fovMainFrame.Visible = true
+    fovMainFrame.Size = UDim2.new(0, currentRadius * 2, 0, currentRadius * 2)
+    fovMainFrame.Position = UDim2.new(0, center.X, 0, center.Y)
+    fovMainFrame.Rotation = frameRot
+    fovCorner.CornerRadius = cornerRad
 
-        fovMainFrame.Visible = true
-        fovMainFrame.Size = UDim2.new(0, currentRadius * 2, 0, currentRadius * 2)
-        fovMainFrame.Position = UDim2.new(0, center.X, 0, center.Y)
-        fovMainFrame.Rotation = (shape == "Square" and math.deg(shapeRot)) or 0
-        fovCorner.CornerRadius = (shape == "Circle") and UDim.new(1, 0) or UDim.new(0, 0)
+    fovStroke.Thickness = thickness
+    fovStroke.Transparency = trans
 
-        fovStroke.Thickness = thickness
-        fovStroke.Transparency = trans
+    if isGradient then
+        fovStroke.Color = Color3.fromRGB(255, 255, 255)
+        fovStrokeGradient.Enabled = true
+        fovStrokeGradient.Color = colorSeq
+        fovStrokeGradient.Rotation = gradRot
+    else
+        fovStroke.Color = col1
+        fovStrokeGradient.Enabled = false
+    end
 
+    if AimLockSettings.FovFilled then
+        fovMainFrame.BackgroundTransparency = math.clamp(AimLockSettings.FovFillTransparency or 0.85, 0, 1)
         if isGradient then
-            fovStroke.Color = Color3.fromRGB(255, 255, 255)
-            fovStrokeGradient.Enabled = true
-            fovStrokeGradient.Color = colorSeq
-            fovStrokeGradient.Rotation = gradRot
+            fovMainFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            fovFillGradient.Enabled = true
+            fovFillGradient.Color = colorSeq
+            fovFillGradient.Rotation = gradRot
         else
-            fovStroke.Color = col1
-            fovStrokeGradient.Enabled = false
-        end
-
-        if AimLockSettings.FovFilled then
-            fovMainFrame.BackgroundTransparency = math.clamp(AimLockSettings.FovFillTransparency or 0.85, 0, 1)
-            if isGradient then
-                fovMainFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-                fovFillGradient.Enabled = true
-                fovFillGradient.Color = colorSeq
-                fovFillGradient.Rotation = gradRot
-            else
-                fovMainFrame.BackgroundColor3 = col1
-                fovFillGradient.Enabled = false
-            end
-        else
-            fovMainFrame.BackgroundTransparency = 1
+            fovMainFrame.BackgroundColor3 = col1
             fovFillGradient.Enabled = false
         end
+    else
+        fovMainFrame.BackgroundTransparency = 1
+        fovFillGradient.Enabled = false
+    end
 
-        if AimLockSettings.FovGlow then
-            if shape == "Circle" then
-                fovSquareGlow1.Visible = false
-                fovSquareGlow2.Visible = false
-                fovGlowImage.Visible = true
-                local glowSize = currentRadius * 2.35
-                fovGlowImage.Size = UDim2.new(0, glowSize, 0, glowSize)
-                fovGlowImage.Position = UDim2.new(0, center.X, 0, center.Y)
-                fovGlowImage.ImageTransparency = math.clamp(0.55 + trans * 0.4, 0, 1)
-                if isGradient then
-                    fovGlowImage.ImageColor3 = Color3.fromRGB(255, 255, 255)
-                    fovGlowGradient.Enabled = true
-                    fovGlowGradient.Color = colorSeq
-                    fovGlowGradient.Rotation = gradRot
-                else
-                    fovGlowImage.ImageColor3 = col1
-                    fovGlowGradient.Enabled = false
-                end
+    -- Shape-Matched Glow
+    if AimLockSettings.FovGlow then
+        for _, g in ipairs(glowLayers) do
+            g.Frame.Visible = true
+            g.Frame.Size = UDim2.new(0, currentRadius * 2, 0, currentRadius * 2)
+            g.Frame.Position = UDim2.new(0, center.X, 0, center.Y)
+            g.Frame.Rotation = frameRot
+            g.Corner.CornerRadius = cornerRad
+            g.Stroke.Transparency = math.clamp(g.BaseTrans + trans * 0.3, 0, 1)
+
+            if isGradient then
+                g.Stroke.Color = Color3.fromRGB(255, 255, 255)
+                g.Gradient.Enabled = true
+                g.Gradient.Color = colorSeq
+                g.Gradient.Rotation = gradRot
             else
-                fovGlowImage.Visible = false
-                fovSquareGlow1.Visible = true
-                fovSquareGlow2.Visible = true
-                fovSquareGlow1.Size = UDim2.new(0, currentRadius * 2, 0, currentRadius * 2)
-                fovSquareGlow1.Position = UDim2.new(0, center.X, 0, center.Y)
-                fovSquareGlow1.Rotation = math.deg(shapeRot)
-                fovSquareGlow2.Size = UDim2.new(0, currentRadius * 2, 0, currentRadius * 2)
-                fovSquareGlow2.Position = UDim2.new(0, center.X, 0, center.Y)
-                fovSquareGlow2.Rotation = math.deg(shapeRot)
-
-                if isGradient then
-                    sqStroke1.Color = Color3.fromRGB(255, 255, 255)
-                    sqStrokeGrad1.Enabled = true
-                    sqStrokeGrad1.Color = colorSeq
-                    sqStrokeGrad1.Rotation = gradRot
-
-                    sqStroke2.Color = Color3.fromRGB(255, 255, 255)
-                    sqStrokeGrad2.Enabled = true
-                    sqStrokeGrad2.Color = colorSeq
-                    sqStrokeGrad2.Rotation = gradRot
-                else
-                    sqStroke1.Color = col1
-                    sqStrokeGrad1.Enabled = false
-
-                    sqStroke2.Color = col1
-                    sqStrokeGrad2.Enabled = false
-                end
+                g.Stroke.Color = col1
+                g.Gradient.Enabled = false
             end
-        else
-            fovGlowImage.Visible = false
-            fovSquareGlow1.Visible = false
-            fovSquareGlow2.Visible = false
         end
     else
-        fovMainFrame.Visible = false
-        fovGlowImage.Visible = false
-        fovSquareGlow1.Visible = false
-        fovSquareGlow2.Visible = false
-
-        local numVertices = 3
-        local startAngle = -math.pi / 2 + shapeRot
-        local isStar = false
-
-        if shape == "Triangle" then
-            numVertices = 3
-            startAngle = -math.pi / 2 + shapeRot
-        elseif shape == "Hexagon" then
-            numVertices = 6
-            startAngle = shapeRot
-        elseif shape == "Octagon" then
-            numVertices = 8
-            startAngle = math.pi / 8 + shapeRot
-        elseif shape == "Star" then
-            numVertices = 10
-            startAngle = -math.pi / 2 + shapeRot
-            isStar = true
-        end
-
-        local vertices = {}
-        for i = 1, numVertices do
-            local angle = startAngle + (i - 1) * (2 * math.pi / numVertices)
-            local r = currentRadius
-            if isStar and (i % 2 == 0) then
-                r = currentRadius * 0.45
-            end
-            local vx = center.X + math.cos(angle) * r
-            local vy = center.Y + math.sin(angle) * r
-            table.insert(vertices, Vector2.new(vx, vy))
-        end
-
-        for i = 1, numVertices do
-            local p1 = vertices[i]
-            local p2 = vertices[(i % numVertices) + 1]
-            local segColor = col1
-            if isGradient then
-                local midX = (p1.X + p2.X) / 2 - center.X
-                local midY = (p1.Y + p2.Y) / 2 - center.Y
-                local angle = math.atan2(midY, midX)
-                local ratio = (math.sin(angle + math.rad(gradRot)) + 1) / 2
-                segColor = col1:Lerp(col2, ratio)
-            end
-
-            drawFovLine(fovPolyLines[i], p1, p2, segColor, thickness, trans)
-
-            if AimLockSettings.FovGlow then
-                drawFovLine(fovPolyGlowLines1[i], p1, p2, segColor, thickness + 4, 0.55)
-                drawFovLine(fovPolyGlowLines2[i], p1, p2, segColor, thickness + 10, 0.8)
-            else
-                fovPolyGlowLines1[i].Visible = false
-                fovPolyGlowLines2[i].Visible = false
-            end
-        end
-
-        for i = numVertices + 1, #fovPolyLines do
-            fovPolyLines[i].Visible = false
-            fovPolyGlowLines1[i].Visible = false
-            fovPolyGlowLines2[i].Visible = false
-        end
-
-        if AimLockSettings.FovFilled then
-            local fillSteps = { 0.82, 0.64, 0.46, 0.28, 0.10 }
-            local ringThickness = math.max(currentRadius * 0.22, 3)
-            local fillTrans = math.clamp(AimLockSettings.FovFillTransparency or 0.85, 0.5, 0.98)
-            local fillIndex = 0
-
-            for _, s in ipairs(fillSteps) do
-                local ringVerts = {}
-                for i = 1, numVertices do
-                    local v = center + (vertices[i] - center) * s
-                    table.insert(ringVerts, v)
-                end
-
-                for i = 1, numVertices do
-                    fillIndex = fillIndex + 1
-                    if fillIndex <= #fovPolyFillLines then
-                        local p1 = ringVerts[i]
-                        local p2 = ringVerts[(i % numVertices) + 1]
-                        local segColor = col1
-                        if isGradient then
-                            local midX = (p1.X + p2.X) / 2 - center.X
-                            local midY = (p1.Y + p2.Y) / 2 - center.Y
-                            local angle = math.atan2(midY, midX)
-                            local ratio = (math.sin(angle + math.rad(gradRot)) + 1) / 2
-                            segColor = col1:Lerp(col2, ratio)
-                        end
-                        drawFovLine(fovPolyFillLines[fillIndex], p1, p2, segColor, ringThickness, fillTrans)
-                    end
-                end
-            end
-
-            for i = fillIndex + 1, #fovPolyFillLines do
-                fovPolyFillLines[i].Visible = false
-            end
-        else
-            for _, fl in ipairs(fovPolyFillLines) do
-                fl.Visible = false
-            end
+        for _, g in ipairs(glowLayers) do
+            g.Frame.Visible = false
         end
     end
 end)
@@ -2057,7 +1848,7 @@ AimLockFovDep:AddSlider("AimLock_FovSize", {
 
 AimLockFovDep:AddDropdown("AimLock_FovShape", {
     Text = "Shape",
-    Values = {"Circle", "Square", "Hexagon", "Octagon", "Triangle", "Star"},
+    Values = {"Circle", "Square"},
     Default = 1,
     Multi = false,
     Callback = function(v) AimLockSettings.FovShape = v end
