@@ -3852,6 +3852,7 @@ do
 
     getgenv().Config = getgenv().Config or {
         Enabled = false,
+        AutoAttack = true,
         WeaponSlot = "Primary",
         TargetPart = "HitboxHead",
         TargetSort = "Distance (Closest)",
@@ -3866,6 +3867,7 @@ do
             Knife     = { X = 0, Y = -5, Z = 1 },
         },
     }
+    if getgenv().Config.AutoAttack == nil then getgenv().Config.AutoAttack = true end
     getgenv().Config.TargetPart = getgenv().Config.TargetPart or "HitboxHead"
     getgenv().Config.TargetSort = getgenv().Config.TargetSort or "Distance (Closest)"
     if getgenv().Config.TeamCheck == nil then getgenv().Config.TeamCheck = true end
@@ -3910,6 +3912,22 @@ do
             getgenv().Config.TeamCheck = not value
             if getgenv().RageBotConfig then getgenv().RageBotConfig.TeamCheck = not value end
         end
+    })
+
+    local RageBotAutoAttackToggle = RageBotSection:AddToggle("RageBot_AutoAttack", {
+        Text = "Auto Attack",
+        Default = true,
+        Callback = function(value)
+            getgenv().Config.AutoAttack = value
+            if getgenv().RageBotConfig then getgenv().RageBotConfig.AutoAttack = value end
+        end
+    })
+
+    RageBotAutoAttackToggle:AddKeyPicker("RageBotAutoAttackKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Auto Attack",
     })
 
     local WeaponSlotDropdown = RageBotSection:AddDropdown("RageBot_Slot", {
@@ -4130,6 +4148,7 @@ do
         local plrs = cloneref(game:GetService("Players"))
         local runS = cloneref(game:GetService("RunService"))
         local ws = cloneref(game:GetService("Workspace"))
+        local uis = cloneref(game:GetService("UserInputService"))
         local lplr = plrs.LocalPlayer
 
         local util = nil
