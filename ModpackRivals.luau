@@ -5058,13 +5058,12 @@ if hookmetamethod then
     local _useItmRem = _fightRem and _fightRem:FindFirstChild("UseItem")
     if _equipRem then
         local _onc
-        _onc = hookmetamethod(game, "__namecall", function(self, ...)
+        _onc = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
             if getnamecallmethod() ~= "FireServer" then
                 return _onc(self, ...)
             end
-            local _a = {...}
             if _useItmRem and self == _useItmRem then
-                local _oid = _a[1]
+                local _oid = ...
                 if _fightCtrl then
                     pcall(function()
                         local _f = _fightCtrl:GetFighter(_lp)
@@ -5078,12 +5077,10 @@ if hookmetamethod then
                         end
                     end)
                 end
-            end
-            if self == _equipRem then
-                local _wn   = _a[1]
-                local _ct   = _a[2]
-                local _cn   = _a[3]
-                local _opts = _a[4] or {}
+                return _onc(self, ...)
+            elseif self == _equipRem then
+                local _wn, _ct, _cn, _opts = ...
+                _opts = _opts or {}
                 if _cn and _cn ~= "None" and _cn ~= "" then
                     local _inv = _datCtrl:Get("CosmeticInventory")
                     if _inv and rawget(_inv, _cn) then
@@ -5106,12 +5103,12 @@ if hookmetamethod then
                 end)
                 _saveCfg()
                 return
-            end
-            if self == _favRem then
-                local _cos = _cosLib.Cosmetics[_a[2]]
+            elseif self == _favRem then
+                local arg1, arg2, arg3 = ...
+                local _cos = _cosLib.Cosmetics[arg2]
                 if _cos then
-                    _favs[_a[1]] = _favs[_a[1]] or {}
-                    _favs[_a[1]][_a[2]] = _a[3] or nil
+                    _favs[arg1] = _favs[arg1] or {}
+                    _favs[arg1][arg2] = arg3 or nil
                     task.spawn(function()
                         pcall(function() _datCtrl.CurrentData:Replicate("FavoritedCosmetics") end)
                     end)
@@ -5120,7 +5117,7 @@ if hookmetamethod then
                 return
             end
             return _onc(self, ...)
-        end)
+        end))
     end
 end
 local _cliItem
@@ -7341,21 +7338,13 @@ end
 local AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
 local pastebinCode = "loadstring(game:HttpGet('https://raw.githubusercontent.com/ldtktldjadc/l/refs/heads/main/ModpackRivals.luau'))()"
 local _autoExecOn = false
-pcall(function()
-    if isfile then
-        _autoExecOn = isfile("autoexec/KETY.lua") or isfile("KETY_AutoExec.lua") or false
-    end
-end)
-if _autoExecOn then
-    pcall(function()
-        if queue_on_teleport then queue_on_teleport(pastebinCode)
-        elseif syn and syn.queue_on_teleport then syn.queue_on_teleport(pastebinCode) end
-    end)
-end
+
 AutoExecSection:AddToggle("AutoExecuteToggle", {
-    Text = "Auto Execute (Keep Script)",
-    Default = _autoExecOn,
+    Text = "Queue On Teleport",
+    Default = false,
+    Tooltip = "Automatically executes the script when you hop servers.",
     Callback = function(value)
+        _autoExecOn = value
         if value then
             pcall(function()
                 if queue_on_teleport then
@@ -7364,14 +7353,6 @@ AutoExecSection:AddToggle("AutoExecuteToggle", {
                     syn.queue_on_teleport(pastebinCode)
                 end
             end)
-            pcall(function()
-                if isfolder and not isfolder("autoexec") then makefolder("autoexec") end
-                writefile("autoexec/KETY.lua", pastebinCode)
-            end)
-            pcall(function() writefile("KETY_AutoExec.lua", pastebinCode) end)
-        else
-            pcall(function() if isfile("autoexec/KETY.lua") then delfile("autoexec/KETY.lua") end end)
-            pcall(function() if isfile("KETY_AutoExec.lua") then delfile("KETY_AutoExec.lua") end end)
         end
     end
 })
