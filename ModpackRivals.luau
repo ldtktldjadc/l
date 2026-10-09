@@ -84,9 +84,13 @@ local function safeUnbindFromRenderStep(rs, name)
         boundRenderSteps[name] = nil
     end
 end
-if getgenv().KETY_Executing then return end
-getgenv().KETY_Executing = true
-task.delay(5, function() getgenv().KETY_Executing = false end)
+if getgenv().KETY_Executed then
+    if getgenv().MyLinoriaLibrary and getgenv().MyLinoriaLibrary.Notify then
+        getgenv().MyLinoriaLibrary:Notify("Script is already running! Please rejoin to inject a new version.", 5)
+    end
+    return 
+end
+getgenv().KETY_Executed = true
 local cam = workspace.CurrentCamera
 if getgenv().MyLinoriaLibrary then
     pcall(function() getgenv().MyLinoriaLibrary:Unload() end)
@@ -402,6 +406,11 @@ local teamEspSettings = {
     TextStrokeColor = Color3.fromRGB(0, 0, 0),
 }
 local _strokeCache = setmetatable({}, {__mode = "k"})
+local function safeSet(obj, prop, val)
+    if obj[prop] ~= val then
+        obj[prop] = val
+    end
+end
 local function safeSetStrokeColor(target, color)
     if typeof(target) == "Instance" then
         local s = _strokeCache[target]
@@ -430,11 +439,11 @@ local function createLine()
 end
 local function drawLine(frame, p1, p2, color) 
     local dir = p2 - p1
-    frame.Position = UDim2_new(0, (p1.X+p2.X)*0.5, 0, (p1.Y+p2.Y)*0.5)
-    frame.Size = UDim2_new(0, dir.Magnitude, 0, 1)
-    frame.Rotation = math_deg(math_atan2(dir.Y, dir.X))
-    if frame.BackgroundColor3 ~= color then frame.BackgroundColor3 = color end
-    if not frame.Visible then frame.Visible = true end
+    safeSet(frame, "Position", UDim2_new(0, (p1.X+p2.X)*0.5, 0, (p1.Y+p2.Y)*0.5))
+    safeSet(frame, "Size", UDim2_new(0, dir.Magnitude, 0, 1))
+    safeSet(frame, "Rotation", math_deg(math_atan2(dir.Y, dir.X)))
+    safeSet(frame, "BackgroundColor3", color)
+    safeSet(frame, "Visible", true)
 end
 local function createPlayerEsp(p)
     if espCache[p] then return end
@@ -532,7 +541,7 @@ local function createPlayerEsp(p)
     
     c.BoxFill.BackgroundTransparency = 0.5
     c.BoxFill.BorderSizePixel = 0
-    c.BoxFill.Visible = false
+    safeSet(c.BoxFill, "Visible", false)
     c.BoxFill.Parent = espContainer
 end
 local function clearPlayerEsp(p)
@@ -566,8 +575,8 @@ local function createTeamPlayerEsp(p)
     c.NameTag.Font = Drawing.Fonts.UI
     c.NameTag.TextSize = 8
     c.NameTag.TextStrokeTransparency = 1
-    c.NameTag.Visible = false
-    c.NameTag.Size = UDim2.new(0, 200, 0, 16)
+    safeSet(c.NameTag, "Visible", false)
+    safeSet(c.NameTag, "Size", UDim2.new(0, 200, 0, 16))
     c.NameTag.AnchorPoint = Vector2.new(0.5, 1)
     c.NameTag.Parent = espContainer
     local ns = Instance.new("UIStroke"); ns.Parent = c.NameTag
@@ -580,14 +589,14 @@ local function createTeamPlayerEsp(p)
     c.BoxFill = Instance.new("ImageLabel")
     c.BoxFill.BackgroundTransparency = 0.7
     c.BoxFill.BorderSizePixel = 0
-    c.BoxFill.Visible = false
+    safeSet(c.BoxFill, "Visible", false)
     c.BoxFill.Parent = espContainer
     c.Tracer = createLine()
     c.HPBarBg = Instance.new("Frame")
-    c.HPBarBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    safeSet(c.HPBarBg, "BackgroundColor3", Color3.fromRGB(40, 40, 40))
     c.HPBarBg.BorderSizePixel = 1
     c.HPBarBg.BorderColor3 = Color3.new(0,0,0)
-    c.HPBarBg.Visible = false
+    safeSet(c.HPBarBg, "Visible", false)
     c.HPBarBg.Parent = espContainer
     c.HPBarFill = Instance.new("Frame")
     c.HPBarFill.BorderSizePixel = 0
@@ -694,16 +703,16 @@ local function updateEspLoop()
                     if _espConn then _espConn:Disconnect(); _espConn = nil end
                     if not _espCleared then
                         for _, c in pairs(espCache) do
-                            c.NameTag.Visible = false
-                            c.DistanceTag.Visible = false
-                            if c.BoxFill then c.BoxFill.Visible = false end
-                            for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
-                            c.Tracer.Visible = false
+                            safeSet(c.NameTag, "Visible", false)
+                            safeSet(c.DistanceTag, "Visible", false)
+                            if c.BoxFill then safeSet(c.BoxFill, "Visible", false end)
+                            for _, l in pairs(c.BoxLines or {}) do safeSet(l, "Visible", false end)
+                            safeSet(c.Tracer, "Visible", false)
                             c.WeaponBillboard.Enabled = false
-                            if c.AmmoText then c.AmmoText.Visible = false end
-                            if c.RankIcon then c.RankIcon.Visible = false end
-                            if c.HPBarBg then c.HPBarBg.Visible = false end
-                            for _, b in pairs(c.Bones) do b.Visible = false end
+                            if c.AmmoText then safeSet(c.AmmoText, "Visible", false end)
+                            if c.RankIcon then safeSet(c.RankIcon, "Visible", false end)
+                            if c.HPBarBg then safeSet(c.HPBarBg, "Visible", false end)
+                            for _, b in pairs(c.Bones) do safeSet(b, "Visible", false end)
                         end
                         for p, _ in pairs(wallEspHighlightCache) do
                             clearHighlight(p)
@@ -722,16 +731,16 @@ local function updateEspLoop()
         if not char or not hum or hum.Health <= 0 or not rootPart or not head or not checkTeam(p, true) then
             if espCache[p] then
                 local c = espCache[p]
-                c.NameTag.Visible = false
-                c.DistanceTag.Visible = false
-                if c.BoxFill then c.BoxFill.Visible = false end
-                for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
-                c.Tracer.Visible = false
+                safeSet(c.NameTag, "Visible", false)
+                safeSet(c.DistanceTag, "Visible", false)
+                if c.BoxFill then safeSet(c.BoxFill, "Visible", false end)
+                for _, l in pairs(c.BoxLines or {}) do safeSet(l, "Visible", false end)
+                safeSet(c.Tracer, "Visible", false)
                 c.WeaponBillboard.Enabled = false
-                if c.AmmoText then c.AmmoText.Visible = false end
-                if c.RankIcon then c.RankIcon.Visible = false end
-                if c.HPBarBg then c.HPBarBg.Visible = false end
-                for _, b in pairs(c.Bones) do b.Visible = false end
+                if c.AmmoText then safeSet(c.AmmoText, "Visible", false end)
+                if c.RankIcon then safeSet(c.RankIcon, "Visible", false end)
+                if c.HPBarBg then safeSet(c.HPBarBg, "Visible", false end)
+                for _, b in pairs(c.Bones) do safeSet(b, "Visible", false end)
             end
             clearHighlight(p)
             continue
@@ -740,17 +749,17 @@ local function updateEspLoop()
             local hl = getOrCreateHighlight(p, char)
             local behindWall = isPlayerBehindWall(char, cam)
             if behindWall then
-                hl.Enabled = true
-                hl.FillColor = espSettings.WallESPColor
-                hl.OutlineColor = espSettings.WallESPColor
-                hl.FillTransparency = espSettings.WallESPTransparency
-                hl.OutlineTransparency = espSettings.WallESPTransparency
+                safeSet(hl, "Enabled", true)
+                safeSet(hl, "FillColor", espSettings.WallESPColor)
+                safeSet(hl, "OutlineColor", espSettings.WallESPColor)
+                safeSet(hl, "FillTransparency", espSettings.WallESPTransparency)
+                safeSet(hl, "OutlineTransparency", espSettings.WallESPTransparency)
             else
-                hl.Enabled = true
-                hl.FillColor = espSettings.WallESPNoWallColor
-                hl.OutlineColor = espSettings.WallESPNoWallColor
-                hl.FillTransparency = espSettings.WallESPTransparency
-                hl.OutlineTransparency = espSettings.WallESPTransparency
+                safeSet(hl, "Enabled", true)
+                safeSet(hl, "FillColor", espSettings.WallESPNoWallColor)
+                safeSet(hl, "OutlineColor", espSettings.WallESPNoWallColor)
+                safeSet(hl, "FillTransparency", espSettings.WallESPTransparency)
+                safeSet(hl, "OutlineTransparency", espSettings.WallESPTransparency)
             end
         else
             clearHighlight(p)
@@ -761,25 +770,25 @@ local function updateEspLoop()
         local distance = math.floor((camPos - rootPart.Position).Magnitude)
         if espSettings.Weapon or espSettings.Ammo then
             cache.WeaponBillboard.Adornee = rootPart
-            cache.WeaponBillboard.Enabled = true
+            safeSet(cache.WeaponBillboard, "Enabled",  --true
             local fighter = nil
             if FighterController and typeof(FighterController.GetFighter) == "function" then
                 fighter = FighterController:GetFighter(p)
             end
             if espSettings.Weapon then
-                cache.WeaponText.TextColor3 = espSettings.WeaponColor
+                safeSet(cache.WeaponText, "TextColor3", espSettings.WeaponColor)
                 safeSetStrokeColor(cache.WeaponText, espSettings.TextStrokeColor or Color3.fromRGB(0,0,0))
                 local weaponName = "None"
                 if fighter and fighter.EquippedItem then
                     weaponName = fighter.EquippedItem.Name
                 end
-                cache.WeaponText.Text = weaponName
-                cache.WeaponText.Visible = true
+                safeSet(cache.WeaponText, "Text", weaponName)
+                safeSet(cache.WeaponText, "Visible", true)
             else
-                cache.WeaponText.Visible = false
+                safeSet(cache.WeaponText, "Visible", false)
             end
             if espSettings.Ammo then
-                cache.AmmoText.TextColor3 = espSettings.AmmoColor
+                safeSet(cache.AmmoText, "TextColor3", espSettings.AmmoColor)
                 safeSetStrokeColor(cache.AmmoText, espSettings.TextStrokeColor or Color3.fromRGB(0,0,0))
                 local ammoStr = ""
                 if fighter and fighter.EquippedItem then
@@ -790,17 +799,17 @@ local function updateEspLoop()
                     end
                 end
                 if ammoStr ~= "" then
-                    cache.AmmoText.Text = ammoStr
-                    cache.AmmoText.Visible = true
+                    safeSet(cache.AmmoText, "Text", ammoStr)
+                    safeSet(cache.AmmoText, "Visible", true)
                 else
-                    cache.AmmoText.Visible = false
+                    safeSet(cache.AmmoText, "Visible", false)
                 end
             else
-                cache.AmmoText.Visible = false
+                safeSet(cache.AmmoText, "Visible", false)
             end
         else
-            cache.WeaponBillboard.Enabled = false
-            cache.AmmoText.Visible = false
+            safeSet(cache.WeaponBillboard, "Enabled",  --false
+            safeSet(cache.AmmoText, "Visible", false)
         end
         if onScreen then
             local headWorld = rootPart.Position + Vector3.new(0, 3.2, 0)
@@ -835,17 +844,17 @@ local function updateEspLoop()
                     text = text .. " [Parrying]"
                     color = espSettings.KatanaColor
                 end
-                cache.NameTag.Text = text
-                cache.NameTag.TextColor3 = color
+                safeSet(cache.NameTag, "Text", text)
+                safeSet(cache.NameTag, "TextColor3", color)
                 safeSetStrokeColor(cache.NameTag, espSettings.TextStrokeColor or Color3.fromRGB(0,0,0))
-                cache.NameTag.Position = UDim2.new(0, topPos.X, 0, currentTopY)
-                cache.NameTag.Visible = true
+                safeSet(cache.NameTag, "Position", UDim2.new(0, topPos.X, 0, currentTopY))
+                safeSet(cache.NameTag, "Visible", true)
                 currentTopY = currentTopY - 10
             else
-                cache.NameTag.Visible = false
+                safeSet(cache.NameTag, "Visible", false)
             end
             if cache.AmmoText.Visible then
-                cache.AmmoText.Position = UDim2.new(0, topPos.X, 0, currentTopY)
+                safeSet(cache.AmmoText, "Position", UDim2.new(0, topPos.X, 0, currentTopY))
                 currentTopY = currentTopY - 10
             end
             if espSettings.Rank and SeasonLibrary then
@@ -862,16 +871,16 @@ local function updateEspLoop()
                     end
                     if cache.lastRankImage ~= "" then
                         cache.RankIcon.Image = cache.lastRankImage
-                        cache.RankIcon.Position = UDim2.new(0, topPos.X, 0, currentTopY)
-                        cache.RankIcon.Visible = true
+                        safeSet(cache.RankIcon, "Position", UDim2.new(0, topPos.X, 0, currentTopY))
+                        safeSet(cache.RankIcon, "Visible", true)
                     else
-                        cache.RankIcon.Visible = false
+                        safeSet(cache.RankIcon, "Visible", false)
                     end
                 else
-                    cache.RankIcon.Visible = false
+                    safeSet(cache.RankIcon, "Visible", false)
                 end
             else
-                cache.RankIcon.Visible = false
+                safeSet(cache.RankIcon, "Visible", false)
             end
             if topVis and botVis then
                 if espSettings.Box then
@@ -910,45 +919,45 @@ local function updateEspLoop()
                         if espSettings.BoxFillImage and espSettings.BoxFillImageID ~= "" then
                             cache.BoxFill.Image = "rbxassetid://" .. espSettings.BoxFillImageID
                             cache.BoxFill.ImageColor3 = Color3.new(1, 1, 1) 
-                            cache.BoxFill.BackgroundColor3 = espSettings.BoxFillColor 
+                            safeSet(cache.BoxFill, "BackgroundColor3", espSettings.BoxFillColor )
                             cache.BoxFill.BackgroundTransparency = 1 
                             cache.BoxFill.ImageTransparency = 0.5
                         else
                             cache.BoxFill.Image = ""
-                            cache.BoxFill.BackgroundColor3 = espSettings.BoxFillColor
+                            safeSet(cache.BoxFill, "BackgroundColor3", espSettings.BoxFillColor)
                             cache.BoxFill.BackgroundTransparency = 0.5
                         end
-                        cache.BoxFill.Size = UDim2.new(0, width, 0, height)
-                        cache.BoxFill.Position = UDim2.new(0, topPos.X - (width/2), 0, topPos.Y)
-                        cache.BoxFill.Visible = true
+                        safeSet(cache.BoxFill, "Size", UDim2.new(0, width, 0, height))
+                        safeSet(cache.BoxFill, "Position", UDim2.new(0, topPos.X - (width/2), 0, topPos.Y))
+                        safeSet(cache.BoxFill, "Visible", true)
                     else
-                        cache.BoxFill.Visible = false
+                        safeSet(cache.BoxFill, "Visible", false)
                     end
                 else
                     for _, line in pairs(cache.BoxLines) do line.Visible = false end
-                    if cache.BoxFill then cache.BoxFill.Visible = false end
+                    if cache.BoxFill then safeSet(cache.BoxFill, "Visible", false end)
                 end
                 if espSettings.HP and cache.HPBarBg then
                     local hpW = 2 
-                    cache.HPBarBg.Size = UDim2.new(0, hpW, 0, height)
-                    cache.HPBarBg.Position = UDim2.new(0, topPos.X - (width / 2) - hpW - 4, 0, topPos.Y)
+                    safeSet(cache.HPBarBg, "Size", UDim2.new(0, hpW, 0, height))
+                    safeSet(cache.HPBarBg, "Position", UDim2.new(0, topPos.X - (width / 2) - hpW - 4, 0, topPos.Y))
                     local hpPct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
-                    cache.HPBarFill.Size = UDim2.new(1, 0, hpPct, 0)
-                    cache.HPBarFill.Position = UDim2.new(0, 0, 1 - hpPct, 0)
-                    cache.HPBarFill.BackgroundColor3 = Color3.new(1 - hpPct, hpPct, 0) 
+                    safeSet(cache.HPBarFill, "Size", UDim2.new(1, 0, hpPct, 0))
+                    safeSet(cache.HPBarFill, "Position", UDim2.new(0, 0, 1 - hpPct, 0))
+                    safeSet(cache.HPBarFill, "BackgroundColor3", Color3.new(1 - hpPct, hpPct, 0) )
                     cache.HPBarBg.BorderColor3 = espSettings.TextStrokeColor or Color3.fromRGB(0,0,0)
-                    cache.HPBarBg.Visible = true
-                    cache.HPBarFill.Visible = true
+                    safeSet(cache.HPBarBg, "Visible", true)
+                    safeSet(cache.HPBarFill, "Visible", true)
                 elseif cache.HPBarBg then
-                    cache.HPBarBg.Visible = false
+                    safeSet(cache.HPBarBg, "Visible", false)
                 end
                 if espSettings.Distance then
                     local hpPctInt = math.floor((hum.Health / hum.MaxHealth) * 100)
-                    cache.DistanceTag.Text = string.format("[ %dm ] [ %d%% ]", distance, hpPctInt)
-                    cache.DistanceTag.TextColor3 = espSettings.DistanceColor
+                    safeSet(cache.DistanceTag, "Text", string.format("[ %dm ] [ %d%% ]", distance, hpPctInt))
+                    safeSet(cache.DistanceTag, "TextColor3", espSettings.DistanceColor)
                     safeSetStrokeColor(cache.DistanceTag, espSettings.TextStrokeColor or Color3.fromRGB(0,0,0))
-                    cache.DistanceTag.Position = UDim2.new(0, topPos.X, 0, botPos.Y + 2)
-                    cache.DistanceTag.Visible = true
+                    safeSet(cache.DistanceTag, "Position", UDim2.new(0, topPos.X, 0, botPos.Y + 2))
+                    safeSet(cache.DistanceTag, "Visible", true)
                     if cache.WeaponBillboard.Enabled then
                         local baseOffset = Vector3.new(0, -4.5 - ((botPos.Y - topPos.Y) / 100), 0)
                         if espSettings.RanDomEsp and espOffset ~= Vector2.zero then
@@ -957,22 +966,22 @@ local function updateEspLoop()
                         cache.WeaponBillboard.StudsOffset = baseOffset
                     end
                 else
-                    cache.DistanceTag.Visible = false
+                    safeSet(cache.DistanceTag, "Visible", false)
                 end
                 if espSettings.Tracer then
                     local center = Vector2_new(camVp.X * 0.5, camVp.Y)
                     drawLine(cache.Tracer, center, botPos, espSettings.TracerColor)
                 else
-                    cache.Tracer.Visible = false
+                    safeSet(cache.Tracer, "Visible", false)
                 end
             else
-                if cache.BoxFill then cache.BoxFill.Visible = false end
-                for _, l in pairs(cache.BoxLines or {}) do l.Visible = false end
-                cache.DistanceTag.Visible = false
-                cache.Tracer.Visible = false
-                cache.AmmoText.Visible = false
-                cache.RankIcon.Visible = false
-                if cache.HPBarBg then cache.HPBarBg.Visible = false end
+                if cache.BoxFill then safeSet(cache.BoxFill, "Visible", false end)
+                for _, l in pairs(cache.BoxLines or {}) do safeSet(l, "Visible", false end)
+                safeSet(cache.DistanceTag, "Visible", false)
+                safeSet(cache.Tracer, "Visible", false)
+                safeSet(cache.AmmoText, "Visible", false)
+                safeSet(cache.RankIcon, "Visible", false)
+                if cache.HPBarBg then safeSet(cache.HPBarBg, "Visible", false end)
             end
             if espSettings.Bone then
                 updateBoneRefs(cache, char)
@@ -997,18 +1006,18 @@ local function updateEspLoop()
                 if t and ll then drawLine(cache.Bones.Torso_LLeg, t, ll, espSettings.BoneColor) else cache.Bones.Torso_LLeg.Visible = false end
                 if t and rl then drawLine(cache.Bones.Torso_RLeg, t, rl, espSettings.BoneColor) else cache.Bones.Torso_RLeg.Visible = false end
             else
-                for _, b in pairs(cache.Bones) do b.Visible = false end
+                for _, b in pairs(cache.Bones) do safeSet(b, "Visible", false end)
             end
         else
-            cache.NameTag.Visible = false
-            cache.DistanceTag.Visible = false
-            if cache.BoxFill then cache.BoxFill.Visible = false end
-            for _, l in pairs(cache.BoxLines or {}) do l.Visible = false end
-            cache.Tracer.Visible = false
-            cache.AmmoText.Visible = false
-            cache.RankIcon.Visible = false
-            if cache.HPBarBg then cache.HPBarBg.Visible = false end
-            for _, b in pairs(cache.Bones) do b.Visible = false end
+            safeSet(cache.NameTag, "Visible", false)
+            safeSet(cache.DistanceTag, "Visible", false)
+            if cache.BoxFill then safeSet(cache.BoxFill, "Visible", false end)
+            for _, l in pairs(cache.BoxLines or {}) do safeSet(l, "Visible", false end)
+            safeSet(cache.Tracer, "Visible", false)
+            safeSet(cache.AmmoText, "Visible", false)
+            safeSet(cache.RankIcon, "Visible", false)
+            if cache.HPBarBg then safeSet(cache.HPBarBg, "Visible", false end)
+            for _, b in pairs(cache.Bones) do safeSet(b, "Visible", false end)
         end
     end
     end)
@@ -1017,16 +1026,16 @@ local function updateEspLoop()
         if _espConn then _espConn:Disconnect(); _espConn = nil end
         if not _espCleared then
             for _, c in pairs(espCache) do
-                c.NameTag.Visible = false
-                c.DistanceTag.Visible = false
-                if c.BoxFill then c.BoxFill.Visible = false end
-                for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
-                c.Tracer.Visible = false
+                safeSet(c.NameTag, "Visible", false)
+                safeSet(c.DistanceTag, "Visible", false)
+                if c.BoxFill then safeSet(c.BoxFill, "Visible", false end)
+                for _, l in pairs(c.BoxLines or {}) do safeSet(l, "Visible", false end)
+                safeSet(c.Tracer, "Visible", false)
                 c.WeaponBillboard.Enabled = false
-                if c.AmmoText then c.AmmoText.Visible = false end
-                if c.RankIcon then c.RankIcon.Visible = false end
-                if c.HPBarBg then c.HPBarBg.Visible = false end
-                for _, b in pairs(c.Bones) do b.Visible = false end
+                if c.AmmoText then safeSet(c.AmmoText, "Visible", false end)
+                if c.RankIcon then safeSet(c.RankIcon, "Visible", false end)
+                if c.HPBarBg then safeSet(c.HPBarBg, "Visible", false end)
+                for _, b in pairs(c.Bones) do safeSet(b, "Visible", false end)
             end
             for p, _ in pairs(wallEspHighlightCache) do
                 clearHighlight(p)
@@ -1053,11 +1062,11 @@ local function updateTeamEspLoop()
                 if not teamEspSettings.Enabled or not myID then
                     if not _teamEspCleared then
                         for _, c in pairs(teamEspCache) do
-                            c.NameTag.Visible = false
-                            c.BoxFill.Visible = false
-                            c.Tracer.Visible = false
-                            c.HPBarBg.Visible = false
-                            for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
+                            safeSet(c.NameTag, "Visible", false)
+                            safeSet(c.BoxFill, "Visible", false)
+                            safeSet(c.Tracer, "Visible", false)
+                            safeSet(c.HPBarBg, "Visible", false)
+                            for _, l in pairs(c.BoxLines or {}) do safeSet(l, "Visible", false end)
                         end
                         _teamEspCleared = true
                     end
@@ -1078,11 +1087,11 @@ local function updateTeamEspLoop()
         if not isSameTeam or not char or not hum or hum.Health <= 0 or not rootPart then
             if teamEspCache[p] then
                 local c = teamEspCache[p]
-                c.NameTag.Visible = false
-                c.BoxFill.Visible = false
-                c.Tracer.Visible = false
-                c.HPBarBg.Visible = false
-                for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
+                safeSet(c.NameTag, "Visible", false)
+                safeSet(c.BoxFill, "Visible", false)
+                safeSet(c.Tracer, "Visible", false)
+                safeSet(c.HPBarBg, "Visible", false)
+                for _, l in pairs(c.BoxLines or {}) do safeSet(l, "Visible", false end)
             end
             continue
         end
@@ -1090,11 +1099,11 @@ local function updateTeamEspLoop()
         local c = teamEspCache[p]
         local rootPos, onScreen = cam:WorldToViewportPoint(rootPart.Position)
         if not onScreen then
-            c.NameTag.Visible = false
-            c.BoxFill.Visible = false
-            c.Tracer.Visible = false
-            c.HPBarBg.Visible = false
-            for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
+            safeSet(c.NameTag, "Visible", false)
+            safeSet(c.BoxFill, "Visible", false)
+            safeSet(c.Tracer, "Visible", false)
+            safeSet(c.HPBarBg, "Visible", false)
+            for _, l in pairs(c.BoxLines or {}) do safeSet(l, "Visible", false end)
             continue
         end
         local headWorld = rootPart.Position + Vector3.new(0, 3.2, 0)
@@ -1113,14 +1122,14 @@ local function updateTeamEspLoop()
         local botPos = Vector2.new(rootPos.X, feetScreen.Y) + espOffset
         local currentTopY = topPos.Y - 5
         if teamEspSettings.Name then
-            c.NameTag.Text = "[TEAM] " .. p.Name
-            c.NameTag.TextColor3 = teamEspSettings.NameColor
+            safeSet(c.NameTag, "Text", "[TEAM] " .. p.Name)
+            safeSet(c.NameTag, "TextColor3", teamEspSettings.NameColor)
             safeSetStrokeColor(c.NameTag, teamEspSettings.TextStrokeColor or Color3.fromRGB(0,0,0))
-            c.NameTag.Position = UDim2.new(0, topPos.X, 0, currentTopY)
-            c.NameTag.Visible = true
+            safeSet(c.NameTag, "Position", UDim2.new(0, topPos.X, 0, currentTopY))
+            safeSet(c.NameTag, "Visible", true)
             currentTopY = currentTopY - 10
         else
-            c.NameTag.Visible = false
+            safeSet(c.NameTag, "Visible", false)
         end
         if teamEspSettings.Box then
             local tl = Vector2.new(topPos.X - width/2, topPos.Y)
@@ -1147,31 +1156,31 @@ local function updateTeamEspLoop()
                 c.BoxLines.BR_H.Visible = false
                 c.BoxLines.BR_V.Visible = false
             end
-            c.BoxFill.BackgroundColor3 = teamEspSettings.BoxColor
-            c.BoxFill.Size = UDim2.new(0, width, 0, height)
-            c.BoxFill.Position = UDim2.new(0, topPos.X - width/2, 0, topPos.Y)
-            c.BoxFill.Visible = false 
+            safeSet(c.BoxFill, "BackgroundColor3", teamEspSettings.BoxColor)
+            safeSet(c.BoxFill, "Size", UDim2.new(0, width, 0, height))
+            safeSet(c.BoxFill, "Position", UDim2.new(0, topPos.X - width/2, 0, topPos.Y))
+            safeSet(c.BoxFill, "Visible", false )
         else
-            for _, l in pairs(c.BoxLines) do l.Visible = false end
-            c.BoxFill.Visible = false
+            for _, l in pairs(c.BoxLines) do safeSet(l, "Visible", false end)
+            safeSet(c.BoxFill, "Visible", false)
         end
         if teamEspSettings.HP then
             local hpPct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
             local hpW = 2
-            c.HPBarBg.Size = UDim2.new(0, hpW, 0, height)
-            c.HPBarBg.Position = UDim2.new(0, topPos.X - width/2 - hpW - 4, 0, topPos.Y)
-            c.HPBarFill.Size = UDim2.new(1, 0, hpPct, 0)
-            c.HPBarFill.Position = UDim2.new(0, 0, 1 - hpPct, 0)
-            c.HPBarFill.BackgroundColor3 = Color3.new(1 - hpPct, hpPct, 0)
-            c.HPBarBg.Visible = true
+            safeSet(c.HPBarBg, "Size", UDim2.new(0, hpW, 0, height))
+            safeSet(c.HPBarBg, "Position", UDim2.new(0, topPos.X - width/2 - hpW - 4, 0, topPos.Y))
+            safeSet(c.HPBarFill, "Size", UDim2.new(1, 0, hpPct, 0))
+            safeSet(c.HPBarFill, "Position", UDim2.new(0, 0, 1 - hpPct, 0))
+            safeSet(c.HPBarFill, "BackgroundColor3", Color3.new(1 - hpPct, hpPct, 0))
+            safeSet(c.HPBarBg, "Visible", true)
         else
-            c.HPBarBg.Visible = false
+            safeSet(c.HPBarBg, "Visible", false)
         end
         if teamEspSettings.Tracer then
             local center = Vector2_new(camVp.X * 0.5, camVp.Y)
             drawLine(c.Tracer, center, botPos, teamEspSettings.TracerColor)
         else
-            c.Tracer.Visible = false
+            safeSet(c.Tracer, "Visible", false)
         end
     end
     end)
@@ -1180,11 +1189,11 @@ local function updateTeamEspLoop()
         if _teamEspConn then _teamEspConn:Disconnect(); _teamEspConn = nil end
         if not _teamEspCleared then
             for _, c in pairs(teamEspCache) do
-                c.NameTag.Visible = false
-                c.BoxFill.Visible = false
-                c.Tracer.Visible = false
-                c.HPBarBg.Visible = false
-                for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
+                safeSet(c.NameTag, "Visible", false)
+                safeSet(c.BoxFill, "Visible", false)
+                safeSet(c.Tracer, "Visible", false)
+                safeSet(c.HPBarBg, "Visible", false)
+                for _, l in pairs(c.BoxLines or {}) do safeSet(l, "Visible", false end)
             end
             _teamEspCleared = true
         end
@@ -1608,16 +1617,16 @@ local fovMainFrame = Instance.new("Frame")
 fovMainFrame.Name = "FOV_Main"
 fovMainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 fovMainFrame.BorderSizePixel = 0
-fovMainFrame.Visible = false
+safeSet(fovMainFrame, "Visible", false)
 fovMainFrame.ZIndex = 5
 fovMainFrame.Parent = fovContainer
 local fovCorner = Instance.new("UICorner")
-fovCorner.CornerRadius = UDim.new(1, 0)
+safeSet(fovCorner, "CornerRadius", UDim.new(1, 0))
 fovCorner.Parent = fovMainFrame
 local fovStroke = Instance.new("UIStroke")
 fovStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-fovStroke.Thickness = 1.5
-fovStroke.Color = Color3.fromRGB(255, 255, 255)
+safeSet(fovStroke, "Thickness", 1.5)
+safeSet(fovStroke, "Color", Color3.fromRGB(255, 255, 255))
 fovStroke.Parent = fovMainFrame
 local fovStrokeGradient = Instance.new("UIGradient")
 fovStrokeGradient.Parent = fovStroke
@@ -1659,9 +1668,9 @@ for i, cfg in ipairs(GLOW_CONFIG) do
     })
 end
 local function hideFovElements()
-    fovMainFrame.Visible = false
+    safeSet(fovMainFrame, "Visible", false)
     for _, g in ipairs(glowLayers) do
-        g.Frame.Visible = false
+        safeSet(g.Frame, "Visible", false)
     end
 end
 local _fovLastC1, _fovLastC2, _fovLastGrad = nil, nil, nil
@@ -1743,20 +1752,20 @@ local function updateAimLockFovLoop()
             local isCircle = (shape == "Circle")
             local cornerRad = isCircle and UDim.new(1, 0) or UDim.new(0, 0)
             local frameRot = isCircle and 0 or math.deg(shapeRot)
-            fovMainFrame.Visible = true
-            fovMainFrame.Size = UDim2.new(0, currentRadius * 2, 0, currentRadius * 2)
-            fovMainFrame.Position = UDim2.new(0, center.X, 0, center.Y)
+            safeSet(fovMainFrame, "Visible", true)
+            safeSet(fovMainFrame, "Size", UDim2.new(0, currentRadius * 2, 0, currentRadius * 2))
+            safeSet(fovMainFrame, "Position", UDim2.new(0, center.X, 0, center.Y))
             fovMainFrame.Rotation = frameRot
-            fovCorner.CornerRadius = cornerRad
-            fovStroke.Thickness = thickness
-            fovStroke.Transparency = trans
+            safeSet(fovCorner, "CornerRadius", cornerRad)
+            safeSet(fovStroke, "Thickness", thickness)
+            safeSet(fovStroke, "Transparency", trans)
             if isGradient then
-                fovStroke.Color = Color3.fromRGB(255, 255, 255)
+                safeSet(fovStroke, "Color", Color3.fromRGB(255, 255, 255))
                 fovStrokeGradient.Enabled = true
                 fovStrokeGradient.Color = colorSeq
                 fovStrokeGradient.Rotation = gradRot
             else
-                fovStroke.Color = col1
+                safeSet(fovStroke, "Color", col1)
                 fovStrokeGradient.Enabled = false
             end
             if AimLockSettings.FovFilled then
@@ -1776,25 +1785,25 @@ local function updateAimLockFovLoop()
             end
             if AimLockSettings.FovGlow then
                 for _, g in ipairs(glowLayers) do
-                    g.Frame.Visible = true
-                    g.Frame.Size = UDim2.new(0, currentRadius * 2, 0, currentRadius * 2)
-                    g.Frame.Position = UDim2.new(0, center.X, 0, center.Y)
+                    safeSet(g.Frame, "Visible", true)
+                    safeSet(g.Frame, "Size", UDim2.new(0, currentRadius * 2, 0, currentRadius * 2))
+                    safeSet(g.Frame, "Position", UDim2.new(0, center.X, 0, center.Y))
                     g.Frame.Rotation = frameRot
                     g.Corner.CornerRadius = cornerRad
-                    g.Stroke.Transparency = math.clamp(g.BaseTrans + trans * 0.3, 0, 1)
+                    safeSet(g.Stroke, "Transparency", math.clamp(g.BaseTrans + trans * 0.3, 0, 1))
                     if isGradient then
-                        g.Stroke.Color = Color3.fromRGB(255, 255, 255)
+                        safeSet(g.Stroke, "Color", Color3.fromRGB(255, 255, 255))
                         g.Gradient.Enabled = true
                         g.Gradient.Color = colorSeq
                         g.Gradient.Rotation = gradRot
                     else
-                        g.Stroke.Color = col1
+                        safeSet(g.Stroke, "Color", col1)
                         g.Gradient.Enabled = false
                     end
                 end
             else
                 for _, g in ipairs(glowLayers) do
-                    g.Frame.Visible = false
+                    safeSet(g.Frame, "Visible", false)
                 end
             end
         end)
@@ -2945,10 +2954,10 @@ do
     chText.AnchorPoint = Vector2.new(0.5, 0)
     chText.Position = UDim2.new(0.5, 0, 0.5, 45)
     chText.BackgroundTransparency = 1
-    chText.Text = chTextStr
+    safeSet(chText, "Text", chTextStr)
     chText.TextSize = 16
     chText.Font = Enum.Font.Arcade
-    chText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    safeSet(chText, "TextColor3", Color3.fromRGB(255, 255, 255))
     chText.TextStrokeTransparency = 0
     chText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     chText.Parent = chGui
@@ -2966,24 +2975,24 @@ do
             local raw = math.sin(t * 4)
             length = 28 + chEaseOutQuad((raw + 1) / 2) * 12
         end
-        chUpO.Size = UDim2.new(0, 4, 0, length)
-        chUpO.Position = UDim2.new(0.5, -2, 0.5, -length - 10)
-        chUpI.BackgroundColor3 = cColor
-        chRightO.Size = UDim2.new(0, length, 0, 4)
-        chRightO.Position = UDim2.new(0.5, 10, 0.5, -2)
-        chRightI.BackgroundColor3 = cColor
-        chLeftO.Size = UDim2.new(0, length, 0, 4)
-        chLeftO.Position = UDim2.new(0.5, -length - 10, 0.5, -2)
-        chLeftI.BackgroundColor3 = cColor
-        chDownO.Size = UDim2.new(0, 4, 0, length)
-        chDownO.Position = UDim2.new(0.5, -2, 0.5, 10)
-        chDownI.BackgroundColor3 = cColor
-        chText.TextColor3 = cColor
-        chText.Text = chTextStr
+        safeSet(chUpO, "Size", UDim2.new(0, 4, 0, length))
+        safeSet(chUpO, "Position", UDim2.new(0.5, -2, 0.5, -length - 10))
+        safeSet(chUpI, "BackgroundColor3", cColor)
+        safeSet(chRightO, "Size", UDim2.new(0, length, 0, 4))
+        safeSet(chRightO, "Position", UDim2.new(0.5, 10, 0.5, -2))
+        safeSet(chRightI, "BackgroundColor3", cColor)
+        safeSet(chLeftO, "Size", UDim2.new(0, length, 0, 4))
+        safeSet(chLeftO, "Position", UDim2.new(0.5, -length - 10, 0.5, -2))
+        safeSet(chLeftI, "BackgroundColor3", cColor)
+        safeSet(chDownO, "Size", UDim2.new(0, 4, 0, length))
+        safeSet(chDownO, "Position", UDim2.new(0.5, -2, 0.5, 10))
+        safeSet(chDownI, "BackgroundColor3", cColor)
+        safeSet(chText, "TextColor3", cColor)
+        safeSet(chText, "Text", chTextStr)
         if chSpin then
-            chCenter.Rotation = (chCenter.Rotation + dt * 180) % 360
+            safeSet(chCenter, "Rotation", (chCenter.Rotation + dt * 180) % 360)
         else
-            chCenter.Rotation = 0
+            safeSet(chCenter, "Rotation", 0)
         end
     end
     CrosshairToggle = CrosshairSection:AddToggle("Crosshair_Enable", {
@@ -3086,6 +3095,8 @@ do
             { Texture = "rbxassetid://18664874807",    Speed = 3, Length = 3, LightInf = 1 },
             { Texture = "rbxassetid://12251459424",    Speed = 1, Length = 1, LightInf = 1 },
         }
+        local activeTracers = {}
+        local tracerHeartbeat = nil
         local function drawTracers(self, data)
             if not (data and data.IsLocal) then return end
             local ok, muzzle = pcall(function() return self.ViewModel:GetMuzzlePosition() end)
@@ -3095,6 +3106,7 @@ do
             local bt = getgenv()._bt
             local colorSeq = ColorSequence.new(tracerColor)
             local initTrans = NumberSequence.new(0.5)
+            local now = tick()
             for _, res in ipairs(data.RaycastResults or {}) do
                 if not res or typeof(res.Position) ~= "Vector3" then continue end
                 local container = Instance.new("Part")
@@ -3118,29 +3130,39 @@ do
                     b.Parent = container
                     table.insert(beams, b)
                 end
-                local alive = true
-                local fv = Instance.new("NumberValue", container)
-                fv.Value = 0
-                local tw = TweenService:Create(fv, TweenInfo.new(bt.fadeTime, tracerFadeStyle, Enum.EasingDirection.Out), { Value = 1 })
-                local conn
-                conn = fv:GetPropertyChangedSignal("Value"):Connect(function()
-                    if not alive then return end
-                    local pct = fv.Value
-                    if type(pct) ~= "number" then return end
-                    local seq = NumberSequence.new(math.clamp(0.5 + 0.5 * pct, 0, 1))
-                    local w = bt.width * (1 - pct)
-                    for _, bm in ipairs(beams) do
-                        if bm.Parent then bm.Transparency = seq; bm.Width0 = w; bm.Width1 = w end
+                table.insert(activeTracers, {
+                    beams = beams,
+                    container = container,
+                    startTime = now,
+                    fadeTime = bt.fadeTime,
+                    width = bt.width
+                })
+            end
+            if not tracerHeartbeat then
+                tracerHeartbeat = game:GetService("RunService").Heartbeat:Connect(function()
+                    local t = tick()
+                    for i = #activeTracers, 1, -1 do
+                        local tracer = activeTracers[i]
+                        local elapsed = t - tracer.startTime
+                        if elapsed >= tracer.fadeTime then
+                            if tracer.container and tracer.container.Parent then
+                                tracer.container:Destroy()
+                            end
+                            table.remove(activeTracers, i)
+                        else
+                            local pct = elapsed / tracer.fadeTime
+                            pct = 1 - (1 - pct) * (1 - pct) -- EaseOutQuad
+                            local seq = NumberSequence.new(math.clamp(0.5 + 0.5 * pct, 0, 1))
+                            local w = tracer.width * (1 - pct)
+                            for _, bm in ipairs(tracer.beams) do
+                                if bm.Parent then bm.Transparency = seq; bm.Width0 = w; bm.Width1 = w end
+                            end
+                        end
                     end
-                end)
-                task.delay(0, function()
-                    if not alive then return end
-                    tw:Play()
-                    task.delay(bt.fadeTime + 0.2, function()
-                        alive = false
-                        if conn then conn:Disconnect() end
-                        if container.Parent then container:Destroy() end
-                    end)
+                    if #activeTracers == 0 then
+                        tracerHeartbeat:Disconnect()
+                        tracerHeartbeat = nil
+                    end
                 end)
             end
         end
@@ -4959,7 +4981,6 @@ GunModsDep:AddSlider("GunMods_AntiKatanaDelay", {
 local instantScopeConn = nil
 local function updateInstantScopeConn()
     local shouldRun = getgenv().RageSettings and getgenv().RageSettings.Enabled and getgenv().RageSettings.InstantScope
-end
     if not shouldRun then
         if instantScopeConn then
             instantScopeConn:Disconnect()
@@ -7388,8 +7409,8 @@ do
     end
     if hookmetamethod and not getgenv()._BadgesHooked then
         getgenv()._BadgesHooked = true
-        local old_index; old_index = hookmetamethod(game, "__index", function(self, key)
-            if self == changerLocalPlayer then
+        local old_index; old_index = hookmetamethod(game, "__index", newcclosure(function(self, key)
+            if not checkcaller() and self == changerLocalPlayer then
                 if key == "MembershipType" and changerStates.badges.Premium then
                     return Enum.MembershipType.Premium
                 end
@@ -7398,7 +7419,7 @@ do
                 end
             end
             return old_index(self, key)
-        end)
+        end))
     end
     local function UpdateBadgesOptions()
         changerLocalPlayer:SetAttribute("IsInfluencer", changerStates.badges.Influencer and true or false)
@@ -7830,32 +7851,20 @@ do
         applyUnlockAllHook()
     end)
 end 
-AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
 local currentKey = getgenv().SCRIPT_KEY or ""
 local pastebinCode = 'getgenv().SCRIPT_KEY = "' .. currentKey .. '"\nloadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/f0284445bd8656e53305c6b904839599390904cda3542684eebf5ada872f6b90/download"))()'
-local _autoExecOn = false
 
-AutoExecSection:AddToggle("AutoExecuteToggle", {
-    Text = "Queue On Teleport",
-    Default = false,
-    Tooltip = "Automatically executes the script when you hop servers.",
-    Callback = function(value)
-        _autoExecOn = value
-        if value then
-            pcall(function()
-                if queue_on_teleport then
-                    queue_on_teleport(pastebinCode)
-                elseif syn and syn.queue_on_teleport then
-                    syn.queue_on_teleport(pastebinCode)
-                end
-            end)
-        end
+pcall(function()
+    if queue_on_teleport then
+        queue_on_teleport(pastebinCode)
+    elseif syn and syn.queue_on_teleport then
+        syn.queue_on_teleport(pastebinCode)
     end
-})
+end)
+
 SaveManager:SetLibrary(Library)
 SaveManager:SetFolder("KETY")
 SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({"AutoExecuteToggle"})
 SaveManager:BuildConfigSection(Tabs.Config)
 SaveManager:LoadAutoloadConfig()
 getgenv().ModpackLoaded = true
