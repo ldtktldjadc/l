@@ -125,7 +125,6 @@ getgenv().SilentConfig = {
     SilentTargetPart = "HitboxHead",
     WallCheck = false,
     TeamCheck = false,
-    PlayerCheck = true,
 }
 
 local _myCachedTeamID = lp:GetAttribute("TeamID")
@@ -190,7 +189,6 @@ do
         "RightUpperLeg", "RightLowerLeg", "RightFoot"
     }
 
-    local _npcCache, _npcCacheTime = {}, 0
     local function getClosestTarget(maxFOV, partMode)
         local cfg = getgenv().SilentConfig
         local closest, closestDist = nil, (maxFOV == 100 and 500 or (maxFOV or 300))
@@ -199,35 +197,11 @@ do
         local curCam = workspace.CurrentCamera
         if not curCam then return nil end
 
-        local targets = {}
         for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= lp and checkTeam(p, false) and p.Character then
-                table.insert(targets, p.Character)
-            end
-        end
-        if cfg and cfg.PlayerCheck == false then
-            local now = tick()
-            if now - _npcCacheTime > 1 then
-                _npcCacheTime = now
-                _npcCache = {}
-                for _, d in ipairs(workspace:GetDescendants()) do
-                    if d:IsA("Humanoid") then
-                        local m = d.Parent
-                        if m and m:IsA("Model") and m ~= lp.Character and not Players:GetPlayerFromCharacter(m) then
-                            table.insert(_npcCache, m)
-                        end
-                    end
-                end
-            end
-            for _, m in ipairs(_npcCache) do
-                if m.Parent then table.insert(targets, m) end
-            end
-        end
-
-        for _, char in ipairs(targets) do
-            do
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                local root = char:FindFirstChild("HumanoidRootPart")
+            if p ~= lp and checkTeam(p, false) then
+                local char = p.Character
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                local root = char and char:FindFirstChild("HumanoidRootPart")
 
                 if char and hum and hum.Health > 0 and root then
                     local hitPart = root
@@ -1311,11 +1285,6 @@ AimDep:AddSlider("SAIFOV", {
 AimDep:AddToggle("WallCheck", {
     Text    = "Wall Check", Default = false,
     Callback = function(value) getgenv().SilentConfig.WallCheck = value end,
-})
-
-AimDep:AddToggle("PlayerCheck", {
-    Text    = "Player Check", Default = true,
-    Callback = function(value) getgenv().SilentConfig.PlayerCheck = value end,
 })
 
 AimDep:AddToggle("TeamCheck", {
