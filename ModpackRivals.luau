@@ -3866,6 +3866,8 @@ do
         AntiHit = false,
         AntiHitDuration = 0.5,
         AntiHitStayDuration = 0.15,
+        Method = "Normal",
+        AttachPart = "Head",
         TPOffsets = {
             Primary   = { X = 0, Y = 5, Z = 0 },
             Secondary = { X = 0, Y = 5, Z = 0 },
@@ -3880,6 +3882,8 @@ do
     if getgenv().Config.TeamCheck == nil then getgenv().Config.TeamCheck = true end
     getgenv().Config.AntiHit = false
     if getgenv().Config.AntiHitStayDuration == nil then getgenv().Config.AntiHitStayDuration = 0.15 end
+    getgenv().Config.Method = getgenv().Config.Method or "Normal"
+    getgenv().Config.AttachPart = getgenv().Config.AttachPart or "Head"
     getgenv().Config.TPOffsets = getgenv().Config.TPOffsets or {
         Primary   = { X = 0, Y = 5, Z = 0 },
         Secondary = { X = 0, Y = 5, Z = 0 },
@@ -4074,7 +4078,21 @@ do
         Text = "RageBot",
     })
 
-    local RageBotAutoAttackToggle = RageBotSection:AddToggle("RageBot_AutoAttack", {
+    -- Enabled が ON の時のみ RageBot 設定を表示する
+    local RageEnabledDep = RageBotSection:AddDependencyBox()
+    local RageMethodDropdown = RageEnabledDep:AddDropdown("RageBot_Method", {
+        Values = {"Normal", "Kicia"},
+        Default = 1,
+        Multi = false,
+        Text = "Rage Method",
+        Callback = function(value)
+            getgenv().Config.Method = value
+            if getgenv().RageBotConfig then getgenv().RageBotConfig.Method = value end
+        end
+    })
+    RageEnabledDep:SetupDependencies({ { RageBotToggle, true } })
+
+    local RageBotAutoAttackToggle = RageEnabledDep:AddToggle("RageBot_AutoAttack", {
         Text = "Auto Attack",
         Default = true,
         Callback = function(value)
@@ -4091,7 +4109,7 @@ do
         Text = "Auto Attack",
     })
 
-    local RageBotShowBtnToggle = RageBotSection:AddToggle("RageBot_ShowButton", {
+    local RageBotShowBtnToggle = RageEnabledDep:AddToggle("RageBot_ShowButton", {
         Text = "Screen Attack Button",
         Default = true,
         Callback = function(value)
@@ -4103,7 +4121,7 @@ do
         end
     })
 
-    local RageBotTeamCheckToggle = RageBotSection:AddToggle("RageBot_TeamCheck", {
+    local RageBotTeamCheckToggle = RageEnabledDep:AddToggle("RageBot_TeamCheck", {
         Text = "FFA",
         Default = false,
         Callback = function(value)
@@ -4112,7 +4130,7 @@ do
         end
     })
 
-    local WeaponSlotDropdown = RageBotSection:AddDropdown("RageBot_Slot", {
+    local WeaponSlotDropdown = RageEnabledDep:AddDropdown("RageBot_Slot", {
         Values = {"Primary", "Secondary", "Melee", "Knife"},
         Default = 1,
         Multi = false,
@@ -4134,7 +4152,7 @@ do
         end
     })
 
-    local RageBotTargetPartDropdown = RageBotSection:AddDropdown("RageBot_TargetPart", {
+    local RageBotTargetPartDropdown = RageEnabledDep:AddDropdown("RageBot_TargetPart", {
         Values = {
             "HitboxHead", "HitboxBody", "Head", "UpperTorso", "LowerTorso",
             "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg", "Random"
@@ -4148,7 +4166,7 @@ do
         end
     })
 
-    local RageBotTargetSortDropdown = RageBotSection:AddDropdown("RageBot_TargetSort", {
+    local RageBotTargetSortDropdown = RageEnabledDep:AddDropdown("RageBot_TargetSort", {
         Values = {
             "Distance (Closest)", "Distance (Farthest)",
             "Health (Lowest)", "Health (Highest)",
@@ -4162,6 +4180,24 @@ do
             if getgenv().RageBotConfig then getgenv().RageBotConfig.TargetSort = value end
         end
     })
+
+    -- Kicia 専用: 接着パーツ選択
+    local KiciaDep = RageBotSection:AddDependencyBox()
+    local KiciaAttachPartDropdown = KiciaDep:AddDropdown("RageBot_AttachPart", {
+        Values = {
+            "Head", "HumanoidRootPart", "UpperTorso", "LowerTorso",
+            "Left Arm", "Right Arm", "Left Leg", "Right Leg",
+            "HitboxHead", "HitboxBody"
+        },
+        Default = 1,
+        Multi = false,
+        Text = "Attach Part",
+        Callback = function(value)
+            getgenv().Config.AttachPart = value
+            if getgenv().RageBotConfig then getgenv().RageBotConfig.AttachPart = value end
+        end
+    })
+    KiciaDep:SetupDependencies({ { RageBotToggle, true }, { RageMethodDropdown, "Kicia" } })
 
     local PrimaryTPDep = RageBotSection:AddDependencyBox()
     PrimaryTPDep:AddSlider("RageBot_Primary_TP_X", {
@@ -4194,7 +4230,7 @@ do
             getgenv().Config.TPOffsets.Primary.Z = value
         end
     })
-    PrimaryTPDep:SetupDependencies({ { WeaponSlotDropdown, "Primary" } })
+    PrimaryTPDep:SetupDependencies({ { RageBotToggle, true }, { RageMethodDropdown, "Normal" }, { WeaponSlotDropdown, "Primary" } })
 
     local SecondaryTPDep = RageBotSection:AddDependencyBox()
     SecondaryTPDep:AddSlider("RageBot_Secondary_TP_X", {
@@ -4227,7 +4263,7 @@ do
             getgenv().Config.TPOffsets.Secondary.Z = value
         end
     })
-    SecondaryTPDep:SetupDependencies({ { WeaponSlotDropdown, "Secondary" } })
+    SecondaryTPDep:SetupDependencies({ { RageBotToggle, true }, { RageMethodDropdown, "Normal" }, { WeaponSlotDropdown, "Secondary" } })
 
     local MeleeTPDep = RageBotSection:AddDependencyBox()
     MeleeTPDep:AddSlider("RageBot_Melee_TP_X", {
@@ -4260,9 +4296,9 @@ do
             getgenv().Config.TPOffsets.Melee.Z = value
         end
     })
-    MeleeTPDep:SetupDependencies({ { WeaponSlotDropdown, "Melee" } })
+    MeleeTPDep:SetupDependencies({ { RageBotToggle, true }, { RageMethodDropdown, "Normal" }, { WeaponSlotDropdown, "Melee" } })
 
-    local AntiHitToggle = RageBotSection:AddToggle("RageBot_AntiHit", {
+    local AntiHitToggle = RageEnabledDep:AddToggle("RageBot_AntiHit", {
         Text = "AntiHit",
         Default = false,
         Callback = function(value)
@@ -4301,7 +4337,7 @@ do
             getgenv().RageBotConfig.AntiHitStayDuration = value
         end
     })
-    AntiHitDep:SetupDependencies({ { AntiHitToggle, true } })
+    AntiHitDep:SetupDependencies({ { RageBotToggle, true }, { AntiHitToggle, true } })
 
     task.spawn(function()
         local repS = cloneref(game:GetService("ReplicatedStorage"))
@@ -4436,6 +4472,59 @@ do
                 end
             end
         end)
+
+        -- ========== KICIA (NoDelaySnap.lua の TP ロジック) ==========
+        local getthreadidentity_ = getthreadidentity or getidentity
+        local setthreadidentity_ = setthreadidentity or setidentity
+        local sethiddenproperty_ = sethiddenproperty or set_hidden_property
+        local setsimulationradius_ = setsimulationradius or set_simulation_radius
+        local KiciaInstanceHandle = getgenv().InstanceHandle or { new = function(x) return x end }
+        local kiciaActive = false
+        local kiciaLastPart = nil
+
+        local function kiciaSetRepRoot(part, target)
+            if not part or not sethiddenproperty_ then return false end
+            local oldIdentity = getthreadidentity_ and getthreadidentity_()
+            if setthreadidentity_ then pcall(setthreadidentity_, 8) end
+            local handle = nil
+            if target then
+                local hok, h = pcall(KiciaInstanceHandle.new, target)
+                handle = hok and h or target
+            end
+            local ok, res = pcall(sethiddenproperty_, part, "PhysicsRepRootRef", handle)
+            if setthreadidentity_ and oldIdentity then pcall(setthreadidentity_, oldIdentity) end
+            return ok, res
+        end
+
+        local function kiciaReset(myRoot)
+            if not kiciaActive then return end
+            kiciaActive = false
+            kiciaLastPart = nil
+            if myRoot then kiciaSetRepRoot(myRoot, myRoot) end
+        end
+
+        local KICIA_PART_NAMES = {
+            ["Head"] = { "Head" },
+            ["HumanoidRootPart"] = { "HumanoidRootPart" },
+            ["UpperTorso"] = { "UpperTorso", "Torso" },
+            ["LowerTorso"] = { "LowerTorso", "Torso" },
+            ["Left Arm"] = { "LeftUpperArm", "Left Arm" },
+            ["Right Arm"] = { "RightUpperArm", "Right Arm" },
+            ["Left Leg"] = { "LeftUpperLeg", "Left Leg" },
+            ["Right Leg"] = { "RightUpperLeg", "Right Leg" },
+            ["HitboxHead"] = { "HitboxHead", "Head" },
+            ["HitboxBody"] = { "HitboxBody", "HumanoidRootPart" },
+        }
+        local function resolveKiciaAttachPart(pChar)
+            if not pChar then return nil end
+            local mode = getgenv().Config and getgenv().Config.AttachPart or "Head"
+            local names = KICIA_PART_NAMES[mode] or { mode }
+            for _, n in ipairs(names) do
+                local p = pChar:FindFirstChild(n)
+                if p and p:IsA("BasePart") then return p end
+            end
+            return pChar:FindFirstChild("HumanoidRootPart")
+        end
 
         local lastFire = 0
         local lastTarget = nil
@@ -4584,9 +4673,17 @@ do
         end
 
         runS.Heartbeat:Connect(function()
-            if not getgenv().Config.Enabled then return end
+            if not getgenv().Config.Enabled then
+                if kiciaActive then
+                    kiciaReset(lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart"))
+                end
+                return
+            end
             local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
             if not myRoot then return end
+
+            local isKicia = (getgenv().Config.Method == "Kicia")
+            if (not isKicia) and kiciaActive then kiciaReset(myRoot) end
 
             local tc = getgenv().Config and getgenv().Config.TeamCheck
             if tc ~= false then
@@ -4598,6 +4695,7 @@ do
                 end
                 if not myTeam then
                     currentTargetYaw = nil
+                    kiciaReset(myRoot)
                     return
                 end
             end
@@ -4665,6 +4763,7 @@ do
                 and item ~= nil
 
             local desyncCF
+            local kiciaTarget = nil
             if canTarget then
                 local targetLowerTorso = targetPlayer.Character and targetPlayer.Character:FindFirstChild("LowerTorso")
                 local baseCFrame = targetLowerTorso and targetLowerTorso.CFrame or targetRoot.CFrame
@@ -4672,6 +4771,20 @@ do
                 currentTargetYaw = y
 
                 local curSlot = getgenv().Config.WeaponSlot or "Primary"
+                if isKicia then
+                    -- Kicia: 接着パーツへ NoDelaySnap 方式でスナップ（オフセット無し）
+                    local kiciaPart = resolveKiciaAttachPart(targetPlayer.Character)
+                    if kiciaPart then
+                        local attachPos = kiciaPart.Position
+                        if (attachPos - targetPart.Position).Magnitude > 0.001 then
+                            desyncCF = CFrame.lookAt(attachPos, targetPart.Position)
+                        else
+                            desyncCF = kiciaPart.CFrame
+                        end
+                        kiciaTarget = kiciaPart
+                    end
+                end
+                if not desyncCF then
                 local ox, oy, oz
                 if curSlot == "Knife" then
                     ox = math.random(-50, 50) / 10
@@ -4699,8 +4812,10 @@ do
                         desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
                     end
                 end
+                end
             else
                 currentTargetYaw = nil
+                kiciaReset(myRoot)
                 if tc == false then
                     desyncCF = myRoot.CFrame
                 else
@@ -4719,6 +4834,38 @@ do
             local oldVel    = myRoot.Velocity
             local oldRotVel = myRoot.RotVelocity
             myRoot.CFrame = desyncCF
+            if kiciaTarget then
+                -- NoDelaySnap 方式: 物理レプリケーションルートを接着パーツに差し替え
+                if setsimulationradius_ then pcall(setsimulationradius_, math.huge, math.huge) end
+                local myChar = lplr.Character
+                if myChar then
+                    for _, p in ipairs(myChar:GetDescendants()) do
+                        if p:IsA("BasePart") then p.CanCollide = false end
+                    end
+                end
+                local tChar = kiciaTarget.Parent
+                if tChar then
+                    for _, p in ipairs(tChar:GetDescendants()) do
+                        if p:IsA("BasePart") then p.CanCollide = false end
+                    end
+                end
+                if kiciaLastPart ~= kiciaTarget then
+                    kiciaLastPart = kiciaTarget
+                    myRoot.AssemblyLinearVelocity = Vector3.zero
+                    myRoot.AssemblyAngularVelocity = Vector3.zero
+                    myRoot.Anchored = true
+                    kiciaSetRepRoot(myRoot, kiciaTarget)
+                    myRoot.Anchored = false
+                end
+                kiciaActive = true
+                kiciaSetRepRoot(myRoot, kiciaTarget)
+                local kVel = kiciaTarget.AssemblyLinearVelocity
+                myRoot.AssemblyLinearVelocity = kVel
+                myRoot.AssemblyAngularVelocity = kiciaTarget.AssemblyAngularVelocity
+                pcall(function() myRoot.Velocity = kVel end)
+            elseif kiciaActive then
+                kiciaReset(myRoot)
+            end
             currentDesyncCF = desyncCF
             pcall(function() runS:UnbindFromRenderStep("__restore") end)
             runS:BindToRenderStep("__restore", 101, function()
