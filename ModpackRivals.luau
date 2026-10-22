@@ -4326,8 +4326,8 @@ do
     AntiHitDep:AddSlider("RageBot_AntiHitStayDuration", {
         Text = "Stay Duration (sec)",
         Default = 0.15,
-        Min = 0.05,
-        Max = 2.0,
+        Min = 0.01,
+        Max = 1.0,
         Rounding = 2,
         Callback = function(value)
             getgenv().Config.AntiHitStayDuration = value
