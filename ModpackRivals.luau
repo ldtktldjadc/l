@@ -4262,39 +4262,6 @@ do
     })
     MeleeTPDep:SetupDependencies({ { WeaponSlotDropdown, "Melee" } })
 
-    local KnifeTPDep = RageBotSection:AddDependencyBox()
-    KnifeTPDep:AddSlider("RageBot_Knife_TP_X", {
-        Text = "Knife TP Offset X",
-        Default = 0,
-        Min = -10,
-        Max = 10,
-        Rounding = 1,
-        Callback = function(value)
-            getgenv().Config.TPOffsets.Knife.X = value
-        end
-    })
-    KnifeTPDep:AddSlider("RageBot_Knife_TP_Y", {
-        Text = "Knife TP Offset Y",
-        Default = -5,
-        Min = -10,
-        Max = 10,
-        Rounding = 1,
-        Callback = function(value)
-            getgenv().Config.TPOffsets.Knife.Y = value
-        end
-    })
-    KnifeTPDep:AddSlider("RageBot_Knife_TP_Z", {
-        Text = "Knife TP Offset Z",
-        Default = 1,
-        Min = -10,
-        Max = 10,
-        Rounding = 1,
-        Callback = function(value)
-            getgenv().Config.TPOffsets.Knife.Z = value
-        end
-    })
-    KnifeTPDep:SetupDependencies({ { WeaponSlotDropdown, "Knife" } })
-
     local AntiHitToggle = RageBotSection:AddToggle("RageBot_AntiHit", {
         Text = "AntiHit",
         Default = false,
@@ -4705,10 +4672,17 @@ do
                 currentTargetYaw = y
 
                 local curSlot = getgenv().Config.WeaponSlot or "Primary"
-                local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
-                local ox = (offsets and offsets.X) or 0
-                local oy = (offsets and offsets.Y) or (curSlot == "Knife" and -5 or 5)
-                local oz = (offsets and offsets.Z) or (curSlot == "Knife" and 1 or 0)
+                local ox, oy, oz
+                if curSlot == "Knife" then
+                    ox = math.random(-50, 50) / 10
+                    oy = math.random(-50, 50) / 10
+                    oz = math.random(-50, 50) / 10
+                else
+                    local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
+                    ox = (offsets and offsets.X) or 0
+                    oy = (offsets and offsets.Y) or 5
+                    oz = (offsets and offsets.Z) or 0
+                end
 
                 local desyncPos = (baseCFrame * CFrame.new(ox, oy, oz)).Position
                 -- Knife: 速度予測で高速移動中の相手にも追従
