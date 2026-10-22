@@ -3865,6 +3865,7 @@ do
         FireRate = 0.0005,
         AntiHit = false,
         AntiHitDuration = 0.5,
+        AntiHitStayDuration = 0.15,
         TPOffsets = {
             Primary   = { X = 0, Y = 5, Z = 0 },
             Secondary = { X = 0, Y = 5, Z = 0 },
@@ -3878,6 +3879,7 @@ do
     getgenv().Config.TargetSort = getgenv().Config.TargetSort or "Distance (Closest)"
     if getgenv().Config.TeamCheck == nil then getgenv().Config.TeamCheck = true end
     getgenv().Config.AntiHit = false
+    if getgenv().Config.AntiHitStayDuration == nil then getgenv().Config.AntiHitStayDuration = 0.15 end
     getgenv().Config.TPOffsets = getgenv().Config.TPOffsets or {
         Primary   = { X = 0, Y = 5, Z = 0 },
         Secondary = { X = 0, Y = 5, Z = 0 },
@@ -4311,7 +4313,7 @@ do
 
     local AntiHitDep = RageBotSection:AddDependencyBox()
     AntiHitDep:AddSlider("RageBot_AntiHitDuration", {
-        Text = "AntiHit Duration (sec)",
+        Text = "Hide Duration (sec)",
         Default = 0.5,
         Min = 0.25,
         Max = 2.0,
@@ -4319,6 +4321,17 @@ do
         Callback = function(value)
             getgenv().Config.AntiHitDuration = value
             getgenv().RageBotConfig.AntiHitDuration = value
+        end
+    })
+    AntiHitDep:AddSlider("RageBot_AntiHitStayDuration", {
+        Text = "Stay Duration (sec)",
+        Default = 0.15,
+        Min = 0.05,
+        Max = 2.0,
+        Rounding = 2,
+        Callback = function(value)
+            getgenv().Config.AntiHitStayDuration = value
+            getgenv().RageBotConfig.AntiHitStayDuration = value
         end
     })
     AntiHitDep:SetupDependencies({ { AntiHitToggle, true } })
@@ -4821,7 +4834,8 @@ do
             -- AntiHit: FireServer の前にタイマーをセット（撃つ前にTP予約）
             if getgenv().Config and getgenv().Config.AntiHit then
                 local now = tick()
-                antiHitStart = now + 0.15
+                local stayDur = getgenv().Config.AntiHitStayDuration or 0.15
+                antiHitStart = now + stayDur
                 antiHitUntil = antiHitStart + (getgenv().Config.AntiHitDuration or 0.5)
             end
 
@@ -7130,8 +7144,6 @@ task.spawn(function()
     task.wait(1)
     refreshWeapons()
     updateWeaponLabels()
-    -- 豁ｦ蝎ｨ繝ｪ繧ｹ繝医′謠・▲縺溷ｾ後↓SaveManager縺ｮAutoload繧貞・驕ｩ逕ｨ縺励※蛟､繧貞ｾｩ蜈・
-    pcall(function() SaveManager:LoadAutoloadConfig() end)
     enforceAutoLoadout()
 end)
 
