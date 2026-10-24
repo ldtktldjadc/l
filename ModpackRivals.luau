@@ -2147,8 +2147,9 @@ ESPDep:AddDropdown("ESP_Box_Type", {
 ESPDep:AddToggle("ESP_BoxFill", { Text = "Box fill", Default = false, Callback = function(v) espSettings.BoxFill = v end })
     :AddColorPicker("ESP_BoxFill_Color", { Default = espSettings.BoxFillColor, Callback = function(v) espSettings.BoxFillColor = v end })
 
-ESPDep:AddToggle("ESP_BoxFillImage", { Text = "Use Image Fill", Default = false, Callback = function(v) espSettings.BoxFillImage = v end })
-ESPDep:AddInput("ESP_BoxFillImageID", {
+local BoxFillImageToggle = ESPDep:AddToggle("ESP_BoxFillImage", { Text = "Use Image Fill", Default = false, Callback = function(v) espSettings.BoxFillImage = v end })
+local BoxFillImageDep = ESPDep:AddDependencyBox()
+BoxFillImageDep:AddInput("ESP_BoxFillImageID", {
     Default = "",
     Text = "Image ID",
     Tooltip = "Put the Roblox Decal/Image ID here (Numbers only)",
@@ -2163,6 +2164,7 @@ ESPDep:AddInput("ESP_BoxFillImageID", {
         end
     end
 })
+BoxFillImageDep:SetupDependencies({ { BoxFillImageToggle, true } })
 
 ESPDep:AddToggle("ESP_Distance", { Text = "DistanceEsp", Default = false, Callback = function(v) espSettings.Distance = v end })
     :AddColorPicker("ESP_Distance_Color", { Default = espSettings.DistanceColor, Callback = function(v) espSettings.DistanceColor = v end })
@@ -2192,8 +2194,10 @@ ESPDep:AddToggle("ESP_HP", { Text = "HP Bar", Default = false, Callback = functi
     :AddColorPicker("ESP_HP_Color", { Default = espSettings.HPColor, Callback = function(v) espSettings.HPColor = v end })
 
 ESPDep:AddToggle("ESP_TeamCheck", { Text = "Team Check", Default = false, Callback = function(v) getgenv().ESPSettings_TeamCheck = v end })
-ESPDep:AddToggle("ESP_RanDomEsp", { Text = "RanDomEsp", Default = false, Callback = function(v) espSettings.RanDomEsp = v end })
-ESPDep:AddSlider("ESP_RanDomEspDist", { Text = "RanDomEsp Distance", Default = 300, Min = 50, Max = 1500, Rounding = 0, Callback = function(v) espSettings.RanDomEspDist = v end })
+local RanDomEspToggle = ESPDep:AddToggle("ESP_RanDomEsp", { Text = "RanDomEsp", Default = false, Callback = function(v) espSettings.RanDomEsp = v end })
+local RanDomEspDep = ESPDep:AddDependencyBox()
+RanDomEspDep:AddSlider("ESP_RanDomEspDist", { Text = "RanDomEsp Distance", Default = 300, Min = 50, Max = 1500, Rounding = 0, Callback = function(v) espSettings.RanDomEspDist = v end })
+RanDomEspDep:SetupDependencies({ { RanDomEspToggle, true } })
 
 -- Wall ESP (ESP section内)
 local WallESPToggle = ESPDep:AddToggle("WallESP_Enabled", {
@@ -2218,7 +2222,8 @@ local WallESPToggle = ESPDep:AddToggle("WallESP_Enabled", {
         Callback = function(v) espSettings.WallESPNoWallColor = v end
     })
 
-ESPDep:AddSlider("WallESP_Transparency", {
+local WallESPDep = ESPDep:AddDependencyBox()
+WallESPDep:AddSlider("WallESP_Transparency", {
     Text = "Wall ESP Transparency",
     Default = 50,
     Min = 0,
@@ -2228,6 +2233,7 @@ ESPDep:AddSlider("WallESP_Transparency", {
         espSettings.WallESPTransparency = v / 100
     end
 })
+WallESPDep:SetupDependencies({ { WallESPToggle, true } })
 
 ESPDep:SetupDependencies({ { ESPToggle, true } })
 
@@ -3082,7 +3088,9 @@ do
         Text = "Crosshair",
     })
 
-    CrosshairSection:AddInput("Crosshair_Text", {
+    local CrosshairDep = CrosshairSection:AddDependencyBox()
+
+    CrosshairDep:AddInput("Crosshair_Text", {
         Default = "kei.win",
         Numeric = false,
         Finished = true,
@@ -3091,7 +3099,7 @@ do
         Callback = function(v) chTextStr = v end
     })
 
-    CrosshairSection:AddToggle("Crosshair_Rainbow", {
+    CrosshairDep:AddToggle("Crosshair_Rainbow", {
         Text = "Rainbow Animation",
         Default = true,
         Callback = function(v) chRainbow = v end
@@ -3100,17 +3108,19 @@ do
         Callback = function(v) chLineColor = v end
     })
 
-    CrosshairSection:AddToggle("Crosshair_Stretch", {
+    CrosshairDep:AddToggle("Crosshair_Stretch", {
         Text = "Stretch Animation",
         Default = true,
         Callback = function(v) chStretch = v end
     })
 
-    CrosshairSection:AddToggle("Crosshair_Spin", {
+    CrosshairDep:AddToggle("Crosshair_Spin", {
         Text = "Spin Animation",
         Default = true,
         Callback = function(v) chSpin = v end
     })
+
+    CrosshairDep:SetupDependencies({ { CrosshairToggle, true } })
 end
 
 -- ===== BULLET TRACER (VISUALS) =====
@@ -3132,7 +3142,9 @@ do
         Text = "Bullet Tracer",
     })
 
-    BulletTracerSection:AddSlider("BulletTracerWidth", {
+    local BulletTracerDep = BulletTracerSection:AddDependencyBox()
+
+    BulletTracerDep:AddSlider("BulletTracerWidth", {
         Text = "Thickness",
         Default = 2,
         Min = 0.1,
@@ -3142,7 +3154,7 @@ do
         Callback = function(v) getgenv()._bt.width = v end
     })
 
-    BulletTracerSection:AddSlider("BulletTracerFade", {
+    BulletTracerDep:AddSlider("BulletTracerFade", {
         Text = "Fade Time",
         Default = 4,
         Min = 0.1,
@@ -3151,6 +3163,8 @@ do
         Compact = false,
         Callback = function(v) getgenv()._bt.fadeTime = v end
     })
+
+    BulletTracerDep:SetupDependencies({ { BulletTracerToggle, true } })
 
     task.spawn(function()
         local function findModule(parent, name)
@@ -3434,59 +3448,65 @@ WorldColorToggle:AddKeyPicker("WorldColorKey", {
     Text = "Custom Lighting",
 })
 
-EnvSection:AddSlider("Env_ClockTime", {
-    Text = "Time of Day", Default = 2, Min = 0, Max = 24, Rounding = 1,
-    Callback = function(v) envSettings.ClockTime = v; updateWorldColor() end
-})
+    local WorldColorDep = EnvSection:AddDependencyBox()
+    WorldColorDep:AddSlider("Env_ClockTime", {
+        Text = "Time of Day", Default = 2, Min = 0, Max = 24, Rounding = 1,
+        Callback = function(v) envSettings.ClockTime = v; updateWorldColor() end
+    })
+    WorldColorDep:SetupDependencies({ { WorldColorToggle, true } })
 
-local CCToggle = EnvSection:AddToggle("Env_CC_Enabled", {
-    Text = "Enable Color Correction", Default = false,
-    Callback = function(v) envSettings.CCEnabled = v; updateCC() end
-})
-CCToggle:AddColorPicker("Env_CC_Tint", {
-    Default = envSettings.CCTint, Title = "Tint Color",
-    Callback = function(v) envSettings.CCTint = v; updateCC() end
-})
-CCToggle:AddKeyPicker("CCKey", {
-    Default = "None",
-    SyncToggleState = true,
-    Mode = "Toggle",
-    Text = "Color Correction",
-})
+    local CCToggle = EnvSection:AddToggle("Env_CC_Enabled", {
+        Text = "Enable Color Correction", Default = false,
+        Callback = function(v) envSettings.CCEnabled = v; updateCC() end
+    })
+    CCToggle:AddColorPicker("Env_CC_Tint", {
+        Default = envSettings.CCTint, Title = "Tint Color",
+        Callback = function(v) envSettings.CCTint = v; updateCC() end
+    })
+    CCToggle:AddKeyPicker("CCKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Color Correction",
+    })
 
-EnvSection:AddSlider("Env_CC_Saturation", {
-    Text = "Saturation", Default = 0.6, Min = -1, Max = 1, Rounding = 1,
-    Callback = function(v) envSettings.CCSaturation = v; updateCC() end
-})
+    local CCDep = EnvSection:AddDependencyBox()
+    CCDep:AddSlider("Env_CC_Saturation", {
+        Text = "Saturation", Default = 0.6, Min = -1, Max = 1, Rounding = 1,
+        Callback = function(v) envSettings.CCSaturation = v; updateCC() end
+    })
 
-EnvSection:AddSlider("Env_CC_Contrast", {
-    Text = "Contrast", Default = 0.2, Min = -1, Max = 1, Rounding = 1,
-    Callback = function(v) envSettings.CCContrast = v; updateCC() end
-})
+    CCDep:AddSlider("Env_CC_Contrast", {
+        Text = "Contrast", Default = 0.2, Min = -1, Max = 1, Rounding = 1,
+        Callback = function(v) envSettings.CCContrast = v; updateCC() end
+    })
+    CCDep:SetupDependencies({ { CCToggle, true } })
 
-local SnowToggle = EnvSection:AddToggle("Env_Snow_Enabled", {
-    Text = "Enable Snow", Default = false,
-    Callback = function(v) envSettings.SnowEnabled = v; updateSnow() end
-})
-SnowToggle:AddColorPicker("Env_Snow_Color", {
-    Default = envSettings.SnowColor, Title = "Snow Color",
-    Callback = function(v) envSettings.SnowColor = v; updateSnow() end
-})
-SnowToggle:AddKeyPicker("SnowKey", {
-    Default = "None",
-    SyncToggleState = true,
-    Mode = "Toggle",
-    Text = "Snow Effect",
-})
+    local SnowToggle = EnvSection:AddToggle("Env_Snow_Enabled", {
+        Text = "Enable Snow", Default = false,
+        Callback = function(v) envSettings.SnowEnabled = v; updateSnow() end
+    })
+    SnowToggle:AddColorPicker("Env_Snow_Color", {
+        Default = envSettings.SnowColor, Title = "Snow Color",
+        Callback = function(v) envSettings.SnowColor = v; updateSnow() end
+    })
+    SnowToggle:AddKeyPicker("SnowKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Snow Effect",
+    })
 
-EnvSection:AddSlider("Env_Snow_Rate", {
-    Text = "Snow Density", Default = 10000, Min = 100, Max = 50000, Rounding = 0,
-    Callback = function(v) envSettings.SnowRate = v; updateSnow() end
-})
+    local SnowDep = EnvSection:AddDependencyBox()
+    SnowDep:AddSlider("Env_Snow_Rate", {
+        Text = "Snow Density", Default = 10000, Min = 100, Max = 50000, Rounding = 0,
+        Callback = function(v) envSettings.SnowRate = v; updateSnow() end
+    })
 
-EnvSection:AddSlider("Env_Snow_Speed", {
-    Text = "Snow Speed", Default = 30, Min = 1, Max = 100, Rounding = 0
-})
+    SnowDep:AddSlider("Env_Snow_Speed", {
+        Text = "Snow Speed", Default = 30, Min = 1, Max = 100, Rounding = 0
+    })
+    SnowDep:SetupDependencies({ { SnowToggle, true } })
 end
 
 -- ===== WORLD: LIGHTING CONTROL / POST FX / SKY CHANGER =====
@@ -3743,8 +3763,10 @@ do
     })
     LightToggle:AddKeyPicker("WorldLightKey", { Default = "None", SyncToggleState = true, Mode = "Toggle", Text = "Lighting Override" })
 
+    local LightDep = LightSection:AddDependencyBox()
+
     local function lslider(prop, text, min, max, rounding)
-        LightSection:AddSlider("WorldLight_" .. prop, {
+        LightDep:AddSlider("WorldLight_" .. prop, {
             Text = text, Default = math.clamp(Lighting[prop], min, max), Min = min, Max = max, Rounding = rounding,
             Callback = function(v) lv[prop] = v end
         })
@@ -3756,12 +3778,12 @@ do
     lslider("ShadowSoftness", "Shadow Softness", 0, 1, 2)
     lslider("FogStart", "Fog Start", 0, 5000, 0)
     lslider("FogEnd", "Fog End", 0, 100000, 0)
-    LightSection:AddToggle("WorldLight_GlobalShadows", {
+    LightDep:AddToggle("WorldLight_GlobalShadows", {
         Text = "Global Shadows", Default = Lighting.GlobalShadows,
         Callback = function(v) lv.GlobalShadows = v end
     })
     local function lcolor(prop, text)
-        LightSection:AddLabel(text):AddColorPicker("WorldLightColor_" .. prop, {
+        LightDep:AddLabel(text):AddColorPicker("WorldLightColor_" .. prop, {
             Default = Lighting[prop], Title = text,
             Callback = function(v) lv[prop] = v end
         })
@@ -3771,10 +3793,12 @@ do
     lcolor("ColorShift_Top", "Color Shift Top")
     lcolor("ColorShift_Bottom", "Color Shift Bottom")
     lcolor("FogColor", "Fog Color")
-    LightSection:AddSlider("WorldLight_ClockTime", {
+    LightDep:AddSlider("WorldLight_ClockTime", {
         Text = "Clock Time", Default = math.clamp(Lighting.ClockTime, 0, 24), Min = 0, Max = 24, Rounding = 1,
         Callback = function(v) lv.ClockTime = v end
     })
+
+    LightDep:SetupDependencies({ { LightToggle, true } })
 
     -- ===== Post Processing =====
     local function getFx(class, name)
@@ -3788,26 +3812,43 @@ do
         return fx
     end
     local function fxToggle(id, text, class, name)
-        FxSection:AddToggle(id, { Text = text, Default = false,
+        return FxSection:AddToggle(id, { Text = text, Default = false,
             Callback = function(v) getFx(class, name).Enabled = v end })
     end
-    local function fxSlider(id, text, class, name, prop, def, min, max, rounding)
-        FxSection:AddSlider(id, { Text = text, Default = def, Min = min, Max = max, Rounding = rounding,
-            Callback = function(v) getFx(class, name)[prop] = v end })
-    end
-    fxToggle("FX_Bloom", "Bloom", "BloomEffect", "KETYBloom")
-    fxSlider("FX_BloomIntensity", "Bloom Intensity", "BloomEffect", "KETYBloom", "Intensity", 1, 0, 5, 2)
-    fxSlider("FX_BloomSize", "Bloom Size", "BloomEffect", "KETYBloom", "Size", 24, 0, 56, 0)
-    fxSlider("FX_BloomThreshold", "Bloom Threshold", "BloomEffect", "KETYBloom", "Threshold", 0.8, 0, 3, 2)
-    fxToggle("FX_Blur", "Blur", "BlurEffect", "KETYBlur")
-    fxSlider("FX_BlurSize", "Blur Size", "BlurEffect", "KETYBlur", "Size", 8, 0, 56, 0)
-    fxToggle("FX_SunRays", "Sun Rays", "SunRaysEffect", "KETYSunRays")
-    fxSlider("FX_SunRaysIntensity", "Sun Rays Intensity", "SunRaysEffect", "KETYSunRays", "Intensity", 0.25, 0, 1, 2)
-    fxSlider("FX_SunRaysSpread", "Sun Rays Spread", "SunRaysEffect", "KETYSunRays", "Spread", 1, 0, 1, 2)
-    fxToggle("FX_DOF", "Depth Of Field", "DepthOfFieldEffect", "KETYDOF")
-    fxSlider("FX_DOFFar", "DOF Far Intensity", "DepthOfFieldEffect", "KETYDOF", "FarIntensity", 0.75, 0, 1, 2)
-    fxSlider("FX_DOFFocus", "DOF Focus Distance", "DepthOfFieldEffect", "KETYDOF", "FocusDistance", 50, 0, 500, 0)
-    fxSlider("FX_DOFRadius", "DOF In Focus Radius", "DepthOfFieldEffect", "KETYDOF", "InFocusRadius", 30, 0, 200, 0)
+
+    local bloomToggle = fxToggle("FX_Bloom", "Bloom", "BloomEffect", "KETYBloom")
+    local bloomDep = FxSection:AddDependencyBox()
+    bloomDep:AddSlider("FX_BloomIntensity", { Text = "Bloom Intensity", Default = 1, Min = 0, Max = 5, Rounding = 2,
+        Callback = function(v) getFx("BloomEffect", "KETYBloom").Intensity = v end })
+    bloomDep:AddSlider("FX_BloomSize", { Text = "Bloom Size", Default = 24, Min = 0, Max = 56, Rounding = 0,
+        Callback = function(v) getFx("BloomEffect", "KETYBloom").Size = v end })
+    bloomDep:AddSlider("FX_BloomThreshold", { Text = "Bloom Threshold", Default = 0.8, Min = 0, Max = 3, Rounding = 2,
+        Callback = function(v) getFx("BloomEffect", "KETYBloom").Threshold = v end })
+    bloomDep:SetupDependencies({ { bloomToggle, true } })
+
+    local blurToggle = fxToggle("FX_Blur", "Blur", "BlurEffect", "KETYBlur")
+    local blurDep = FxSection:AddDependencyBox()
+    blurDep:AddSlider("FX_BlurSize", { Text = "Blur Size", Default = 8, Min = 0, Max = 56, Rounding = 0,
+        Callback = function(v) getFx("BlurEffect", "KETYBlur").Size = v end })
+    blurDep:SetupDependencies({ { blurToggle, true } })
+
+    local sunRaysToggle = fxToggle("FX_SunRays", "Sun Rays", "SunRaysEffect", "KETYSunRays")
+    local sunRaysDep = FxSection:AddDependencyBox()
+    sunRaysDep:AddSlider("FX_SunRaysIntensity", { Text = "Sun Rays Intensity", Default = 0.25, Min = 0, Max = 1, Rounding = 2,
+        Callback = function(v) getFx("SunRaysEffect", "KETYSunRays").Intensity = v end })
+    sunRaysDep:AddSlider("FX_SunRaysSpread", { Text = "Sun Rays Spread", Default = 1, Min = 0, Max = 1, Rounding = 2,
+        Callback = function(v) getFx("SunRaysEffect", "KETYSunRays").Spread = v end })
+    sunRaysDep:SetupDependencies({ { sunRaysToggle, true } })
+
+    local dofToggle = fxToggle("FX_DOF", "Depth Of Field", "DepthOfFieldEffect", "KETYDOF")
+    local dofDep = FxSection:AddDependencyBox()
+    dofDep:AddSlider("FX_DOFFar", { Text = "DOF Far Intensity", Default = 0.75, Min = 0, Max = 1, Rounding = 2,
+        Callback = function(v) getFx("DepthOfFieldEffect", "KETYDOF").FarIntensity = v end })
+    dofDep:AddSlider("FX_DOFFocus", { Text = "DOF Focus Distance", Default = 50, Min = 0, Max = 500, Rounding = 0,
+        Callback = function(v) getFx("DepthOfFieldEffect", "KETYDOF").FocusDistance = v end })
+    dofDep:AddSlider("FX_DOFRadius", { Text = "DOF In Focus Radius", Default = 30, Min = 0, Max = 200, Rounding = 0,
+        Callback = function(v) getFx("DepthOfFieldEffect", "KETYDOF").InFocusRadius = v end })
+    dofDep:SetupDependencies({ { dofToggle, true } })
 
     -- ===== Sky Changer UI =====
     local SkyToggle = SkySection:AddToggle("SkyChanger_Enabled", {
@@ -3816,13 +3857,15 @@ do
     })
     SkyToggle:AddKeyPicker("SkyChangerKey", { Default = "None", SyncToggleState = true, Mode = "Toggle", Text = "Sky Changer" })
 
-    local SkyDrop = SkySection:AddDropdown("SkyChanger_Preset", {
+    local SkyDep = SkySection:AddDependencyBox()
+    local SkyDrop = SkyDep:AddDropdown("SkyChanger_Preset", {
         Values = PRESET_LIST, Default = 1, Multi = false, Text = "Sky Preset",
         Callback = function(v)
             skyChoice = v
             if skyOn then step() end
         end
     })
+    SkyDep:SetupDependencies({ { SkyToggle, true } })
 
     local CustomDep = SkySection:AddDependencyBox()
     CustomDep:AddLabel("Atmosphere Color"):AddColorPicker("SkyCustom_Atmo", { Default = custom.Atmo, Title = "Atmosphere",
@@ -3847,7 +3890,7 @@ do
         CustomDep:AddInput("SkyCustom_Face" .. f, { Default = "", Text = "Face " .. f .. " ID", Placeholder = "optional",
             Callback = function(v) custom.Faces[f] = v; if skyOn and skyChoice == "Custom" then step() end end })
     end
-    CustomDep:SetupDependencies({ { SkyDrop, "Custom" } })
+    CustomDep:SetupDependencies({ { SkyToggle, true }, { SkyDrop, "Custom" } })
 end
 
 
@@ -3894,6 +3937,10 @@ do
     getgenv().Config.TPOffsets.Secondary = getgenv().Config.TPOffsets.Secondary or { X = 0, Y = 5, Z = 0 }
     getgenv().Config.TPOffsets.Melee = getgenv().Config.TPOffsets.Melee or { X = 0, Y = 5, Z = 0 }
     getgenv().Config.TPOffsets.Knife = getgenv().Config.TPOffsets.Knife or { X = 0, Y = -5, Z = 1 }
+    getgenv().Config.VoidSpamType = getgenv().Config.VoidSpamType or "Normal"
+    if getgenv().Config.KR_Offset == nil then getgenv().Config.KR_Offset = -0.002 end
+    if getgenv().Config.KR_VoidTime == nil then getgenv().Config.KR_VoidTime = 0.3 end
+    if getgenv().Config.KR_GroundTime == nil then getgenv().Config.KR_GroundTime = 0.3 end
     getgenv().RageBotConfig = getgenv().Config
     getgenv().RageBotConfig.AntiHit = false
 
@@ -4091,6 +4138,44 @@ do
         end
     })
     RageEnabledDep:SetupDependencies({ { RageBotToggle, true } })
+
+    local VoidSpamTypeDropdown = RageEnabledDep:AddDropdown("RageBot_VoidSpamType", {
+        Values = {"Normal", "KillRagers"},
+        Default = 1,
+        Multi = false,
+        Text = "VoidSpamType",
+        Callback = function(value)
+            getgenv().Config.VoidSpamType = value
+            if getgenv().RageBotConfig then getgenv().RageBotConfig.VoidSpamType = value end
+        end
+    })
+
+    local KRDep = RageBotSection:AddDependencyBox()
+    KRDep:AddSlider("RageBot_KR_Offset", {
+        Text = "Offset",
+        Default = -0.002,
+        Min = -5,
+        Max = 5,
+        Rounding = 4,
+        Callback = function(value) getgenv().Config.KR_Offset = value end
+    })
+    KRDep:AddSlider("RageBot_KR_VoidTime", {
+        Text = "VoidTime",
+        Default = 0.3,
+        Min = 0.05,
+        Max = 5,
+        Rounding = 2,
+        Callback = function(value) getgenv().Config.KR_VoidTime = value end
+    })
+    KRDep:AddSlider("RageBot_KR_GroundTime", {
+        Text = "GroundTime",
+        Default = 0.3,
+        Min = 0.05,
+        Max = 5,
+        Rounding = 2,
+        Callback = function(value) getgenv().Config.KR_GroundTime = value end
+    })
+    KRDep:SetupDependencies({ { RageBotToggle, true }, { VoidSpamTypeDropdown, "KillRagers" } })
 
     local RageBotAutoAttackToggle = RageEnabledDep:AddToggle("RageBot_AutoAttack", {
         Text = "Auto Attack",
@@ -4672,6 +4757,97 @@ do
             return chosen.player, chosen.root, chosen.targetPart
         end
 
+        -- ========== KillRagers VoidSpam ==========
+        local kr = { active = false, inVoid = true, phaseStart = 0, lastWarp = 0, frozen = nil, angle = 0, cx = 0, cz = 0, cache = nil }
+        local krRng = Random.new()
+        local krRadius, krSpeed = 80, 20
+
+        local function krComputeVoidPos()
+            local map = ws:FindFirstChild("Map")
+            local folder = map and map:FindFirstChild("Barriers")
+            local barriers = {}
+            if folder then
+                for _, part in ipairs(folder:GetChildren()) do
+                    if part:IsA("BasePart") then table.insert(barriers, part) end
+                end
+            end
+            if #barriers == 0 then return nil end
+            local params = RaycastParams.new()
+            params.FilterType = Enum.RaycastFilterType.Include
+            params.FilterDescendantsInstances = barriers
+            local spawns = ws:FindFirstChild("Spawns")
+            if not spawns then return nil end
+            for _, obj in ipairs(spawns:GetDescendants()) do
+                local origin
+                if obj:IsA("Model") then
+                    local pv = obj:FindFirstChild("Position")
+                    if pv and pv:IsA("Vector3Value") then origin = pv.Value end
+                elseif obj:IsA("BasePart") then
+                    origin = obj.Position
+                end
+                if origin then
+                    local ok, res = pcall(ws.Raycast, ws, origin + Vector3.new(0, 2, 0), Vector3.new(0, -500, 0), params)
+                    if ok and res and res.Position.Y < 0 then return res.Position end
+                end
+            end
+            return nil
+        end
+
+        local function krTranslocateCF(root)
+            if not kr.cache then kr.cache = krComputeVoidPos() end
+            local off = getgenv().Config.KR_Offset or -0.002
+            if kr.cache then
+                return CFrame.new(kr.cache.X, kr.cache.Y + off, kr.cache.Z)
+            end
+            for _, part in ipairs(game:GetService("CollectionService"):GetTagged("OutOfBoundsPart")) do
+                if part:GetAttribute("KillDelay") == 0 then
+                    return part.CFrame * CFrame.new(0, -part.Size.Y / 2 + off, 0)
+                end
+            end
+            return CFrame.new(root.Position.X, -100 + off, root.Position.Z)
+        end
+
+        local function krStep(root)
+            local cfg = getgenv().Config
+            local now = tick()
+            if not kr.active then
+                kr.active = true
+                kr.inVoid = true
+                kr.phaseStart = now
+                kr.lastWarp = 0
+                kr.frozen = nil
+            end
+            local elapsed = now - kr.phaseStart
+            local cf
+            if kr.inVoid then
+                if kr.lastWarp == 0 then
+                    cf = krTranslocateCF(root)
+                    kr.frozen = cf
+                    kr.cx, kr.cz, kr.angle = cf.Position.X, cf.Position.Z, 0
+                    kr.lastWarp = 1
+                elseif kr.frozen then
+                    kr.angle = kr.angle + krSpeed / 60
+                    cf = CFrame.new(kr.cx + math.cos(kr.angle) * krRadius, kr.frozen.Position.Y, kr.cz + math.sin(kr.angle) * krRadius)
+                end
+                if elapsed >= (cfg.KR_VoidTime or 0.3) then
+                    kr.inVoid = false
+                    kr.phaseStart = now
+                    kr.lastWarp = 0
+                    kr.frozen = nil
+                end
+            else
+                local ang = krRng:NextNumber(0, math.pi * 2)
+                local p = root.Position
+                cf = CFrame.new(p.X + math.cos(ang) * 900000000, p.Y, p.Z + math.sin(ang) * 900000000)
+                if elapsed >= (cfg.KR_GroundTime or 0.3) then
+                    kr.inVoid = true
+                    kr.phaseStart = now
+                    kr.lastWarp = 0
+                end
+            end
+            return cf
+        end
+
         runS.Heartbeat:Connect(function()
             if not getgenv().Config.Enabled then
                 if kiciaActive then
@@ -4818,6 +4994,8 @@ do
                 kiciaReset(myRoot)
                 if tc == false then
                     desyncCF = myRoot.CFrame
+                elseif getgenv().Config.VoidSpamType == "KillRagers" then
+                    desyncCF = krStep(myRoot) or myRoot.CFrame
                 else
                     local randomDir = Vector3.new(
                         math.random(-100, 100),
@@ -4829,6 +5007,7 @@ do
                     desyncCF = CFrame.new(camPos + randomDir * 7000000000000)
                 end
             end
+            if canTarget or getgenv().Config.VoidSpamType ~= "KillRagers" then kr.active = false end
 
             local oldCF     = myRoot.CFrame
             local oldVel    = myRoot.Velocity
@@ -5382,7 +5561,7 @@ do
         Rounding = 0,
         Callback = function(value) customPitch = value end
     })
-    PitchCustomDep:SetupDependencies({ { PitchDropdown, "Custom Pitch" } })
+    PitchCustomDep:SetupDependencies({ { AntiAimToggle, true }, { PitchDropdown, "Custom Pitch" } })
 
     local AntiAimDep2 = AntiAimSection:AddDependencyBox()
 
@@ -5403,7 +5582,7 @@ do
         Rounding = 0,
         Callback = function(value) customYaw = value end
     })
-    YawCustomDep:SetupDependencies({ { YawDropdown, "Custom Yaw" } })
+    YawCustomDep:SetupDependencies({ { AntiAimToggle, true }, { YawDropdown, "Custom Yaw" } })
 
     AntiAimDep:SetupDependencies({ { AntiAimToggle, true } })
     AntiAimDep2:SetupDependencies({ { AntiAimToggle, true } })
@@ -5502,7 +5681,9 @@ do
         Text = "Auto Queue",
     })
     
-    local AutoQueueDropObj = AutoQueueBox:AddDropdown("AutoQueueDrop", {
+    local AutoQueueDep = AutoQueueBox:AddDependencyBox()
+
+    local AutoQueueDropObj = AutoQueueDep:AddDropdown("AutoQueueDrop", {
         Values = DEFAULT_DISPLAYS,
         Default = 1,
         Multi = false,
@@ -5511,6 +5692,8 @@ do
             autoQueueName = autoQueueDisplayToInternal[Value] or Value
         end,
     })
+
+    AutoQueueDep:SetupDependencies({ { AutoQueueToggle, true } })
     
     task.spawn(function()
         local DuelLibrary
@@ -6237,14 +6420,18 @@ DmgNotifToggle:AddKeyPicker("DmgNotifKey", {
     Text = "Damage Notification",
 })
 
-DmgNotifSection:AddSlider("DmgNotif_Min", {
-    Text = "Min Damage", Default = 1, Min = 1, Max = 100, Rounding = 0,
-    Callback = function(v) dmgNotifMin = v end,
-})
-DmgNotifSection:AddSlider("DmgNotif_Cooldown", {
-    Text = "Cooldown (s)", Default = 0.3, Min = 0, Max = 3, Rounding = 1,
-    Callback = function(v) dmgNotifCooldown = v end,
-})
+    local DmgNotifDep = DmgNotifSection:AddDependencyBox()
+
+    DmgNotifDep:AddSlider("DmgNotif_Min", {
+        Text = "Min Damage", Default = 1, Min = 1, Max = 100, Rounding = 0,
+        Callback = function(v) dmgNotifMin = v end,
+    })
+    DmgNotifDep:AddSlider("DmgNotif_Cooldown", {
+        Text = "Cooldown (s)", Default = 0.3, Min = 0, Max = 3, Rounding = 1,
+        Callback = function(v) dmgNotifCooldown = v end,
+    })
+
+    DmgNotifDep:SetupDependencies({ { DmgNotifToggle, true } })
 end -- do DamageNotification
 
 -- ========== ANTI BAN ==========
@@ -6333,13 +6520,15 @@ StaffDetectorToggle:AddKeyPicker("StaffDetectorKey", {
     Text = "Staff Detector",
 })
 
-AntiBanSection:AddDropdown("StaffDetectorAction", {
-    Values = {"Notify", "Kick"},
-    Default = 1,
-    Multi = false,
-    Text = "Action",
-    Callback = function(value) StaffDetectorAction = value end
-})
+    local StaffDetectorDep = AntiBanSection:AddDependencyBox()
+    StaffDetectorDep:AddDropdown("StaffDetectorAction", {
+        Values = {"Notify", "Kick"},
+        Default = 1,
+        Multi = false,
+        Text = "Action",
+        Callback = function(value) StaffDetectorAction = value end
+    })
+    StaffDetectorDep:SetupDependencies({ { StaffDetectorToggle, true } })
 
 local ArchNemesisToggle = AntiBanSection:AddToggle("ArchNemesisToggle", {
     Text = "ArchNemesis Checker",
@@ -6773,7 +6962,9 @@ FlyToggle:AddKeyPicker("FlyKey", {
     Text = "Fly",
 })
 
-MovementSection:AddSlider("FlySpeedSlider", {
+local FlyDep = MovementSection:AddDependencyBox()
+
+FlyDep:AddSlider("FlySpeedSlider", {
     Text = "Fly Speed",
     Default = 70,
     Min = 20,
@@ -6792,6 +6983,8 @@ MovementSection:AddSlider("FlySpeedSlider", {
         end
     end
 })
+
+FlyDep:SetupDependencies({ { FlyToggle, true } })
 
 local hideInFloorEnabled = false
 local hideDesyncEnabled = false
@@ -6840,11 +7033,11 @@ local function startHideInFloor()
         if not (c and c:FindFirstChild("HumanoidRootPart") and hideTargetPos) then return end
         local h = c.HumanoidRootPart
         local savedCF = h.CFrame
-        -- 螳滄圀縺ｮ菴咲ｽｮ繧貞ｺ翫・荳九↓蝗ｺ螳夲ｼ・縺ｨZ縺ｯ迴ｾ蝨ｨ縺ｮ菴咲ｽｮ繧剃ｽｿ逕ｨ縺励〆縺ｮ縺ｿ蝗ｺ螳夲ｼ・
+        -- 実際の位置を床の下に固定（XとZは現在の位置を使用し、Yのみ固定）
         local targetPos = Vector3.new(savedCF.X, hideTargetPos.Y, savedCF.Z)
         h.CFrame = CFrame.new(targetPos) * CFrame.Angles(savedCF:ToEulerAnglesXYZ())
         if hideDesyncEnabled then
-            -- WB縺ｨ蜷後§繝代ち繝ｼ繝ｳ: RenderStep縺ｧ蜈・・CFrame縺ｫ謌ｻ縺呻ｼ医し繝ｼ繝舌・蛛ｴ縺ｫ繧ｺ繝ｬ縺滉ｽ咲ｽｮ繧帝∽ｿ｡・・
+            -- WBと同じパターン: RenderStepで元のCFrameに戻す（サーバー側にズレた位置を送信）
             safeBindToRenderStep(RunService, "__hif_restore", 101, function()
                 h.CFrame = savedCF
                 safeUnbindFromRenderStep(RunService, "__hif_restore")
@@ -6896,7 +7089,9 @@ HideInFloorToggle:AddKeyPicker("HideInFloorKey", {
     Text = "Hide In Floor",
 })
 
-local HideDesyncToggle = MovementSection:AddToggle("HideDesyncToggle", {
+local HideInFloorDep = MovementSection:AddDependencyBox()
+
+local HideDesyncToggle = HideInFloorDep:AddToggle("HideDesyncToggle", {
     Text = "Desync In Floor",
     Default = false,
     Callback = function(value)
@@ -6910,6 +7105,8 @@ HideDesyncToggle:AddKeyPicker("HideDesyncKey", {
     Mode = "Toggle",
     Text = "Desync In Floor",
 })
+
+HideInFloorDep:SetupDependencies({ { HideInFloorToggle, true } })
 
     local infJumpEnabled = false
     local fighterControllerCache = nil
@@ -7011,7 +7208,9 @@ HideDesyncToggle:AddKeyPicker("HideDesyncKey", {
         Text = "Slide Boost",
     })
 
-    MovementSection:AddSlider("SlideBoostMultiplier", {
+    local SlideBoostDep = MovementSection:AddDependencyBox()
+
+    SlideBoostDep:AddSlider("SlideBoostMultiplier", {
         Text = "Slide Boost Multiplier",
         Default = 1.0,
         Min = 0,
@@ -7022,6 +7221,8 @@ HideDesyncToggle:AddKeyPicker("HideDesyncKey", {
             slideBoostMultiplier = v
         end
     })
+
+    SlideBoostDep:SetupDependencies({ { SlideBoostToggle, true } })
 
     if getgenv then
         getgenv().SlideBoost = {
@@ -7064,10 +7265,12 @@ AutoLoadToggle:AddKeyPicker("AutoLoadKey", {
 })
 
 local LoadSlotsBox = Tabs.Misc:AddRightGroupbox("Weapon Slots")
-local PriDropObj = LoadSlotsBox:AddDropdown("PriDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Primary", Callback = function(Value) ChosenWeapons[1] = Value end })
-local SecDropObj = LoadSlotsBox:AddDropdown("SecDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Secondary", Callback = function(Value) ChosenWeapons[2] = Value end })
-local MelDropObj = LoadSlotsBox:AddDropdown("MelDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Melee", Callback = function(Value) ChosenWeapons[3] = Value end })
-local UtiDropObj = LoadSlotsBox:AddDropdown("UtiDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Utility", Callback = function(Value) ChosenWeapons[4] = Value end })
+local LoadSlotsDep = LoadSlotsBox:AddDependencyBox()
+local PriDropObj = LoadSlotsDep:AddDropdown("PriDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Primary", Callback = function(Value) ChosenWeapons[1] = Value end })
+local SecDropObj = LoadSlotsDep:AddDropdown("SecDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Secondary", Callback = function(Value) ChosenWeapons[2] = Value end })
+local MelDropObj = LoadSlotsDep:AddDropdown("MelDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Melee", Callback = function(Value) ChosenWeapons[3] = Value end })
+local UtiDropObj = LoadSlotsDep:AddDropdown("UtiDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Utility", Callback = function(Value) ChosenWeapons[4] = Value end })
+LoadSlotsDep:SetupDependencies({ { AutoLoadToggle, true } })
 
 local AutoLoadout_ItemLibrary = nil
 local AutoLoadout_FighterController = nil
