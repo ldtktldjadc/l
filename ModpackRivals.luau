@@ -136,33 +136,100 @@ local function getPlayerTeamID(plr)
     return plr:GetAttribute("TeamID")
 end
 
+-- 共通TeamCheck: 自分と同じ試合の敵だけtrue（ロビー/別試合/TeamID不明はfalse）
+local _kSpectate = nil
+getgenv().KETY_IsEnemy = function(plr)
+    if not plr or plr == lp then return false end
+    if not _kSpectate then
+        pcall(function()
+            _kSpectate = require(lp.PlayerScripts.Controllers.SpectateController)
+        end)
+    end
+    if _kSpectate then
+        local duel = _kSpectate.CurrentDuelSubject
+        local localDueler = duel and duel:GetDueler(lp)
+        local localTeam = localDueler and localDueler:Get("TeamID") or nil
+        if localTeam and duel.Duelers then
+            for _, dueler in next, duel.Duelers do
+                if dueler.Player == plr then
+                    return dueler:Get("TeamID") ~= localTeam
+                end
+            end
+            return false
+        end
+    end
+    local myID, theirID = lp:GetAttribute("TeamID"), plr:GetAttribute("TeamID")
+    if myID == nil or theirID == nil then return false end
+    return myID ~= theirID
+end
+
+-- 共通WallCheck: カメラからtargetPosへの直線上に壁があればtrue
+local _kWallParams = RaycastParams.new()
+_kWallParams.FilterType = Enum.RaycastFilterType.Exclude
+_kWallParams.IgnoreWater = true
+getgenv().KETY_IsBehindWall = function(targetPos, targetChar, ignoreTransparent)
+    local cam = workspace.CurrentCamera
+    if not cam or not targetPos then return false end
+    local ign = { cam }
+    if lp.Character then table.insert(ign, lp.Character) end
+    if targetChar then table.insert(ign, targetChar) end
+    _kWallParams.FilterDescendantsInstances = ign
+    local origin = cam.CFrame.Position
+    local ok, result = pcall(workspace.Raycast, workspace, origin, targetPos - origin, _kWallParams)
+    if not (ok and result and result.Instance) then return false end
+    if ignoreTransparent and result.Instance.Transparency >= 0.8 then return false end
+    return true
+end
+
+-- 共通TargetPart: Hitbox4種 + R15全パーツ
+local _kParts = {
+    "HitboxHead", "HitboxHeadSmall", "HitboxBody", "HitboxBodySmall",
+    "Head", "UpperTorso", "LowerTorso", "HumanoidRootPart",
+    "LeftUpperArm", "LeftLowerArm", "LeftHand",
+    "RightUpperArm", "RightLowerArm", "RightHand",
+    "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
+    "RightUpperLeg", "RightLowerLeg", "RightFoot",
+}
+getgenv().KETY_TargetParts = _kParts
+getgenv().KETY_TargetPartValues = { "HitboxHead", "HitboxHeadSmall", "HitboxBody", "HitboxBodySmall", "Random", "Closest" }
+for i = 5, #_kParts do table.insert(getgenv().KETY_TargetPartValues, _kParts[i]) end
+
+-- mode: 部位名 / "Random" / "Closest"（Closestはcam,mousePos省略時は現在のカメラ/マウス）
+getgenv().KETY_ResolveTargetPart = function(char, mode, cam, mousePos)
+    if not char then return nil end
+    local fallback = char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+    if mode == "Random" then
+        local valid = {}
+        for _, n in ipairs(_kParts) do
+            local p = char:FindFirstChild(n)
+            if p and p:IsA("BasePart") then table.insert(valid, p) end
+        end
+        return valid[math.random(1, math.max(#valid, 1))] or fallback
+    elseif mode == "Closest" then
+        cam = cam or workspace.CurrentCamera
+        mousePos = mousePos or game:GetService("UserInputService"):GetMouseLocation()
+        local best, bestDist = nil, math.huge
+        for _, n in ipairs(_kParts) do
+            local p = char:FindFirstChild(n)
+            if p and p:IsA("BasePart") and cam then
+                local sp, on = cam:WorldToViewportPoint(p.Position)
+                if on and sp.Z > 0 then
+                    local d = (Vector2.new(sp.X, sp.Y) - mousePos).Magnitude
+                    if d < bestDist then bestDist, best = d, p end
+                end
+            end
+        end
+        return best or fallback
+    end
+    return char:FindFirstChild(mode) or fallback
+end
+
 local function checkTeam(plr, isESP)
     if not plr then return false end
     if plr == lp then return false end
     local tc = isESP and getgenv().ESPSettings_TeamCheck or (getgenv().SilentConfig and getgenv().SilentConfig.TeamCheck)
     if not tc then return true end
-    
-    if SpectateController then
-        local duel = SpectateController.CurrentDuelSubject
-        local localDueler = duel and duel:GetDueler(lp)
-        local localTeam = localDueler and localDueler:Get("TeamID") or nil
-        if localTeam and duel and duel.Duelers then
-            for _, dueler in next, duel.Duelers do
-                if dueler.Player == plr then
-                    local team = dueler:Get("TeamID")
-                    return team ~= localTeam
-                end
-            end
-        end
-    end
-    
-    local myID = getMyTeamID()
-    local theirID = getPlayerTeamID(plr)
-    
-    if theirID == nil then return false end
-    if myID and myID == theirID then return false end
-    
-    return true
+    return getgenv().KETY_IsEnemy(plr)
 end
 
 -- ========== SILENT AIM (Raycast Hook) ==========
@@ -179,14 +246,6 @@ do
     wallCheckRayParams.FilterType = Enum.RaycastFilterType.Exclude
     wallCheckRayParams.IgnoreWater = true
 
-    local candidateParts = {
-        "HitboxHead", "HitboxHeadSmall", "HitboxBody", "HitboxBodySmall",
-        "Head", "UpperTorso", "LowerTorso", "HumanoidRootPart",
-        "LeftUpperArm", "LeftLowerArm", "LeftHand",
-        "RightUpperArm", "RightLowerArm", "RightHand",
-        "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
-        "RightUpperLeg", "RightLowerLeg", "RightFoot"
-    }
 
     local function getClosestTarget(maxFOV, partMode)
         local cfg = getgenv().SilentConfig
@@ -203,50 +262,11 @@ do
                 local root = char and char:FindFirstChild("HumanoidRootPart")
 
                 if char and hum and hum.Health > 0 and root then
-                    local hitPart = root
-
-                    if partMode == "Random" then
-                        local valid = {}
-                        for _, name in ipairs(candidateParts) do
-                            local part = char:FindFirstChild(name)
-                            if part then table.insert(valid, part) end
-                        end
-                        hitPart = (#valid > 0 and valid[math.random(1, #valid)]) or root
-                    elseif partMode == "Closest" then
-                        local closestPart = root
-                        local closestDistToMouse = math.huge
-                        for _, name in ipairs(candidateParts) do
-                            local part = char:FindFirstChild(name)
-                            if part then
-                                local pScr, pOn = curCam:WorldToViewportPoint(part.Position)
-                                if pOn and pScr.Z > 0 then
-                                    local dist = (Vector2.new(pScr.X, pScr.Y) - mousePos).Magnitude
-                                    if dist < closestDistToMouse then
-                                        closestDistToMouse = dist
-                                        closestPart = part
-                                    end
-                                end
-                            end
-                        end
-                        hitPart = closestPart
-                    else
-                        hitPart = char:FindFirstChild(partMode) or char:FindFirstChild("HitboxHead") or char:FindFirstChild("Head") or root
-                    end
+                    local hitPart = getgenv().KETY_ResolveTargetPart(char, partMode, curCam, mousePos) or root
 
                     -- WallCheck
-                    if cfg and cfg.WallCheck and hitPart then
-                        local ignoreList = {}
-                        if myChar then table.insert(ignoreList, myChar) end
-                        if curCam then table.insert(ignoreList, curCam) end
-                        wallCheckRayParams.FilterDescendantsInstances = ignoreList
-
-                        local camPos = curCam.CFrame.Position
-                        local hitPos = hitPart.Position
-                        local dir = hitPos - camPos
-                        local raySuccess, rayResult = pcall(rawRaycast, workspace, camPos, dir, wallCheckRayParams)
-                        if raySuccess and rayResult and rayResult.Instance and not rayResult.Instance:IsDescendantOf(char) then
-                            continue
-                        end
+                    if cfg and cfg.WallCheck and hitPart and getgenv().KETY_IsBehindWall(hitPart.Position, char) then
+                        continue
                     end
 
                     local scrPos, onScreen = curCam:WorldToViewportPoint(hitPart.Position)
@@ -666,25 +686,10 @@ local function updateBoneRefs(cache, char)
 end
 
 -- Wall ESP: キャラクターと壁の間にレイキャストして壁越し判定
-local _wallRayParams = RaycastParams.new()
-_wallRayParams.FilterType = Enum.RaycastFilterType.Exclude
-_wallRayParams.IgnoreWater = true
-
 local function isPlayerBehindWall(char, cam)
     local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root or not cam then return false end
-    local myChar = lp.Character
-    local ignList = { cam }
-    if myChar then table.insert(ignList, myChar) end
-    table.insert(ignList, char)
-    _wallRayParams.FilterDescendantsInstances = ignList
-    local origin = cam.CFrame.Position
-    local dir = root.Position - origin
-    local ok, result = pcall(function() return workspace:Raycast(origin, dir, _wallRayParams) end)
-    if ok and result and result.Instance then
-        return true
-    end
-    return false
+    if not root then return false end
+    return getgenv().KETY_IsBehindWall(root.Position, char)
 end
 
 local wallEspHighlightCache = {}
@@ -1271,15 +1276,7 @@ SilentToggle:AddKeyPicker("SilentKey", {
 local AimDep = AimSection:AddDependencyBox()
 
 AimDep:AddDropdown("TargetPart", {
-    Values = {
-        "HitboxHead", "HitboxHeadSmall", "HitboxBody", "HitboxBodySmall",
-        "Random", "Closest",
-        "Head", "UpperTorso", "LowerTorso", "HumanoidRootPart",
-        "LeftUpperArm", "LeftLowerArm", "LeftHand",
-        "RightUpperArm", "RightLowerArm", "RightHand",
-        "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
-        "RightUpperLeg", "RightLowerLeg", "RightFoot"
-    },
+    Values = getgenv().KETY_TargetPartValues,
     Default = 1,
     Multi = false,
     Text = "Target Part",
@@ -1361,30 +1358,7 @@ local function AL_isEnemy(fighter)
     local plr = fighter.Player
     if plr == lp then return false end
     
-    if SpectateController then
-        local duel = SpectateController.CurrentDuelSubject
-        local localDueler = duel and duel:GetDueler(lp)
-        local localTeam = localDueler and localDueler:Get("TeamID") or nil
-        if localTeam and duel and duel.Duelers then
-            for _, dueler in next, duel.Duelers do
-                if dueler.Player == plr then
-                    local team = dueler:Get("TeamID")
-                    return team ~= localTeam
-                end
-            end
-        end
-    end
-    
-    local myID = lp:GetAttribute("TeamID")
-    local theirID = plr:GetAttribute("TeamID")
-    if myID and theirID then
-        return myID ~= theirID
-    end
-
-    if plr.Team and lp.Team then
-        return plr.Team ~= lp.Team
-    end
-    return true
+    return getgenv().KETY_IsEnemy(plr)
 end
 
 local function AL_clampToHitboxes(char, worldPos)
@@ -1419,13 +1393,7 @@ local function AL_getTarget()
 
 	local function isBehindWall(part, char)
 		if not AimLockSettings.VisibleCheck then return false end
-		local origin = camera.CFrame.Position
-		local dir = part.Position - origin
-		local params = RaycastParams.new()
-		params.FilterType = Enum.RaycastFilterType.Exclude
-		params.FilterDescendantsInstances = {lp.Character, char, camera}
-		local ray = workspace:Raycast(origin, dir, params)
-		return ray and ray.Instance and ray.Instance.Transparency < 0.8
+		return getgenv().KETY_IsBehindWall(part.Position, char, true)
 	end
 
 	if AL_LockedTarget and not AimLockSettings.StickyAim then
@@ -1490,7 +1458,7 @@ local function AL_getTarget()
 				if hrp and lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") then
 					local worldDist = (hrp.Position - lp.Character.HumanoidRootPart.Position).Magnitude
 					if worldDist <= AimLockSettings.Distance then
-						local part = char:FindFirstChild(AimLockSettings.TargetPart) or char:FindFirstChild("Head")
+						local part = getgenv().KETY_ResolveTargetPart(char, AimLockSettings.TargetPart)
 						if part then
 							local sp, onScreen = camera:WorldToViewportPoint(part.Position)
 							if onScreen and not isBehindWall(part, char) then
@@ -1816,7 +1784,7 @@ AimLockDep:AddToggle("AimLockAliveCheck", { Text = "AliveCheck", Default = true,
 AimLockDep:AddToggle("AimLockStickyAim", { Text = "StickyAim", Default = false, Callback = function(v) AimLockSettings.StickyAim = v end })
 AimLockDep:AddSlider("AimLockDistance", { Text = "Distance", Default = 500, Min = 1, Max = 5000, Rounding = 0, Callback = function(v) AimLockSettings.Distance = v end })
 AimLockDep:AddDropdown("AimLockTargetPart", {
-    Values = {"HitboxHead", "HitboxBody", "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg"},
+    Values = getgenv().KETY_TargetPartValues,
     Default = 1,
     Multi = false,
     Text = "Target Part",
@@ -4238,10 +4206,7 @@ do
     })
 
     local RageBotTargetPartDropdown = RageEnabledDep:AddDropdown("RageBot_TargetPart", {
-        Values = {
-            "HitboxHead", "HitboxBody", "Head", "UpperTorso", "LowerTorso",
-            "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg", "Random"
-        },
+        Values = getgenv().KETY_TargetPartValues,
         Default = 1,
         Multi = false,
         Text = "Target Part",
@@ -4627,47 +4592,13 @@ do
             if player == lplr then return false end
             local tc = getgenv().Config and getgenv().Config.TeamCheck
             if tc == false then return true end
-            local duel = SpectateController and SpectateController.CurrentDuelSubject
-            local localDueler = duel and duel:GetDueler(lplr)
-            local localTeam = localDueler and localDueler:Get("TeamID") or nil
-            if localTeam and duel and duel.Duelers then
-                for _, dueler in duel.Duelers do
-                    if dueler.Player == player then
-                        local team = dueler:Get("TeamID")
-                        return team ~= localTeam
-                    end
-                end
-            end
-            local pTeam = player:GetAttribute("TeamID")
-            local lTeam = lplr:GetAttribute("TeamID")
-            if pTeam and lTeam then
-                return pTeam ~= lTeam
-            end
-            return true
+            return getgenv().KETY_IsEnemy(player)
         end
 
         local function resolveRageTargetPart(pChar)
             if not pChar then return nil end
             local mode = getgenv().Config and getgenv().Config.TargetPart or "HitboxHead"
-            if mode == "Random" then
-                local candidateNames = {
-                    "HitboxHead", "HitboxBody", "Head", "UpperTorso", "LowerTorso",
-                    "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg"
-                }
-                local valid = {}
-                for _, name in ipairs(candidateNames) do
-                    local part = pChar:FindFirstChild(name)
-                    if part then table.insert(valid, part) end
-                end
-                if #valid > 0 then
-                    return valid[math.random(1, #valid)]
-                end
-                return pChar:FindFirstChild("HitboxHead") or pChar:FindFirstChild("Head") or pChar:FindFirstChild("HumanoidRootPart")
-            end
-            return pChar:FindFirstChild(mode)
-                or pChar:FindFirstChild("HitboxHead")
-                or pChar:FindFirstChild("Head")
-                or pChar:FindFirstChild("HumanoidRootPart")
+            return getgenv().KETY_ResolveTargetPart(pChar, mode)
         end
 
         local function getClosestTarget()
