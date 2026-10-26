@@ -7209,6 +7209,140 @@ local ChosenWeapons = {}
 local WeaponLists = {}
 local ListIndexes = {1, 1, 1, 1}
 
+local AutoLoadout_ItemLibrary = nil
+local AutoLoadout_FighterController = nil
+local AutoLoadout_DuelController = nil
+
+pcall(function()
+    local Modules = ReplicatedStorage:FindFirstChild("Modules") or ReplicatedStorage:WaitForChild("Modules", 3)
+    if Modules and Modules:FindFirstChild("ItemLibrary") then
+        AutoLoadout_ItemLibrary = require(Modules.ItemLibrary)
+    end
+end)
+pcall(function()
+    local ps = lp:FindFirstChild("PlayerScripts") or lp:WaitForChild("PlayerScripts", 3)
+    local Controllers = ps and (ps:FindFirstChild("Controllers") or ps:WaitForChild("Controllers", 3))
+    if Controllers then
+        if Controllers:FindFirstChild("FighterController") then
+            AutoLoadout_FighterController = require(Controllers.FighterController)
+        end
+        if Controllers:FindFirstChild("DuelController") then
+            AutoLoadout_DuelController = require(Controllers.DuelController)
+        end
+    end
+end)
+
+local function getSavedWeaponSelections()
+    local saved = {}
+    pcall(function()
+        local sm = getgenv().SaveManager or SaveManager
+        if not sm then return end
+        local folder = sm.Folder or "KETY"
+        local autoFile = folder .. "/settings/autoload.txt"
+        if sm.CheckSubFolder and sm:CheckSubFolder(true) and sm.SubFolder and sm.SubFolder ~= "" then
+            autoFile = folder .. "/settings/" .. sm.SubFolder .. "/autoload.txt"
+        end
+        if not (type(isfile) == "function" and isfile(autoFile)) then return end
+        local name = readfile(autoFile)
+        if not name or name == "" or name == "none" then return end
+        name = name:gsub("\r", ""):gsub("\n", ""):match("^%s*(.-)%s*$")
+        local path = folder .. "/settings/" .. name .. ".json"
+        if sm.CheckSubFolder and sm:CheckSubFolder(true) and sm.SubFolder and sm.SubFolder ~= "" then
+            path = folder .. "/settings/" .. sm.SubFolder .. "/" .. name .. ".json"
+        end
+        if not isfile(path) then return end
+        local content = readfile(path)
+        local decoded = game:GetService("HttpService"):JSONDecode(content)
+        if type(decoded) == "table" then
+            if type(decoded.objects) == "table" then
+                for _, obj in ipairs(decoded.objects) do
+                    if type(obj) == "table" and obj.idx and obj.value then
+                        if obj.idx == "PriDrop" then saved[1] = obj.value
+                        elseif obj.idx == "SecDrop" then saved[2] = obj.value
+                        elseif obj.idx == "MelDrop" then saved[3] = obj.value
+                        elseif obj.idx == "UtiDrop" then saved[4] = obj.value
+                        end
+                    end
+                end
+            end
+            if type(decoded.Options) == "table" then
+                saved[1] = saved[1] or decoded.Options.PriDrop
+                saved[2] = saved[2] or decoded.Options.SecDrop
+                saved[3] = saved[3] or decoded.Options.MelDrop
+                saved[4] = saved[4] or decoded.Options.UtiDrop
+            end
+        end
+    end)
+    return saved
+end
+
+local function refreshWeapons()
+    if not AutoLoadout_ItemLibrary then
+        pcall(function()
+            local Modules = ReplicatedStorage:FindFirstChild("Modules")
+            if Modules and Modules:FindFirstChild("ItemLibrary") then
+                AutoLoadout_ItemLibrary = require(Modules.ItemLibrary)
+            end
+        end)
+    end
+    if not AutoLoadout_FighterController then
+        pcall(function()
+            local ps = lp:FindFirstChild("PlayerScripts")
+            local Controllers = ps and ps:FindFirstChild("Controllers")
+            if Controllers and Controllers:FindFirstChild("FighterController") then
+                AutoLoadout_FighterController = require(Controllers.FighterController)
+            end
+        end)
+    end
+    if not AutoLoadout_DuelController then
+        pcall(function()
+            local ps = lp:FindFirstChild("PlayerScripts")
+            local Controllers = ps and ps:FindFirstChild("Controllers")
+            if Controllers and Controllers:FindFirstChild("DuelController") then
+                AutoLoadout_DuelController = require(Controllers.DuelController)
+            end
+        end)
+    end
+    if not AutoLoadout_ItemLibrary then return end
+
+    local localFighter = AutoLoadout_FighterController and AutoLoadout_FighterController.LocalFighter
+    local maxSlots = (localFighter and type(localFighter.GetMaxEquippableWeapons) == "function" and localFighter:GetMaxEquippableWeapons()) or 4
+    for slotIndex = 1, maxSlots do
+        local weapons = {}
+        local classData = AutoLoadout_ItemLibrary.SlotToClass and AutoLoadout_ItemLibrary.SlotToClass[slotIndex]
+        local className = classData and classData.Name
+        if className then
+            local weaponPool = (localFighter and type(localFighter.Get) == "function" and localFighter:Get("WeaponPool")) or {}
+            local filterType = (localFighter and type(localFighter.Get) == "function" and localFighter:Get("WeaponPoolFilterType")) or ""
+            local itemsList = AutoLoadout_ItemLibrary.ItemsAlphabetized or {}
+            for _, itemName in ipairs(itemsList) do
+                local itemData = AutoLoadout_ItemLibrary.Items and AutoLoadout_ItemLibrary.Items[itemName]
+                if itemData and itemData.Class == className then
+                    local isBlacklisted = (filterType == "Blacklist") and table.find(weaponPool, itemName)
+                    local canUse = localFighter and type(localFighter.CanUseWeapon) == "function" and localFighter:CanUseWeapon(itemName)
+                    if (canUse or isBlacklisted) or (not localFighter) then
+                        table.insert(weapons, itemName)
+                    end
+                end
+            end
+        end
+        if #weapons > 0 then
+            WeaponLists[slotIndex] = weapons
+        elseif not WeaponLists[slotIndex] or #WeaponLists[slotIndex] == 0 then
+            WeaponLists[slotIndex] = {"None"}
+        end
+        if ChosenWeapons[slotIndex] == nil or ChosenWeapons[slotIndex] == "None" then
+            if WeaponLists[slotIndex] and WeaponLists[slotIndex][1] and WeaponLists[slotIndex][1] ~= "None" then
+                ChosenWeapons[slotIndex] = WeaponLists[slotIndex][1]
+            end
+        end
+    end
+end
+
+-- 初期リストを事前に生成
+refreshWeapons()
+local savedInitial = getSavedWeaponSelections()
+
 local LoadCoreBox = Tabs.Misc:AddLeftGroupbox("Loadout Core")
 local AutoLoadToggle = LoadCoreBox:AddToggle("AutoLoadToggle", { Text = "Enable Auto Loadout", Default = autoLoadoutEnabled, Callback = function(Value) autoLoadoutEnabled = Value end })
 
@@ -7221,95 +7355,49 @@ AutoLoadToggle:AddKeyPicker("AutoLoadKey", {
 
 local LoadSlotsBox = Tabs.Misc:AddRightGroupbox("Weapon Slots")
 local LoadSlotsDep = LoadSlotsBox:AddDependencyBox()
-local PriDropObj = LoadSlotsDep:AddDropdown("PriDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Primary", Callback = function(Value) ChosenWeapons[1] = Value end })
-local SecDropObj = LoadSlotsDep:AddDropdown("SecDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Secondary", Callback = function(Value) ChosenWeapons[2] = Value end })
-local MelDropObj = LoadSlotsDep:AddDropdown("MelDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Melee", Callback = function(Value) ChosenWeapons[3] = Value end })
-local UtiDropObj = LoadSlotsDep:AddDropdown("UtiDrop", { Values = {"None"}, Default = 1, Multi = false, Text = "Utility", Callback = function(Value) ChosenWeapons[4] = Value end })
+
+local list1 = (WeaponLists[1] and #WeaponLists[1] > 0 and WeaponLists[1]) or {"None"}
+local def1 = (savedInitial[1] and table.find(list1, savedInitial[1])) or 1
+local PriDropObj = LoadSlotsDep:AddDropdown("PriDrop", { Values = list1, Default = def1, Multi = false, Text = "Primary", Callback = function(Value) ChosenWeapons[1] = Value end })
+
+local list2 = (WeaponLists[2] and #WeaponLists[2] > 0 and WeaponLists[2]) or {"None"}
+local def2 = (savedInitial[2] and table.find(list2, savedInitial[2])) or 1
+local SecDropObj = LoadSlotsDep:AddDropdown("SecDrop", { Values = list2, Default = def2, Multi = false, Text = "Secondary", Callback = function(Value) ChosenWeapons[2] = Value end })
+
+local list3 = (WeaponLists[3] and #WeaponLists[3] > 0 and WeaponLists[3]) or {"None"}
+local def3 = (savedInitial[3] and table.find(list3, savedInitial[3])) or 1
+local MelDropObj = LoadSlotsDep:AddDropdown("MelDrop", { Values = list3, Default = def3, Multi = false, Text = "Melee", Callback = function(Value) ChosenWeapons[3] = Value end })
+
+local list4 = (WeaponLists[4] and #WeaponLists[4] > 0 and WeaponLists[4]) or {"None"}
+local def4 = (savedInitial[4] and table.find(list4, savedInitial[4])) or 1
+local UtiDropObj = LoadSlotsDep:AddDropdown("UtiDrop", { Values = list4, Default = def4, Multi = false, Text = "Utility", Callback = function(Value) ChosenWeapons[4] = Value end })
+
 LoadSlotsDep:SetupDependencies({ { AutoLoadToggle, true } })
-
-local AutoLoadout_ItemLibrary = nil
-local AutoLoadout_FighterController = nil
-local AutoLoadout_DuelController = nil
-
-
-local function getSavedWeaponSelections()
-    local saved = {}
-    pcall(function()
-        local sm = getgenv().SaveManager or SaveManager
-        if not (sm and sm.Folder) then return end
-        local autoFile = sm.Folder .. "/settings/autoload.txt"
-        if not (type(isfile) == "function" and isfile(autoFile)) then return end
-        local name = readfile(autoFile)
-        local path = sm.Folder .. "/settings/" .. name .. ".json"
-        if not isfile(path) then return end
-        local decoded = game:GetService("HttpService"):JSONDecode(readfile(path))
-        if type(decoded) == "table" and type(decoded.Options) == "table" then
-            saved[1] = decoded.Options.PriDrop
-            saved[2] = decoded.Options.SecDrop
-            saved[3] = decoded.Options.MelDrop
-            saved[4] = decoded.Options.UtiDrop
-        end
-    end)
-    return saved
-end
 
 local dropObjs = {PriDropObj, SecDropObj, MelDropObj, UtiDropObj}
 
 local function updateWeaponLabels()
-    -- SetValues蜑阪↓迴ｾ蝨ｨ縺ｮ蛟､繧剃ｿ晏ｭ假ｼ・aveManager縺後☆縺ｧ縺ｫ繝ｭ繝ｼ繝峨＠縺溷､繧貞ｮ医ｋ・・
-    local prevVals = {
-        PriDropObj.Value,
-        SecDropObj.Value,
-        MelDropObj.Value,
-        UtiDropObj.Value,
-    }
-    if WeaponLists[1] and #WeaponLists[1] > 0 then
-        PriDropObj:SetValues(WeaponLists[1])
-        local v = (prevVals[1] and table.find(WeaponLists[1], prevVals[1])) and prevVals[1] or PriDropObj.Value
-        PriDropObj:SetValue(v); ChosenWeapons[1] = v
-    end
-    if WeaponLists[2] and #WeaponLists[2] > 0 then
-        SecDropObj:SetValues(WeaponLists[2])
-        local v = (prevVals[2] and table.find(WeaponLists[2], prevVals[2])) and prevVals[2] or SecDropObj.Value
-        SecDropObj:SetValue(v); ChosenWeapons[2] = v
-    end
-    if WeaponLists[3] and #WeaponLists[3] > 0 then
-        MelDropObj:SetValues(WeaponLists[3])
-        local v = (prevVals[3] and table.find(WeaponLists[3], prevVals[3])) and prevVals[3] or MelDropObj.Value
-        MelDropObj:SetValue(v); ChosenWeapons[3] = v
-    end
-    if WeaponLists[4] and #WeaponLists[4] > 0 then
-        UtiDropObj:SetValues(WeaponLists[4])
-        local v = (prevVals[4] and table.find(WeaponLists[4], prevVals[4])) and prevVals[4] or UtiDropObj.Value
-        UtiDropObj:SetValue(v); ChosenWeapons[4] = v
-    end
-end
-
-local function refreshWeapons()
-    if not AutoLoadout_ItemLibrary or not AutoLoadout_FighterController then return end
-    local maxSlots = AutoLoadout_FighterController.LocalFighter and AutoLoadout_FighterController.LocalFighter:GetMaxEquippableWeapons() or 4
-    for slotIndex = 1, maxSlots do
-        local weapons = {}
-        local classData = AutoLoadout_ItemLibrary.SlotToClass[slotIndex]
-        local className = classData and classData.Name
-        if className then
-            local weaponPool = AutoLoadout_FighterController.LocalFighter and AutoLoadout_FighterController.LocalFighter:Get("WeaponPool") or {}
-            local filterType = AutoLoadout_FighterController.LocalFighter and AutoLoadout_FighterController.LocalFighter:Get("WeaponPoolFilterType") or ""
-            for _, itemName in ipairs(AutoLoadout_ItemLibrary.ItemsAlphabetized) do
-                local itemData = AutoLoadout_ItemLibrary.Items[itemName]
-                if itemData and itemData.Class == className then
-                    local isBlacklisted = (filterType == "Blacklist") and table.find(weaponPool, itemName)
-                    local canUse = AutoLoadout_FighterController.LocalFighter and AutoLoadout_FighterController.LocalFighter:CanUseWeapon(itemName)
-                    if (canUse or isBlacklisted) then
-                        table.insert(weapons, itemName)
-                    end
-                end
+    local saved = getSavedWeaponSelections()
+    for i = 1, 4 do
+        local drop = dropObjs[i]
+        local list = WeaponLists[i]
+        if drop and list and #list > 0 then
+            drop:SetValues(list)
+            local current = drop.Value
+            local targetVal = nil
+            if current and current ~= "None" and table.find(list, current) then
+                targetVal = current
+            elseif saved[i] and table.find(list, saved[i]) then
+                targetVal = saved[i]
+            elseif ChosenWeapons[i] and ChosenWeapons[i] ~= "None" and table.find(list, ChosenWeapons[i]) then
+                targetVal = ChosenWeapons[i]
+            else
+                targetVal = list[1]
             end
-        end
-        WeaponLists[slotIndex] = weapons
-        if type(weapons) == "table" and ListIndexes[slotIndex] > #weapons then ListIndexes[slotIndex] = 1 end
-        if type(weapons) == "table" and #weapons > 0 and not ChosenWeapons[slotIndex] then
-            ChosenWeapons[slotIndex] = weapons[ListIndexes[slotIndex]]
+            if targetVal then
+                drop:SetValue(targetVal)
+                ChosenWeapons[i] = targetVal
+            end
         end
     end
 end
