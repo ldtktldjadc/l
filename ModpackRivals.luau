@@ -4965,6 +4965,7 @@ do
 
             local ffaOn = getgenv().FFA and getgenv().FFA.Want()
             local ffaPickup = ffaOn and (tc == false) or false
+            if ffaOn then getgenv().FFA.Touch() end
 
             local oldCF     = myRoot.CFrame
             local oldVel    = myRoot.Velocity
@@ -5129,6 +5130,20 @@ do
         Pos = function()
             for _, obj in workspace:GetChildren() do
                 if wantDrop(obj) then return obj.Position end
+            end
+        end,
+        Touch = function()
+            if not firetouchinterest then return end
+            local char = lp.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+            for _, obj in workspace:GetChildren() do
+                if wantDrop(obj) then
+                    pcall(function()
+                        firetouchinterest(hrp, obj, 0)
+                        firetouchinterest(hrp, obj, 1)
+                    end)
+                end
             end
         end,
         Move = function(pos)
