@@ -4947,7 +4947,7 @@ do
                 currentTargetYaw = nil
                 kiciaReset(myRoot)
                 if tc == false then
-                    desyncCF = myRoot.CFrame
+                    desyncCF = myRoot.CFrame + Vector3.new(0, 900000000, 0)
                 elseif getgenv().Config.VoidSpamType == "KillRagers" then
                     desyncCF = krStep(myRoot) or myRoot.CFrame
                 else
