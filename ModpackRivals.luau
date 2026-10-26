@@ -4656,7 +4656,8 @@ do
                 if not pTargetPart then continue end
 
                 local dist = (myRoot.Position - pRoot.Position).Magnitude
-                if dist > math.huge then continue end
+                local maxDist = (tc == false) and 300 or math.huge
+                if dist > maxDist then continue end
 
                 local mouseDist = 999999
                 if curCam then
