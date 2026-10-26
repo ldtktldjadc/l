@@ -4946,7 +4946,9 @@ do
             else
                 currentTargetYaw = nil
                 kiciaReset(myRoot)
-                if getgenv().Config.VoidSpamType == "KillRagers" then
+                if tc == false then
+                    desyncCF = myRoot.CFrame
+                elseif getgenv().Config.VoidSpamType == "KillRagers" then
                     desyncCF = krStep(myRoot) or myRoot.CFrame
                 else
                     local randomDir = Vector3.new(
@@ -4962,15 +4964,7 @@ do
             if canTarget or getgenv().Config.VoidSpamType ~= "KillRagers" then kr.active = false end
 
             local ffaOn = getgenv().FFA and getgenv().FFA.Want()
-            local ffaPickup = false
-            if ffaOn and not canTarget then
-                getgenv()._FFAFrame = ((getgenv()._FFAFrame or 0) + 1) % 2
-                local dp = getgenv().FFA.Pos()
-                if getgenv()._FFAFrame == 0 and dp then
-                    desyncCF = CFrame.new(dp)
-                    ffaPickup = true
-                end
-            end
+            local ffaPickup = ffaOn and (tc == false) or false
 
             local oldCF     = myRoot.CFrame
             local oldVel    = myRoot.Velocity
