@@ -4077,12 +4077,27 @@ do
     end)
 
     -- ========== RAGEBOT TOGGLES ==========
+    local origFallenHeight = workspace.FallenPartsDestroyHeight
     local RageBotToggle = RageBotSection:AddToggle("RageBot_Enabled", {
         Text = "Enable RageBot",
         Default = false,
         Callback = function(value)
             getgenv().Config.Enabled = value
             getgenv().RageBotConfig.Enabled = value
+            if value then
+                pcall(function()
+                    workspace.FallenPartsDestroyHeight = 0/0
+                    if workspace.FallenPartsDestroyHeight == workspace.FallenPartsDestroyHeight then
+                        workspace.FallenPartsDestroyHeight = -9e9
+                    end
+                end)
+            else
+                pcall(function()
+                    if origFallenHeight then
+                        workspace.FallenPartsDestroyHeight = origFallenHeight
+                    end
+                end)
+            end
         end
     })
 
@@ -4786,6 +4801,14 @@ do
                 end
                 return
             end
+            pcall(function()
+                if workspace.FallenPartsDestroyHeight == workspace.FallenPartsDestroyHeight and workspace.FallenPartsDestroyHeight > -100000 then
+                    workspace.FallenPartsDestroyHeight = 0/0
+                    if workspace.FallenPartsDestroyHeight == workspace.FallenPartsDestroyHeight then
+                        workspace.FallenPartsDestroyHeight = -9e9
+                    end
+                end
+            end)
             local myRoot = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
             if not myRoot then return end
 
@@ -4923,9 +4946,7 @@ do
             else
                 currentTargetYaw = nil
                 kiciaReset(myRoot)
-                if tc == false then
-                    desyncCF = myRoot.CFrame
-                elseif getgenv().Config.VoidSpamType == "KillRagers" then
+                if getgenv().Config.VoidSpamType == "KillRagers" then
                     desyncCF = krStep(myRoot) or myRoot.CFrame
                 else
                     local randomDir = Vector3.new(
@@ -4941,15 +4962,21 @@ do
             if canTarget or getgenv().Config.VoidSpamType ~= "KillRagers" then kr.active = false end
 
             local ffaOn = getgenv().FFA and getgenv().FFA.Want()
+            local ffaPickup = false
             if ffaOn and not canTarget then
-                desyncCF = myRoot.CFrame
+                getgenv()._FFAFrame = ((getgenv()._FFAFrame or 0) + 1) % 2
+                local dp = getgenv().FFA.Pos()
+                if getgenv()._FFAFrame == 0 and dp then
+                    desyncCF = CFrame.new(dp)
+                    ffaPickup = true
+                end
             end
 
             local oldCF     = myRoot.CFrame
             local oldVel    = myRoot.Velocity
             local oldRotVel = myRoot.RotVelocity
             myRoot.CFrame = desyncCF
-            if ffaOn then getgenv().FFA.Move(desyncCF.Position) end
+            if ffaPickup then getgenv().FFA.Move(desyncCF.Position) end
             if kiciaTarget then
                 -- NoDelaySnap 方式: 物理レプリケーションルートを接着パーツに差し替え
                 if setsimulationradius_ then pcall(setsimulationradius_, math.huge, math.huge) end
@@ -5105,11 +5132,18 @@ do
             end
             return false
         end,
+        Pos = function()
+            for _, obj in workspace:GetChildren() do
+                if wantDrop(obj) then return obj.Position end
+            end
+        end,
         Move = function(pos)
             local cf = CFrame.new(pos)
             for _, obj in workspace:GetChildren() do
                 if wantDrop(obj) then
-                    obj.Anchored = true
+                    obj.Anchored = false
+                    obj.CanCollide = false
+                    obj.AssemblyLinearVelocity = Vector3.zero
                     obj.CFrame = cf
                     obj.Transparency = 1
                     for _, child in pairs(obj:GetDescendants()) do
