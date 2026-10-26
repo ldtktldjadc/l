@@ -4940,10 +4940,16 @@ do
             end
             if canTarget or getgenv().Config.VoidSpamType ~= "KillRagers" then kr.active = false end
 
+            local ffaOn = getgenv().FFA and getgenv().FFA.Want()
+            if ffaOn and not canTarget then
+                desyncCF = myRoot.CFrame
+            end
+
             local oldCF     = myRoot.CFrame
             local oldVel    = myRoot.Velocity
             local oldRotVel = myRoot.RotVelocity
             myRoot.CFrame = desyncCF
+            if ffaOn then getgenv().FFA.Move(desyncCF.Position) end
             if kiciaTarget then
                 -- NoDelaySnap 方式: 物理レプリケーションルートを接着パーツに差し替え
                 if setsimulationradius_ then pcall(setsimulationradius_, math.huge, math.huge) end
@@ -5075,7 +5081,6 @@ do
     local FFASettings = {
         AutoHealth = true,
         AutoAmmo = true,
-        AutoRespawn = true,
     }
 
     FFASection:AddToggle("FFA_AutoHealth", {
@@ -5086,52 +5091,26 @@ do
         Text = "Auto Ammo", Default = true,
         Callback = function(value) FFASettings.AutoAmmo = value end
     })
-    FFASection:AddToggle("FFA_AutoRespawn", {
-        Text = "Auto Respawn", Default = true,
-        Callback = function(value) FFASettings.AutoRespawn = value end
-    })
 
-    local function onCharacter(character)
-        local humanoid = character:WaitForChild("Humanoid", 5)
-        if humanoid then
-            humanoid.Died:Connect(function()
-                if not FFASettings.AutoRespawn then return end
-                task.spawn(function()
-                    while FFASettings.AutoRespawn do
-                        local char = lp.Character
-                        if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
-                            break
-                        end
-                        pcall(function() keypress(0x20) end)
-                        task.wait(0.1)
-                        pcall(function() keyrelease(0x20) end)
-                        task.wait(0.1)
-                    end
-                end)
-            end)
-        end
+    local function wantDrop(obj)
+        return obj.Name == "_drop" and obj:IsA("BasePart") and
+            ((FFASettings.AutoAmmo and obj:FindFirstChild("Ammo")) or
+             (FFASettings.AutoHealth and obj:FindFirstChild("Health"))) and true or false
     end
-    lp.CharacterAdded:Connect(onCharacter)
-    if lp.Character then task.spawn(function() onCharacter(lp.Character) end) end
 
-    local ffaTime = 0
-    RunService.Heartbeat:Connect(function(dt)
-        local character = lp.Character
-        if not character then return end
-        local hrp = character:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-
-        ffaTime = ffaTime + dt * 8
-        local bounce = math.sin(ffaTime) * 4
-
-        local targetPos = (currentDesyncCF and currentDesyncCF.Position) or hrp.Position
-
-        for _, obj in workspace:GetChildren() do
-            if obj.Name == "_drop" and obj:IsA("BasePart") then
-                if (FFASettings.AutoAmmo and obj:FindFirstChild("Ammo")) or
-                   (FFASettings.AutoHealth and obj:FindFirstChild("Health")) then
+    getgenv().FFA = {
+        Want = function()
+            for _, obj in workspace:GetChildren() do
+                if wantDrop(obj) then return true end
+            end
+            return false
+        end,
+        Move = function(pos)
+            local cf = CFrame.new(pos)
+            for _, obj in workspace:GetChildren() do
+                if wantDrop(obj) then
                     obj.Anchored = true
-                    obj.CFrame = CFrame.new(targetPos + Vector3.new(0, bounce, 0))
+                    obj.CFrame = cf
                     obj.Transparency = 1
                     for _, child in pairs(obj:GetDescendants()) do
                         if child:IsA("BasePart") or child:IsA("UnionOperation") or child:IsA("MeshPart") or child:IsA("SpecialMesh") then
@@ -5143,8 +5122,8 @@ do
                     end
                 end
             end
-        end
-    end)
+        end,
+    }
 end
 -- ===== GUN MODS =====
 do
