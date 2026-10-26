@@ -5115,9 +5115,10 @@ do
     })
 
     local function wantDrop(obj)
-        return obj.Name == "_drop" and obj:IsA("BasePart") and
-            ((FFASettings.AutoAmmo and obj:FindFirstChild("Ammo")) or
-             (FFASettings.AutoHealth and obj:FindFirstChild("Health"))) and true or false
+        if obj.Name ~= "_drop" or not obj:IsA("BasePart") then return false end
+        if FFASettings.AutoAmmo and (obj:FindFirstChild("AmmoBalanced") or obj:FindFirstChild("Ammo")) then return true end
+        if FFASettings.AutoHealth and obj:FindFirstChild("Health") then return true end
+        return false
     end
 
     getgenv().FFA = {
@@ -5135,13 +5136,13 @@ do
         Touch = function()
             if not firetouchinterest then return end
             local char = lp.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if not hrp then return end
+            local body = char and (char:FindFirstChild("HitboxBody") or char:FindFirstChild("HumanoidRootPart"))
+            if not body then return end
             for _, obj in workspace:GetChildren() do
                 if wantDrop(obj) then
                     pcall(function()
-                        firetouchinterest(hrp, obj, 0)
-                        firetouchinterest(hrp, obj, 1)
+                        firetouchinterest(obj, body, 0)
+                        firetouchinterest(obj, body, 1)
                     end)
                 end
             end
