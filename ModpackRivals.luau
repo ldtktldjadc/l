@@ -6951,9 +6951,11 @@ FlyDep:AddSlider("FlySpeedSlider", {
 FlyDep:SetupDependencies({ { FlyToggle, true } })
 
 local hideInFloorEnabled = false
-local hideDesyncEnabled = false
-local hideTargetPos = nil
+local hideInFloorDepth = 5
 local hideDesyncConn = nil
+local lastSavedCF = nil
+local hifRayParams = RaycastParams.new()
+hifRayParams.FilterType = Enum.RaycastFilterType.Exclude
 
 local function startHideInFloor()
     local char = lp.Character
@@ -6961,64 +6963,56 @@ local function startHideInFloor()
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
-    if hideDesyncConn then hideDesyncConn:Disconnect() end
-    
-    task.spawn(function()
-        while hideInFloorEnabled do
-            local cam = workspace.CurrentCamera
-            local rayParams = RaycastParams.new()
-            rayParams.FilterType = Enum.RaycastFilterType.Exclude
-            local c = lp.Character
-            if c then rayParams.FilterDescendantsInstances = {c} end
-
-            if cam then
-                local ray = workspace:Raycast(cam.CFrame.Position, Vector3.new(0, -9999, 0), rayParams)
-                if ray then
-                    hideTargetPos = ray.Position - Vector3.new(0, 5, 0)
-                else
-                    hideTargetPos = cam.CFrame.Position - Vector3.new(0, 5, 0)
-                end
-            elseif c and c:FindFirstChild("HumanoidRootPart") then
-                local hrp = c.HumanoidRootPart
-                local ray = workspace:Raycast(hrp.Position, Vector3.new(0, -9999, 0), rayParams)
-                if ray then
-                    hideTargetPos = ray.Position - Vector3.new(0, 5, 0)
-                else
-                    hideTargetPos = hrp.Position - Vector3.new(0, 5, 0)
-                end
-            end
-            task.wait(1)
-        end
-    end)
+    if hideDesyncConn then hideDesyncConn:Disconnect() hideDesyncConn = nil end
+    pcall(function() RunService:UnbindFromRenderStep("__hif_restore") end)
 
     hideDesyncConn = RunService.Heartbeat:Connect(function()
         if not hideInFloorEnabled then return end
         local c = lp.Character
-        if not (c and c:FindFirstChild("HumanoidRootPart") and hideTargetPos) then return end
+        if not (c and c:FindFirstChild("HumanoidRootPart")) then return end
         local h = c.HumanoidRootPart
         local savedCF = h.CFrame
-        -- 実際の位置を床の下に固定（XとZは現在の位置を使用し、Yのみ固定）
-        local targetPos = Vector3.new(savedCF.X, hideTargetPos.Y, savedCF.Z)
-        h.CFrame = CFrame.new(targetPos) * CFrame.Angles(savedCF:ToEulerAnglesXYZ())
-        if hideDesyncEnabled then
-            -- WBと同じパターン: RenderStepで元のCFrameに戻す（サーバー側にズレた位置を送信）
-            safeBindToRenderStep(RunService, "__hif_restore", 101, function()
+        local savedVel = h.Velocity
+        local savedRotVel = h.RotVelocity
+        lastSavedCF = savedCF
+
+        hifRayParams.FilterDescendantsInstances = {c}
+        local ray = workspace:Raycast(savedCF.Position + Vector3.new(0, 1, 0), Vector3.new(0, -100, 0), hifRayParams)
+        local floorY = (ray and ray.Position.Y) or (savedCF.Y - 2.5)
+        local targetY = floorY - hideInFloorDepth
+        local targetPos = Vector3.new(savedCF.X, targetY, savedCF.Z)
+
+        -- HRPの角度を仰向け（math.rad(-90)で顔・胸が真上、背中が下）
+        local _, yaw = savedCF:ToEulerAnglesYXZ()
+        local desyncCF = CFrame.new(targetPos) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+
+        h.CFrame = desyncCF
+        h.Velocity = Vector3.zero
+        h.RotVelocity = Vector3.zero
+
+        -- 次フレーム描画前にクライアント側CFrame・速度を復元してDesync成立
+        pcall(function() RunService:UnbindFromRenderStep("__hif_restore") end)
+        RunService:BindToRenderStep("__hif_restore", 101, function()
+            if h then
                 h.CFrame = savedCF
-                safeUnbindFromRenderStep(RunService, "__hif_restore")
-            end)
-        end
+                h.Velocity = savedVel
+                h.RotVelocity = savedRotVel
+            end
+            pcall(function() RunService:UnbindFromRenderStep("__hif_restore") end)
+        end)
     end)
 end
 
 local function stopHideInFloor()
     if hideDesyncConn then hideDesyncConn:Disconnect() hideDesyncConn = nil end
-    safeUnbindFromRenderStep(RunService, "__hif_restore")
-    hideTargetPos = nil
+    pcall(function() RunService:UnbindFromRenderStep("__hif_restore") end)
 
     local char = lp.Character
-    if char and char:FindFirstChild("HumanoidRootPart") then
-        local hrp = char.HumanoidRootPart
-        hrp.CFrame = hrp.CFrame + Vector3.new(0, 10, 0)
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if hrp and lastSavedCF then
+        hrp.CFrame = lastSavedCF
+        hrp.Velocity = Vector3.zero
+        hrp.RotVelocity = Vector3.zero
     end
 end
 
@@ -7055,19 +7049,16 @@ HideInFloorToggle:AddKeyPicker("HideInFloorKey", {
 
 local HideInFloorDep = MovementSection:AddDependencyBox()
 
-local HideDesyncToggle = HideInFloorDep:AddToggle("HideDesyncToggle", {
-    Text = "Desync In Floor",
-    Default = false,
+HideInFloorDep:AddSlider("HideInFloorDepth", {
+    Text = "Floor Depth",
+    Default = 5,
+    Min = 1,
+    Max = 50,
+    Rounding = 1,
+    Compact = false,
     Callback = function(value)
-        hideDesyncEnabled = value
+        hideInFloorDepth = value
     end
-})
-
-HideDesyncToggle:AddKeyPicker("HideDesyncKey", {
-    Default = "None",
-    SyncToggleState = true,
-    Mode = "Toggle",
-    Text = "Desync In Floor",
 })
 
 HideInFloorDep:SetupDependencies({ { HideInFloorToggle, true } })
@@ -7208,6 +7199,7 @@ HideInFloorDep:SetupDependencies({ { HideInFloorToggle, true } })
     lp.CharacterAdded:Connect(function()
         if flyEnabled then task.wait(0.5) startFly() end
         if noclipEnabled then task.wait(0.5) startNoclip() end
+        if hideInFloorEnabled then task.wait(0.5) startHideInFloor() end
     end)
 end
 
