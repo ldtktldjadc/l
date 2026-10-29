@@ -3914,7 +3914,7 @@ do
 
     local currentTargetPart = nil
     local currentDesyncCF = nil
-    local currentTargetYaw = nil
+    local currentTargetPitch, currentTargetYaw, currentTargetRoll = nil, nil, nil
 
     -- ========== ON-SCREEN ATTACK BUTTON ==========
     if getgenv()._KETY_RageAttackButton then
@@ -4469,7 +4469,7 @@ do
             local oldEncode = util.EncodeCameraRotation
             util.EncodeCameraRotation = function(self, rot)
                 if getgenv().Config and getgenv().Config.Enabled and getgenv().Config.WeaponSlot == "Knife" and currentTargetYaw and typeof(rot) == "Vector2" then
-                    rot = Vector2.new(0, currentTargetYaw)
+                    rot = Vector2.new(currentTargetPitch or 0, currentTargetYaw)
                 end
                 return oldEncode(self, rot)
             end
@@ -4480,9 +4480,10 @@ do
             local oldNamecall
             oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                 local method = getnamecallmethod()
+                if not checkcaller() and method == "FireServer" and self.Name == "UpdateState" and kiciaActive and enum and (...) == enum:ToEnum("IsCrouching") then return oldNamecall(self, (...), true) end
                 if not checkcaller() and method == "FireServer" and (self.Name == "UpdateCameraRotation" or (camRemote and self == camRemote)) then
                     if currentTargetYaw and getgenv().Config and getgenv().Config.Enabled and getgenv().Config.WeaponSlot == "Knife" then
-                        local encoded = util and util:EncodeCameraRotation(Vector2.new(0, currentTargetYaw))
+                        local encoded = util and util:EncodeCameraRotation(Vector2.new(currentTargetPitch or 0, currentTargetYaw))
                         if encoded then
                             return oldNamecall(self, encoded, nil)
                         end
@@ -4501,6 +4502,7 @@ do
 
         local function BuildShotPayload(origin, target, part)
             local aim_cf = util:EncodeCFrame(CFrame.new(origin, target))
+            if getgenv().Config and getgenv().Config.WeaponSlot == "Knife" and currentTargetYaw and aim_cf then aim_cf[utf8.char(4)] = currentTargetYaw; aim_cf[utf8.char(5)] = currentTargetRoll or 0 end
             return {
                 [utf8.char(0)] = aim_cf,
                 [utf8.char(1)] = aim_cf,
@@ -4566,6 +4568,7 @@ do
             kiciaActive = false
             kiciaLastPart = nil
             if myRoot then kiciaSetRepRoot(myRoot, myRoot) end
+            pcall(function() if enum then repS.Remotes.Replication.Fighter.UpdateState:FireServer(enum:ToEnum("IsCrouching"), MechanicsController and MechanicsController.IsCrouching or false) end end)
         end
 
         local KICIA_PART_NAMES = {
@@ -4825,7 +4828,7 @@ do
                     myTeam = localDueler and localDueler:Get("TeamID") or nil
                 end
                 if not myTeam then
-                    currentTargetYaw = nil
+                    currentTargetPitch, currentTargetYaw, currentTargetRoll = nil, nil, nil
                     kiciaReset(myRoot)
                     return
                 end
@@ -4896,18 +4899,21 @@ do
             local desyncCF
             local kiciaTarget = nil
             if canTarget then
-                local targetLowerTorso = targetPlayer.Character and targetPlayer.Character:FindFirstChild("LowerTorso")
-                local baseCFrame = targetLowerTorso and targetLowerTorso.CFrame or targetRoot.CFrame
-                local _, y, _ = baseCFrame:ToOrientation()
-                currentTargetYaw = y
+
+                local baseCFrame = targetRoot.CFrame
+                local p, y, r = baseCFrame:ToOrientation()
+                currentTargetPitch, currentTargetYaw, currentTargetRoll = p, y, r
+
 
                 local curSlot = getgenv().Config.WeaponSlot or "Primary"
                 if isKicia then
                     -- Kicia: 接着パーツへ NoDelaySnap 方式でスナップ（オフセット無し）
                     local kiciaPart = resolveKiciaAttachPart(targetPlayer.Character)
                     if kiciaPart then
-                        local attachPos = kiciaPart.Position
-                        if (attachPos - targetPart.Position).Magnitude > 0.001 then
+                        local attachPos = kiciaPart.Position + Vector3.new(0, -0.7, 0.05)
+                        if curSlot == "Knife" then
+                            desyncCF = CFrame.new(attachPos) * (baseCFrame - baseCFrame.Position)
+                        elseif (attachPos - targetPart.Position).Magnitude > 0.001 then
                             desyncCF = CFrame.lookAt(attachPos, targetPart.Position)
                         else
                             desyncCF = kiciaPart.CFrame
@@ -4932,7 +4938,7 @@ do
                 if curSlot == "Knife" then
                     local lookTarget = Vector3.new(targetPart.Position.X, desyncPos.Y, targetPart.Position.Z)
                     if (desyncPos - lookTarget).Magnitude > 0.001 then
-                        desyncCF = CFrame.lookAt(desyncPos, lookTarget)
+                        desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
                     else
                         desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
                     end
@@ -4945,7 +4951,7 @@ do
                 end
                 end
             else
-                currentTargetYaw = nil
+                currentTargetPitch, currentTargetYaw, currentTargetRoll = nil, nil, nil
                 kiciaReset(myRoot)
                 if tc == false then
                     desyncCF = myRoot.CFrame + Vector3.new(0, 900000000, 0)
@@ -4996,7 +5002,10 @@ do
                     kiciaSetRepRoot(myRoot, kiciaTarget)
                     myRoot.Anchored = false
                 end
-                kiciaActive = true
+                if not kiciaActive then
+                    kiciaActive = true
+                    pcall(function() if enum then repS.Remotes.Replication.Fighter.UpdateState:FireServer(enum:ToEnum("IsCrouching"), true) end end)
+                end
                 kiciaSetRepRoot(myRoot, kiciaTarget)
                 local kVel = kiciaTarget.AssemblyLinearVelocity
                 myRoot.AssemblyLinearVelocity = kVel
@@ -5060,7 +5069,7 @@ do
 
             local originPos = desyncCF.Position
             local targetPos = targetPart.Position
-            local aimCF    = CFrame.lookAt(originPos, targetPos)
+            local aimCF    = (isKnife and currentTargetYaw) and (CFrame.new(originPos) * CFrame.fromOrientation(currentTargetPitch or 0, currentTargetYaw, currentTargetRoll or 0)) or CFrame.lookAt(originPos, targetPos)
             local randomOffset = Vector3.new(
                 (math.random() - 0.5) * 0.1,
                 (math.random() - 0.5) * 0.1,
@@ -5077,7 +5086,7 @@ do
             }
             if isKnife and camRemote and currentTargetYaw then
                 pcall(function()
-                    local enc = util:EncodeCameraRotation(Vector2.new(0, currentTargetYaw))
+                    local enc = util:EncodeCameraRotation(Vector2.new(currentTargetPitch or 0, currentTargetYaw))
                     camRemote:FireServer(enc, nil)
                 end)
             end
