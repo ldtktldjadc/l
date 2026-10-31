@@ -5483,6 +5483,41 @@ do
     local yawOverride   = 0
     local toggleVal     = 4999
 
+    local function getAAEnemyPart()
+        local myChar = lp and lp.Character
+        local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return nil end
+
+        local bestPart = nil
+        local bestDist = math.huge
+        local tc = getgenv().Config and getgenv().Config.TeamCheck
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player == lp then continue end
+            if tc ~= false and not getgenv().KETY_IsEnemy(player) then continue end
+
+            local pChar = player.Character
+            if not pChar then continue end
+            local pHum = pChar:FindFirstChildWhichIsA("Humanoid")
+            if not (pHum and pHum.Health > 0) then continue end
+
+            local pRoot = pChar:FindFirstChild("HumanoidRootPart")
+            if not pRoot then continue end
+
+            local targetPart = pChar:FindFirstChild("HitboxHead")
+                or pChar:FindFirstChild("Head")
+                or pChar:FindFirstChild("HitboxBody")
+                or pRoot
+
+            local dist = (myRoot.Position - targetPart.Position).Magnitude
+            if dist < bestDist then
+                bestDist = dist
+                bestPart = targetPart
+            end
+        end
+        return bestPart
+    end
+
     local function encodeUnclamped(pitchDeg, yawDeg)
         local pitchRad = math.rad(pitchDeg)
         local yawRad   = math.rad(yawDeg)
@@ -5509,7 +5544,7 @@ do
     local AntiAimDep = AntiAimSection:AddDependencyBox()
 
     local PitchDropdown = AntiAimDep:AddDropdown("AntiAim_PitchMode", {
-        Values = {"Glitch Pitch", "Random Pitch", "Custom Pitch"},
+        Values = {"Glitch Pitch", "Random Pitch", "Custom Pitch", "HitboxExtend"},
         Default = 1,
         Multi = false,
         Text = "Pitch Mode",
@@ -5530,7 +5565,7 @@ do
     local AntiAimDep2 = AntiAimSection:AddDependencyBox()
 
     local YawDropdown = AntiAimDep2:AddDropdown("AntiAim_YawMode", {
-        Values = {"Random Yaw", "Custom Yaw"},
+        Values = {"Random Yaw", "Custom Yaw", "HitboxExtend"},
         Default = 1,
         Multi = false,
         Text = "Yaw Mode",
@@ -5585,18 +5620,42 @@ do
 
     local lastSend = 0
     RunService.Heartbeat:Connect(function()
+        local enemyPart = nil
+        if pitchMode == "HitboxExtend" or yawMode == "HitboxExtend" then
+            enemyPart = getAAEnemyPart()
+        end
+
+        local enemyPitchDeg, enemyYawDeg = nil, nil
+        if enemyPart then
+            local myChar = lp and lp.Character
+            local myHead = myChar and (myChar:FindFirstChild("HitboxHead") or myChar:FindFirstChild("Head") or myChar:FindFirstChild("HumanoidRootPart"))
+            if myHead then
+                local dir = enemyPart.Position - myHead.Position
+                local distXZ = math.sqrt(dir.X * dir.X + dir.Z * dir.Z)
+                local tau = math.pi * 2
+                local pRad = math.atan2(dir.Y, distXZ)
+                local yRad = math.atan2(-dir.X, -dir.Z)
+                enemyPitchDeg = math.deg((pRad % tau + tau) % tau)
+                enemyYawDeg   = math.deg((yRad % tau + tau) % tau)
+            end
+        end
+
         if pitchMode == "Glitch Pitch" then
             pitchOverride = 1150
         elseif pitchMode == "Random Pitch" then
             pitchOverride = toggleVal
         elseif pitchMode == "Custom Pitch" then
             pitchOverride = customPitch
+        elseif pitchMode == "HitboxExtend" then
+            pitchOverride = enemyPitchDeg or 0
         end
 
         if yawMode == "Random Yaw" then
             yawOverride = toggleVal
         elseif yawMode == "Custom Yaw" then
             yawOverride = customYaw
+        elseif yawMode == "HitboxExtend" then
+            yawOverride = enemyYawDeg or 0
         end
 
         local now = tick()
@@ -5612,8 +5671,6 @@ do
         end)
     end)
 end
-
-
 
 do
     local autoQueueEnabled = false
