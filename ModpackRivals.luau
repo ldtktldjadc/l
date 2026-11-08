@@ -5426,6 +5426,7 @@ do
     local pitchMode = "Glitch Pitch"
     local yawMode   = "Random Yaw"
     local customPitch = 179
+    local extendedPitch = 0
     local customYaw   = 360
     local pitchOverride = 1150
     local yawOverride   = 0
@@ -5492,7 +5493,7 @@ do
     local AntiAimDep = AntiAimSection:AddDependencyBox()
 
     local PitchDropdown = AntiAimDep:AddDropdown("AntiAim_PitchMode", {
-        Values = {"Glitch Pitch", "Random Pitch", "Custom Pitch", "HitboxExtend"},
+        Values = {"Glitch Pitch", "Random Pitch", "Custom Pitch", "ExtendedPitch", "HitboxExtend"},
         Default = 1,
         Multi = false,
         Text = "Pitch Mode",
@@ -5509,6 +5510,17 @@ do
         Callback = function(value) customPitch = value end
     })
     PitchCustomDep:SetupDependencies({ { AntiAimToggle, true }, { PitchDropdown, "Custom Pitch" } })
+
+    local PitchExtendedDep = AntiAimSection:AddDependencyBox()
+    PitchExtendedDep:AddSlider("AntiAim_ExtendedPitch", {
+        Text = "Extended Pitch",
+        Default = 0,
+        Min = 0,
+        Max = 99999,
+        Rounding = 0,
+        Callback = function(value) extendedPitch = value end
+    })
+    PitchExtendedDep:SetupDependencies({ { AntiAimToggle, true }, { PitchDropdown, "ExtendedPitch" } })
 
     local AntiAimDep2 = AntiAimSection:AddDependencyBox()
 
@@ -5582,11 +5594,13 @@ do
         end
 
         if pitchMode == "Glitch Pitch" then
-            pitchOverride = 100000
+            pitchOverride = 1150
         elseif pitchMode == "Random Pitch" then
             pitchOverride = toggleVal
         elseif pitchMode == "Custom Pitch" then
             pitchOverride = customPitch
+        elseif pitchMode == "ExtendedPitch" then
+            pitchOverride = extendedPitch
         elseif pitchMode == "HitboxExtend" then
             pitchOverride = enemyPitchDeg or 0
         end
