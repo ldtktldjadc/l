@@ -5426,11 +5426,13 @@ do
     local pitchMode = "Glitch Pitch"
     local yawMode   = "Random Yaw"
     local customPitch = 179
-    local extendedPitch = 0
     local customYaw   = 360
-    local pitchOverride = 1150
+    local pitchOverride = 99999
     local yawOverride   = 0
     local toggleVal     = 4999
+    local glitchPitchVal = 99999
+    local glitchTask    = nil
+    local camRemote     = nil
 
     local function getAAEnemyPart()
         local myChar = lp and lp.Character
@@ -5477,10 +5479,51 @@ do
         return utf8.char(pVal) .. utf8.char(yVal)
     end
 
+    local function triggerGlitchPitch()
+        if glitchTask then
+            pcall(task.cancel, glitchTask)
+            glitchTask = nil
+        end
+        glitchTask = task.spawn(function()
+            glitchPitchVal = 0
+            pitchOverride = 0
+            if aaEnabled and camRemote then
+                pcall(function()
+                    local encoded = encodeUnclamped(0, yawOverride)
+                    camRemote:FireServer(encoded, nil)
+                end)
+            end
+            task.wait(0.05)
+            glitchPitchVal = 74568
+            pitchOverride = 74568
+            if aaEnabled and camRemote then
+                pcall(function()
+                    local encoded = encodeUnclamped(74568, yawOverride)
+                    camRemote:FireServer(encoded, nil)
+                end)
+            end
+            task.wait(0.05)
+            glitchPitchVal = 99999
+            pitchOverride = 99999
+            if aaEnabled and camRemote then
+                pcall(function()
+                    local encoded = encodeUnclamped(99999, yawOverride)
+                    camRemote:FireServer(encoded, nil)
+                end)
+            end
+            glitchTask = nil
+        end)
+    end
+
     local AntiAimToggle = AntiAimSection:AddToggle("AntiAim_Enabled", {
         Text = "Enabled",
         Default = false,
-        Callback = function(value) aaEnabled = value end
+        Callback = function(value)
+            aaEnabled = value
+            if value and pitchMode == "Glitch Pitch" then
+                triggerGlitchPitch()
+            end
+        end
     })
 
     AntiAimToggle:AddKeyPicker("AntiAimKey", {
@@ -5493,11 +5536,16 @@ do
     local AntiAimDep = AntiAimSection:AddDependencyBox()
 
     local PitchDropdown = AntiAimDep:AddDropdown("AntiAim_PitchMode", {
-        Values = {"Glitch Pitch", "Random Pitch", "Custom Pitch", "ExtendedPitch", "HitboxExtend"},
+        Values = {"Glitch Pitch", "Random Pitch", "Custom Pitch", "HitboxExtend"},
         Default = 1,
         Multi = false,
         Text = "Pitch Mode",
-        Callback = function(value) pitchMode = value end
+        Callback = function(value)
+            pitchMode = value
+            if value == "Glitch Pitch" then
+                triggerGlitchPitch()
+            end
+        end
     })
 
     local PitchCustomDep = AntiAimSection:AddDependencyBox()
@@ -5510,17 +5558,6 @@ do
         Callback = function(value) customPitch = value end
     })
     PitchCustomDep:SetupDependencies({ { AntiAimToggle, true }, { PitchDropdown, "Custom Pitch" } })
-
-    local PitchExtendedDep = AntiAimSection:AddDependencyBox()
-    PitchExtendedDep:AddSlider("AntiAim_ExtendedPitch", {
-        Text = "Extended Pitch",
-        Default = 0,
-        Min = 0,
-        Max = 99999,
-        Rounding = 0,
-        Callback = function(value) extendedPitch = value end
-    })
-    PitchExtendedDep:SetupDependencies({ { AntiAimToggle, true }, { PitchDropdown, "ExtendedPitch" } })
 
     local AntiAimDep2 = AntiAimSection:AddDependencyBox()
 
@@ -5546,7 +5583,6 @@ do
     AntiAimDep:SetupDependencies({ { AntiAimToggle, true } })
     AntiAimDep2:SetupDependencies({ { AntiAimToggle, true } })
 
-    local camRemote = nil
     task.spawn(function()
         local ok1, remote = pcall(function()
             return ReplicatedStorage
@@ -5594,13 +5630,11 @@ do
         end
 
         if pitchMode == "Glitch Pitch" then
-            pitchOverride = 1150
+            pitchOverride = glitchPitchVal or 99999
         elseif pitchMode == "Random Pitch" then
             pitchOverride = toggleVal
         elseif pitchMode == "Custom Pitch" then
             pitchOverride = customPitch
-        elseif pitchMode == "ExtendedPitch" then
-            pitchOverride = extendedPitch
         elseif pitchMode == "HitboxExtend" then
             pitchOverride = enemyPitchDeg or 0
         end
