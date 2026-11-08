@@ -2037,69 +2037,6 @@ task.spawn(function()
     end)
 end)
 
--- ========== ANTI FREEZE RAY ==========
-do
-    local AntiFreezeSection = Tabs.Combat:AddRightGroupbox("Anti Freeze Ray")
-
-    getgenv().AntiFreezeEnabled = false
-
-    local CameraController = nil
-    local MechanicsController = nil
-    local ClientEntityModule = nil
-
-    task.spawn(function()
-    end)
-
-    -- entity:Get("IsFrozen")をhookしてローカルプレイヤーには常にfalseを返す
-    local function hookEntity(ent)
-        if not ent or ent._afGetHooked then return end
-        ent._afGetHooked = true
-        local oldGet = ent.Get
-        ent.Get = function(self, key, ...)
-            if getgenv().AntiFreezeEnabled and key == "IsFrozen" then
-                return false
-            end
-            return oldGet(self, key, ...)
-        end
-    end
-
-    -- 毎フレーム：PlatformStand解除 + entityをhook
-    RunService.Heartbeat:Connect(function()
-        if not getgenv().AntiFreezeEnabled then return end
-        pcall(function()
-            -- PlatformStand直接解除
-            local char = lp.Character
-            if char then
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if hum then
-                    if hum.PlatformStand then hum.PlatformStand = false end
-                    hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
-                end
-            end
-            -- FighterController.LocalFighter.Entity の Get("IsFrozen") をhook
-            if FighterController and FighterController.LocalFighter then
-                local lf = FighterController.LocalFighter
-                hookEntity(lf)
-                if lf.Entity then hookEntity(lf.Entity) end
-                if lf.Character then hookEntity(lf.Character) end
-            end
-        end)
-    end)
-
-    AntiFreezeSection:AddToggle("AntiFreezeEnabled", {
-        Text = "Anti Freeze Ray",
-        Default = false,
-        Callback = function(v)
-            getgenv().AntiFreezeEnabled = v
-        end
-    }):AddKeyPicker("AntiFreezeKey", {
-        Default = "None",
-        SyncToggleState = true,
-        Mode = "Toggle",
-        Text = "Anti Freeze Ray",
-    })
-end
-
 -- ===== VISUALS TAB =====
 local ESPSection = Tabs.Visuals:AddLeftGroupbox("ESP")
 
@@ -5645,7 +5582,7 @@ do
         end
 
         if pitchMode == "Glitch Pitch" then
-            pitchOverride = 1150
+            pitchOverride = 4000
         elseif pitchMode == "Random Pitch" then
             pitchOverride = toggleVal
         elseif pitchMode == "Custom Pitch" then
@@ -7612,7 +7549,7 @@ FlyDep:AddSlider("FlySpeedSlider", {
     Text = "Fly Speed",
     Default = 70,
     Min = 20,
-    Max = 200,
+    Max = 1000,
     Rounding = 0,
     Callback = function(value)
         flySpeed = value
@@ -7789,6 +7726,7 @@ HideInFloorDep:SetupDependencies({ { HideInFloorToggle, true } })
     -- Slide Boost
     local slideBoostEnabled = false
     local slideBoostMultiplier = 1.0
+    local autoSlideJumpEnabled = false
 
     local function setupSlideBoost()
         local MechanicsController
@@ -7821,6 +7759,25 @@ HideInFloorDep:SetupDependencies({ { HideInFloorToggle, true } })
                         end
                     end)
                 end
+            end
+            if autoSlideJumpEnabled then
+                task.spawn(function()
+                    task.wait()
+                    pcall(function()
+                        if self:IsAlive() then
+                            if type(self.HighJump) == "function" then
+                                self:HighJump()
+                            elseif type(self.Jump) == "function" then
+                                self:Jump()
+                            end
+                            local char = lp.Character
+                            local hum = char and char:FindFirstChildOfClass("Humanoid")
+                            if hum then
+                                hum.Jump = true
+                            end
+                        end
+                    end)
+                end)
             end
             return oldSlide(self)
         end
@@ -7859,6 +7816,21 @@ HideInFloorDep:SetupDependencies({ { HideInFloorToggle, true } })
 
     SlideBoostDep:SetupDependencies({ { SlideBoostToggle, true } })
 
+    local AutoSlideJumpToggle = MovementSection:AddToggle("AutoSlideJumpToggle", {
+        Text = "Auto Slide Jump",
+        Default = false,
+        Callback = function(v)
+            autoSlideJumpEnabled = v
+        end
+    })
+
+    AutoSlideJumpToggle:AddKeyPicker("AutoSlideJumpKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Auto Slide Jump",
+    })
+
     if getgenv then
         getgenv().SlideBoost = {
             SetEnabled = function(val)
@@ -7881,6 +7853,70 @@ HideInFloorDep:SetupDependencies({ { HideInFloorToggle, true } })
         if noclipEnabled then task.wait(0.5) startNoclip() end
         if hideInFloorEnabled then task.wait(0.5) startHideInFloor() end
     end)
+end
+
+
+-- ========== ANTI FREEZE RAY (MISC) ==========
+do
+    local AntiFreezeSection = Tabs.Misc:AddRightGroupbox("Anti Freeze Ray")
+
+    getgenv().AntiFreezeEnabled = false
+
+    local CameraController = nil
+    local MechanicsController = nil
+    local ClientEntityModule = nil
+
+    task.spawn(function()
+    end)
+
+    -- entity:Get("IsFrozen")をhookしてローカルプレイヤーには常にfalseを返す
+    local function hookEntity(ent)
+        if not ent or ent._afGetHooked then return end
+        ent._afGetHooked = true
+        local oldGet = ent.Get
+        ent.Get = function(self, key, ...)
+            if getgenv().AntiFreezeEnabled and key == "IsFrozen" then
+                return false
+            end
+            return oldGet(self, key, ...)
+        end
+    end
+
+    -- 毎フレーム：PlatformStand解除 + entityをhook
+    RunService.Heartbeat:Connect(function()
+        if not getgenv().AntiFreezeEnabled then return end
+        pcall(function()
+            -- PlatformStand直接解除
+            local char = lp.Character
+            if char then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    if hum.PlatformStand then hum.PlatformStand = false end
+                    hum:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
+                end
+            end
+            -- FighterController.LocalFighter.Entity の Get("IsFrozen") をhook
+            if FighterController and FighterController.LocalFighter then
+                local lf = FighterController.LocalFighter
+                hookEntity(lf)
+                if lf.Entity then hookEntity(lf.Entity) end
+                if lf.Character then hookEntity(lf.Character) end
+            end
+        end)
+    end)
+
+    AntiFreezeSection:AddToggle("AntiFreezeEnabled", {
+        Text = "Anti Freeze Ray",
+        Default = false,
+        Callback = function(v)
+            getgenv().AntiFreezeEnabled = v
+        end
+    }):AddKeyPicker("AntiFreezeKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Anti Freeze Ray",
+    })
 end
 
 -- ========== CHANGER TAB ==========
