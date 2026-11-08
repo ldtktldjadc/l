@@ -21,12 +21,28 @@ getgenv().DeviceSpoofEnabled = false
 getgenv().DeviceSpoofValue = "Touch"
 getgenv()._LastPendingControls = nil
 
-if not getgenv()._SetControlsHooked and hookmetamethod and newcclosure then
+-- 単一の __namecall ディスパッチャ（メソッド名ごとのチェーン。該当しない呼び出しは1回のテーブル参照だけ）
+if not getgenv().KETY_HookNamecall and hookmetamethod and newcclosure then
+    local chains = {}
+    local realOld
+    local function callReal(self, ...) return realOld(self, ...) end
+    realOld = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+        local ch = chains[getnamecallmethod()]
+        if ch then return ch(self, ...) end
+        return realOld(self, ...)
+    end))
+    getgenv().KETY_HookNamecall = function(methods, make)
+        for i = 1, #methods do
+            local m = methods[i]
+            chains[m] = make(chains[m] or callReal)
+        end
+    end
+end
+
+if not getgenv()._SetControlsHooked and getgenv().KETY_HookNamecall then
     getgenv()._SetControlsHooked = true
-    local oldNC
-    oldNC = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        if (method == "FireServer" or (method and method:lower() == "fireserver")) then
+    getgenv().KETY_HookNamecall({"FireServer", "fireServer", "fireserver"}, function(old)
+        return function(self, ...)
             if self and (self.Name == "SetControls" or tostring(self) == "SetControls") then
                 if not getgenv().ModpackLoaded then
                     getgenv()._LastPendingControls = ...
@@ -34,13 +50,13 @@ if not getgenv()._SetControlsHooked and hookmetamethod and newcclosure then
                 end
                 if getgenv().DeviceSpoofEnabled and getgenv().DeviceSpoofValue then
                     if checkcaller and not checkcaller() then
-                        return oldNC(self, getgenv().DeviceSpoofValue)
+                        return old(self, getgenv().DeviceSpoofValue)
                     end
                 end
             end
+            return old(self, ...)
         end
-        return oldNC(self, ...)
-    end))
+    end)
 end
 
 local Players = game:GetService("Players")
@@ -104,6 +120,14 @@ end
 if getgenv().KETY_NoArmConnection then
     pcall(function() getgenv().KETY_NoArmConnection:Disconnect() end)
     getgenv().KETY_NoArmConnection = nil
+end
+if getgenv().KETY_HideCharConnection then
+    pcall(function() getgenv().KETY_HideCharConnection:Disconnect() end)
+    getgenv().KETY_HideCharConnection = nil
+end
+if getgenv().KETY_HideCharAddedConnection then
+    pcall(function() getgenv().KETY_HideCharAddedConnection:Disconnect() end)
+    getgenv().KETY_HideCharAddedConnection = nil
 end
 if getgenv()._AimLockFOVConn then
     pcall(function() getgenv()._AimLockFOVConn:Disconnect() end)
@@ -299,43 +323,36 @@ do
         return currentDir
     end
 
-    if hookmetamethod and newcclosure and checkcaller then
-        if not getgenv()._OriginalNamecall then
-            getgenv()._OriginalNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-                local method = getnamecallmethod()
+    if getgenv().KETY_HookNamecall and checkcaller and not getgenv()._SilentNCHooked then
+        getgenv()._SilentNCHooked = true
+        getgenv().KETY_HookNamecall({"Raycast", "raycast"}, function(old)
+            return function(self, ...)
                 local cfg = getgenv().SilentConfig
-                if not cfg or not cfg.Enabled or checkcaller() or not method or isInsideRaycastHook then
-                    if setnamecallmethod then setnamecallmethod(method) end
-                    return getgenv()._OriginalNamecall(self, ...)
+                if self ~= workspace or not cfg or not cfg.Enabled or isInsideRaycastHook or checkcaller() then
+                    return old(self, ...)
                 end
+                local method = getnamecallmethod()
 
-                local m = method:lower()
-
-                -- Workspace:Raycast Hook (Client Raycast deflection)
-                if m == "raycast" and self == workspace then
-                    isInsideRaycastHook = true
-                    local args = {...}
-                    local origin = args[1]
-                    local direction = args[2]
-                    local success, resultDir = pcall(function()
-                        if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
-                            return getSilentAimDirection(origin, direction)
-                        end
-                        return direction
-                    end)
-                    isInsideRaycastHook = false
-
-                    if success and typeof(resultDir) == "Vector3" then
-                        args[2] = resultDir
-                        if setnamecallmethod then setnamecallmethod(method) end
-                        return getgenv()._OriginalNamecall(self, unpack(args))
+                isInsideRaycastHook = true
+                local args = {...}
+                local origin = args[1]
+                local direction = args[2]
+                local success, resultDir = pcall(function()
+                    if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
+                        return getSilentAimDirection(origin, direction)
                     end
-                end
+                    return direction
+                end)
+                isInsideRaycastHook = false
 
                 if setnamecallmethod then setnamecallmethod(method) end
-                return getgenv()._OriginalNamecall(self, ...)
-            end))
-        end
+                if success and typeof(resultDir) == "Vector3" then
+                    args[2] = resultDir
+                    return old(self, unpack(args))
+                end
+                return old(self, ...)
+            end
+        end)
     end
 end
 
@@ -2479,9 +2496,16 @@ end
 local function checkVMLoopState()
     if noArmEnabled or vmMaterialActive() then
         if not noArmConnection then
+            local _vmLast = 0
             noArmConnection = RunService.RenderStepped:Connect(function()
                 if noArmEnabled then updateNoArmInWorld(true) end
-                if vmMaterialActive() then updateVMMaterials() end
+                if vmMaterialActive() then
+                    local t = tick()
+                    if t - _vmLast >= 0.1 then
+                        _vmLast = t
+                        updateVMMaterials()
+                    end
+                end
             end)
             getgenv().KETY_NoArmConnection = noArmConnection
         end
@@ -2674,7 +2698,11 @@ local function ensureNoVMAnimHook()
                         end)
                     end
                     if vmMaterialActive() and self.Model then
-                        pcall(processVMMaterials, self.Model)
+                        local _t = tick()
+                        if _t - (self._vmMatT or 0) >= 0.1 then
+                            self._vmMatT = _t
+                            pcall(processVMMaterials, self.Model)
+                        end
                     end
                     return ret
                 end
@@ -3299,6 +3327,284 @@ do
         Mode = "Toggle",
         Text = "No Flash",
     })
+
+    local noMuzzleFlashEnabled = false
+    local originalMuzzleFlash = nil
+    local cachedClientViewModel = nil
+
+    local function applyMuzzleFlashHook()
+        if cachedClientViewModel then return end
+        pcall(function()
+            local scripts = lp:FindFirstChild("PlayerScripts") or lp:WaitForChild("PlayerScripts", 5)
+            if scripts then
+                for _, v in pairs(scripts:GetDescendants()) do
+                    if v:IsA("ModuleScript") and (v.Name == "ClientViewModel" or v.Name == "ModuleScript_ClientViewModel") then
+                        local ok, res = pcall(require, v)
+                        if ok and type(res) == "table" then
+                            cachedClientViewModel = res
+                            break
+                        end
+                    end
+                end
+            end
+            if not cachedClientViewModel then
+                for _, v in pairs(ReplicatedStorage:GetDescendants()) do
+                    if v:IsA("ModuleScript") and (v.Name == "ClientViewModel" or v.Name == "ModuleScript_ClientViewModel") then
+                        local ok, res = pcall(require, v)
+                        if ok and type(res) == "table" then
+                            cachedClientViewModel = res
+                            break
+                        end
+                    end
+                end
+            end
+            if cachedClientViewModel and not originalMuzzleFlash then
+                originalMuzzleFlash = cachedClientViewModel.MuzzleFlash
+                cachedClientViewModel.MuzzleFlash = function(self, ...)
+                    if noMuzzleFlashEnabled then
+                        return
+                    end
+                    if originalMuzzleFlash then
+                        return originalMuzzleFlash(self, ...)
+                    end
+                end
+            end
+        end)
+    end
+    task.spawn(applyMuzzleFlashHook)
+
+    local NoMuzzleFlashToggle = EffectsSection:AddToggle("Visuals_NoMuzzleFlash_Enabled", {
+        Text = "No Muzzle Flash",
+        Default = false,
+        Callback = function(v)
+            noMuzzleFlashEnabled = v
+            if v then
+                applyMuzzleFlashHook()
+            end
+        end
+    })
+    NoMuzzleFlashToggle:AddKeyPicker("NoMuzzleFlashKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "No Muzzle Flash",
+    })
+
+    -- Hide Character
+    local hideCharacterEnabled = false
+    local origTrans = setmetatable({}, { __mode = "k" })
+    local hideCharRenderConn = nil
+    local charDescendantConn = nil
+
+    local function applyHidePart(part)
+        if not part then return end
+        if part:IsA("BasePart") then
+            if origTrans[part] == nil then
+                origTrans[part] = {
+                    Transparency = (part.Transparency == 1 and part.Name ~= "HumanoidRootPart") and 0 or part.Transparency,
+                    LTM = part.LocalTransparencyModifier
+                }
+            end
+            if part.Name ~= "HumanoidRootPart" and part.Transparency ~= 1 then
+                part.Transparency = 1
+            end
+            if part.LocalTransparencyModifier ~= 1 then
+                part.LocalTransparencyModifier = 1
+            end
+        elseif part:IsA("Decal") or part:IsA("Texture") then
+            if origTrans[part] == nil then
+                origTrans[part] = { Transparency = part.Transparency }
+            end
+            if part.Transparency ~= 1 then
+                part.Transparency = 1
+            end
+        elseif part:IsA("ParticleEmitter") or part:IsA("Trail") or part:IsA("Beam") or part:IsA("Fire") or part:IsA("Smoke") or part:IsA("Sparkles") then
+            if origTrans[part] == nil then
+                origTrans[part] = { Enabled = part.Enabled }
+            end
+            if part.Enabled then
+                part.Enabled = false
+            end
+        elseif part:IsA("Highlight") then
+            if origTrans[part] == nil then
+                origTrans[part] = { Enabled = part.Enabled }
+            end
+            if part.Enabled then
+                part.Enabled = false
+            end
+        end
+    end
+
+    local function restorePart(part)
+        if not part then return end
+        local saved = origTrans[part]
+        if part:IsA("BasePart") then
+            if saved and saved.Transparency ~= nil then
+                part.Transparency = saved.Transparency
+            elseif part.Name ~= "HumanoidRootPart" then
+                part.Transparency = 0
+            end
+            if saved and saved.LTM ~= nil then
+                part.LocalTransparencyModifier = saved.LTM
+            else
+                part.LocalTransparencyModifier = 0
+            end
+        elseif part:IsA("Decal") or part:IsA("Texture") then
+            part.Transparency = (saved and saved.Transparency ~= nil) and saved.Transparency or 0
+        elseif part:IsA("ParticleEmitter") or part:IsA("Trail") or part:IsA("Beam") or part:IsA("Fire") or part:IsA("Smoke") or part:IsA("Sparkles") or part:IsA("Highlight") then
+            part.Enabled = (saved and saved.Enabled ~= nil) and saved.Enabled or true
+        end
+        origTrans[part] = nil
+    end
+
+    local function applyHideCharacter(char)
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            applyHidePart(part)
+        end
+    end
+
+    local function restoreCharacter(char)
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            restorePart(part)
+        end
+        pcall(function()
+            local FCModule = lp:FindFirstChild("PlayerScripts") and lp.PlayerScripts:FindFirstChild("Controllers") and lp.PlayerScripts.Controllers:FindFirstChild("FighterController")
+            if FCModule then
+                local FC = require(FCModule)
+                local fighter = FC:GetFighter(lp)
+                if fighter and fighter.Character then
+                    fighter.Character._is_hidden = false
+                    if type(fighter.Character._UpdateVisibility) == "function" then
+                        fighter.Character:_UpdateVisibility(true)
+                    elseif type(fighter.Character._BulkUpdateVisibility) == "function" then
+                        fighter.Character:_BulkUpdateVisibility()
+                    end
+                end
+            end
+        end)
+    end
+
+    local function setupCharDescendants(char)
+        if charDescendantConn then
+            charDescendantConn:Disconnect()
+            charDescendantConn = nil
+        end
+        if char then
+            charDescendantConn = char.DescendantAdded:Connect(function(child)
+                if hideCharacterEnabled then
+                    applyHidePart(child)
+                end
+            end)
+        end
+    end
+
+    local function startHideCharacter()
+        if not hideCharRenderConn then
+            hideCharRenderConn = RunService.RenderStepped:Connect(function()
+                if hideCharacterEnabled and lp.Character then
+                    applyHideCharacter(lp.Character)
+                end
+            end)
+            getgenv().KETY_HideCharConnection = hideCharRenderConn
+        end
+        if lp.Character then
+            setupCharDescendants(lp.Character)
+            applyHideCharacter(lp.Character)
+        end
+    end
+
+    local function stopHideCharacter()
+        if hideCharRenderConn then
+            hideCharRenderConn:Disconnect()
+            hideCharRenderConn = nil
+            getgenv().KETY_HideCharConnection = nil
+        end
+        if charDescendantConn then
+            charDescendantConn:Disconnect()
+            charDescendantConn = nil
+        end
+        if lp.Character then
+            restoreCharacter(lp.Character)
+        end
+    end
+
+    -- Respawn persistence
+    if getgenv().KETY_HideCharAddedConnection then
+        pcall(function() getgenv().KETY_HideCharAddedConnection:Disconnect() end)
+        getgenv().KETY_HideCharAddedConnection = nil
+    end
+    getgenv().KETY_HideCharAddedConnection = lp.CharacterAdded:Connect(function(newChar)
+        setupCharDescendants(newChar)
+        if hideCharacterEnabled then
+            task.defer(function()
+                applyHideCharacter(newChar)
+            end)
+        end
+    end)
+    if lp.Character then
+        setupCharDescendants(lp.Character)
+    end
+
+    -- Hook ClientFighterCharacter if available
+    task.spawn(function()
+        pcall(function()
+            local scripts = lp:FindFirstChild("PlayerScripts") or lp:WaitForChild("PlayerScripts", 5)
+            local cfcM
+            if scripts then
+                for _, v in pairs(scripts:GetDescendants()) do
+                    if v:IsA("ModuleScript") and (v.Name == "ClientFighterCharacter" or v.Name == "ModuleScript_ClientFighterCharacter") then
+                        cfcM = v
+                        break
+                    end
+                end
+            end
+            if not cfcM then
+                for _, v in pairs(ReplicatedStorage:GetDescendants()) do
+                    if v:IsA("ModuleScript") and (v.Name == "ClientFighterCharacter" or v.Name == "ModuleScript_ClientFighterCharacter") then
+                        cfcM = v
+                        break
+                    end
+                end
+            end
+            if cfcM then
+                local CFC = require(cfcM)
+                if CFC and type(CFC._UpdateVisibility) == "function" then
+                    local origVis = CFC._UpdateVisibility
+                    CFC._UpdateVisibility = function(self, force, override)
+                        if hideCharacterEnabled and (self.Player == lp or (self.ClientFighter and self.ClientFighter.Player == lp) or (self.Model == lp.Character)) then
+                            self._is_hidden = true
+                            if type(self._BulkUpdateVisibility) == "function" then
+                                pcall(function() self:_BulkUpdateVisibility() end)
+                            end
+                            return
+                        end
+                        return origVis(self, force, override)
+                    end
+                end
+            end
+        end)
+    end)
+
+    local HideCharacterToggle = EffectsSection:AddToggle("Visuals_HideCharacter_Enabled", {
+        Text = "Hide Character",
+        Default = false,
+        Callback = function(v)
+            hideCharacterEnabled = v
+            if v then
+                startHideCharacter()
+            else
+                stopHideCharacter()
+            end
+        end
+    })
+    HideCharacterToggle:AddKeyPicker("HideCharacterKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Hide Character",
+    })
 end
 
 -- ===== ENVIRONMENT TAB (WORLD) =====
@@ -3591,6 +3897,7 @@ do
     end
 
     local mySky, myAtmo, cloudsWas
+    local _lastCloudScan = 0
     local hidden = {}
 
     local function applySkyObjects()
@@ -3660,10 +3967,14 @@ do
             end
 
             if cfg.NoClouds then
-                for _, clouds in ipairs(workspace:GetDescendants()) do
-                    if clouds:IsA("Clouds") and clouds.Enabled then
-                        cloudsWas = true
-                        clouds.Enabled = false
+                local _cn = tick()
+                if _cn - _lastCloudScan > 2 then
+                    _lastCloudScan = _cn
+                    for _, clouds in ipairs(workspace:GetDescendants()) do
+                        if clouds:IsA("Clouds") and clouds.Enabled then
+                            cloudsWas = true
+                            clouds.Enabled = false
+                        end
                     end
                 end
             elseif cloudsWas then
@@ -3905,7 +4216,7 @@ do
     getgenv().Config.TPOffsets.Secondary = getgenv().Config.TPOffsets.Secondary or { X = 0, Y = 5, Z = 0 }
     getgenv().Config.TPOffsets.Melee = getgenv().Config.TPOffsets.Melee or { X = 0, Y = 5, Z = 0 }
     getgenv().Config.TPOffsets.Knife = getgenv().Config.TPOffsets.Knife or { X = 0, Y = -5, Z = 1 }
-    getgenv().Config.VoidSpamType = getgenv().Config.VoidSpamType or "Normal"
+    getgenv().Config.VoidSpamType = "Normal"
     if getgenv().Config.KR_Offset == nil then getgenv().Config.KR_Offset = -0.002 end
     if getgenv().Config.KR_VoidTime == nil then getgenv().Config.KR_VoidTime = 0.3 end
     if getgenv().Config.KR_GroundTime == nil then getgenv().Config.KR_GroundTime = 0.3 end
@@ -4111,27 +4422,16 @@ do
     -- Enabled が ON の時のみ RageBot 設定を表示する
     local RageEnabledDep = RageBotSection:AddDependencyBox()
     local RageMethodDropdown = RageEnabledDep:AddDropdown("RageBot_Method", {
-        Values = {"Normal", "Kicia"},
+        Values = {"Normal", "Kicia", "KillRagers"},
         Default = 1,
         Multi = false,
-        Text = "Rage Method",
+        Text = "Rage Type",
         Callback = function(value)
             getgenv().Config.Method = value
             if getgenv().RageBotConfig then getgenv().RageBotConfig.Method = value end
         end
     })
     RageEnabledDep:SetupDependencies({ { RageBotToggle, true } })
-
-    local VoidSpamTypeDropdown = RageEnabledDep:AddDropdown("RageBot_VoidSpamType", {
-        Values = {"Normal", "KillRagers"},
-        Default = 1,
-        Multi = false,
-        Text = "VoidSpamType",
-        Callback = function(value)
-            getgenv().Config.VoidSpamType = value
-            if getgenv().RageBotConfig then getgenv().RageBotConfig.VoidSpamType = value end
-        end
-    })
 
     local KRDep = RageBotSection:AddDependencyBox()
     KRDep:AddSlider("RageBot_KR_Offset", {
@@ -4158,7 +4458,7 @@ do
         Rounding = 2,
         Callback = function(value) getgenv().Config.KR_GroundTime = value end
     })
-    KRDep:SetupDependencies({ { RageBotToggle, true }, { VoidSpamTypeDropdown, "KillRagers" } })
+    KRDep:SetupDependencies({ { RageBotToggle, true }, { RageMethodDropdown, "KillRagers" } })
 
     local RageBotAutoAttackToggle = RageEnabledDep:AddToggle("RageBot_AutoAttack", {
         Text = "Auto Attack",
@@ -4475,21 +4775,23 @@ do
             end
         end
 
-        if not getgenv()._ragebotCamHooked then
+        if not getgenv()._ragebotCamHooked and getgenv().KETY_HookNamecall then
             getgenv()._ragebotCamHooked = true
-            local oldNamecall
-            oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-                local method = getnamecallmethod()
-                if not checkcaller() and method == "FireServer" and self.Name == "UpdateState" and kiciaActive and enum and (...) == enum:ToEnum("IsCrouching") then return oldNamecall(self, (...), true) end
-                if not checkcaller() and method == "FireServer" and (self.Name == "UpdateCameraRotation" or (camRemote and self == camRemote)) then
-                    if currentTargetYaw and getgenv().Config and getgenv().Config.Enabled and getgenv().Config.WeaponSlot == "Knife" then
-                        local encoded = util and util:EncodeCameraRotation(Vector2.new(currentTargetPitch or 0, currentTargetYaw))
-                        if encoded then
-                            return oldNamecall(self, encoded, nil)
+            getgenv().KETY_HookNamecall({"FireServer"}, function(oldNamecall)
+                return function(self, ...)
+                    if checkcaller() then return oldNamecall(self, ...) end
+                    local sname = self.Name
+                    if sname == "UpdateState" and kiciaActive and enum and (...) == enum:ToEnum("IsCrouching") then return oldNamecall(self, (...), true) end
+                    if sname == "UpdateCameraRotation" or (camRemote and self == camRemote) then
+                        if currentTargetYaw and getgenv().Config and getgenv().Config.Enabled and getgenv().Config.WeaponSlot == "Knife" then
+                            local encoded = util and util:EncodeCameraRotation(Vector2.new(currentTargetPitch or 0, currentTargetYaw))
+                            if encoded then
+                                return oldNamecall(self, encoded, nil)
+                            end
                         end
                     end
+                    return oldNamecall(self, ...)
                 end
-                return oldNamecall(self, ...)
             end)
         end
 
@@ -4953,10 +5255,10 @@ do
             else
                 currentTargetPitch, currentTargetYaw, currentTargetRoll = nil, nil, nil
                 kiciaReset(myRoot)
-                if tc == false then
-                    desyncCF = myRoot.CFrame + Vector3.new(0, 900000000, 0)
-                elseif getgenv().Config.VoidSpamType == "KillRagers" then
+                if getgenv().Config.Method == "KillRagers" then
                     desyncCF = krStep(myRoot) or myRoot.CFrame
+                elseif tc == false then
+                    desyncCF = myRoot.CFrame + Vector3.new(0, 900000000, 0)
                 else
                     local randomDir = Vector3.new(
                         math.random(-100, 100),
@@ -4968,7 +5270,7 @@ do
                     desyncCF = CFrame.new(camPos + randomDir * 7000000000000)
                 end
             end
-            if canTarget or getgenv().Config.VoidSpamType ~= "KillRagers" then kr.active = false end
+            if canTarget or getgenv().Config.Method ~= "KillRagers" then kr.active = false end
 
             local ffaOn = getgenv().FFA and getgenv().FFA.Want()
             local ffaPickup = ffaOn and (tc == false) or false
@@ -5179,9 +5481,204 @@ do
         end,
     }
 end
--- ===== GUN MODS =====
+-- ========== ANTI AIM ==========
 do
-    local GunModsSection = Tabs.Rage:AddLeftGroupbox("Gun Mods")
+    local AntiAimSection = Tabs.Rage:AddRightGroupbox("AntiAim")
+
+    local aaEnabled = false
+    local pitchMode = "Glitch Pitch"
+    local yawMode   = "Random Yaw"
+    local customPitch = 179
+    local customYaw   = 360
+    local pitchOverride = 1150
+    local yawOverride   = 0
+    local toggleVal     = 4999
+
+    local function getAAEnemyPart()
+        local myChar = lp and lp.Character
+        local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        if not myRoot then return nil end
+
+        local bestPart = nil
+        local bestDist = math.huge
+        local tc = getgenv().Config and getgenv().Config.TeamCheck
+
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player == lp then continue end
+            if tc ~= false and not getgenv().KETY_IsEnemy(player) then continue end
+
+            local pChar = player.Character
+            if not pChar then continue end
+            local pHum = pChar:FindFirstChildWhichIsA("Humanoid")
+            if not (pHum and pHum.Health > 0) then continue end
+
+            local pRoot = pChar:FindFirstChild("HumanoidRootPart")
+            if not pRoot then continue end
+
+            local targetPart = pChar:FindFirstChild("HitboxHead")
+                or pChar:FindFirstChild("Head")
+                or pChar:FindFirstChild("HitboxBody")
+                or pRoot
+
+            local dist = (myRoot.Position - targetPart.Position).Magnitude
+            if dist < bestDist then
+                bestDist = dist
+                bestPart = targetPart
+            end
+        end
+        return bestPart
+    end
+
+    local function encodeUnclamped(pitchDeg, yawDeg)
+        local pitchRad = math.rad(pitchDeg)
+        local yawRad   = math.rad(yawDeg)
+        local pVal = math.floor(pitchRad / (2 * math.pi) * 256 + 0.5)
+        local yVal = math.floor(yawRad   / (2 * math.pi) * 256 + 0.5)
+        pVal = math.clamp(pVal, 0, 1114111)
+        yVal = math.clamp(yVal, 0, 1114111)
+        return utf8.char(pVal) .. utf8.char(yVal)
+    end
+
+    local AntiAimToggle = AntiAimSection:AddToggle("AntiAim_Enabled", {
+        Text = "Enabled",
+        Default = false,
+        Callback = function(value) aaEnabled = value end
+    })
+
+    AntiAimToggle:AddKeyPicker("AntiAimKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Anti Aim",
+    })
+
+    local AntiAimDep = AntiAimSection:AddDependencyBox()
+
+    local PitchDropdown = AntiAimDep:AddDropdown("AntiAim_PitchMode", {
+        Values = {"Glitch Pitch", "Random Pitch", "Custom Pitch", "HitboxExtend"},
+        Default = 1,
+        Multi = false,
+        Text = "Pitch Mode",
+        Callback = function(value) pitchMode = value end
+    })
+
+    local PitchCustomDep = AntiAimSection:AddDependencyBox()
+    PitchCustomDep:AddSlider("AntiAim_CustomPitch", {
+        Text = "Custom Pitch",
+        Default = 179,
+        Min = 1,
+        Max = 179,
+        Rounding = 0,
+        Callback = function(value) customPitch = value end
+    })
+    PitchCustomDep:SetupDependencies({ { AntiAimToggle, true }, { PitchDropdown, "Custom Pitch" } })
+
+    local AntiAimDep2 = AntiAimSection:AddDependencyBox()
+
+    local YawDropdown = AntiAimDep2:AddDropdown("AntiAim_YawMode", {
+        Values = {"Random Yaw", "Custom Yaw", "HitboxExtend"},
+        Default = 1,
+        Multi = false,
+        Text = "Yaw Mode",
+        Callback = function(value) yawMode = value end
+    })
+
+    local YawCustomDep = AntiAimSection:AddDependencyBox()
+    YawCustomDep:AddSlider("AntiAim_CustomYaw", {
+        Text = "Custom Yaw",
+        Default = 360,
+        Min = 1,
+        Max = 360,
+        Rounding = 0,
+        Callback = function(value) customYaw = value end
+    })
+    YawCustomDep:SetupDependencies({ { AntiAimToggle, true }, { YawDropdown, "Custom Yaw" } })
+
+    AntiAimDep:SetupDependencies({ { AntiAimToggle, true } })
+    AntiAimDep2:SetupDependencies({ { AntiAimToggle, true } })
+
+    local camRemote = nil
+    task.spawn(function()
+        local ok1, remote = pcall(function()
+            return ReplicatedStorage
+                :WaitForChild("Remotes", 10)
+                :WaitForChild("Replication", 10)
+                :WaitForChild("Fighter", 10)
+                :WaitForChild("UpdateCameraRotation", 10)
+        end)
+        if ok1 and remote then camRemote = remote end
+    end)
+
+    if not getgenv()._antiAimHooked and getgenv().KETY_HookNamecall then
+        getgenv().KETY_HookNamecall({"FireServer"}, function(oldNamecall)
+            return function(self, ...)
+                if aaEnabled and camRemote ~= nil and self == camRemote and not checkcaller() then
+                    local encoded = encodeUnclamped(pitchOverride, yawOverride)
+                    return oldNamecall(self, encoded, nil)
+                end
+                return oldNamecall(self, ...)
+            end
+        end)
+        getgenv()._antiAimHooked = true
+    end
+
+    local lastSend = 0
+    RunService.Heartbeat:Connect(function()
+        local enemyPart = nil
+        if pitchMode == "HitboxExtend" or yawMode == "HitboxExtend" then
+            enemyPart = getAAEnemyPart()
+        end
+
+        local enemyPitchDeg, enemyYawDeg = nil, nil
+        if enemyPart then
+            local myChar = lp and lp.Character
+            local myHead = myChar and (myChar:FindFirstChild("HitboxHead") or myChar:FindFirstChild("Head") or myChar:FindFirstChild("HumanoidRootPart"))
+            if myHead then
+                local dir = enemyPart.Position - myHead.Position
+                local distXZ = math.sqrt(dir.X * dir.X + dir.Z * dir.Z)
+                local tau = math.pi * 2
+                local pRad = math.atan2(dir.Y, distXZ)
+                local yRad = math.atan2(-dir.X, -dir.Z)
+                enemyPitchDeg = math.deg((pRad % tau + tau) % tau)
+                enemyYawDeg   = math.deg((yRad % tau + tau) % tau)
+            end
+        end
+
+        if pitchMode == "Glitch Pitch" then
+            pitchOverride = 1150
+        elseif pitchMode == "Random Pitch" then
+            pitchOverride = toggleVal
+        elseif pitchMode == "Custom Pitch" then
+            pitchOverride = customPitch
+        elseif pitchMode == "HitboxExtend" then
+            pitchOverride = enemyPitchDeg or 0
+        end
+
+        if yawMode == "Random Yaw" then
+            yawOverride = toggleVal
+        elseif yawMode == "Custom Yaw" then
+            yawOverride = customYaw
+        elseif yawMode == "HitboxExtend" then
+            yawOverride = enemyYawDeg or 0
+        end
+
+        local now = tick()
+        if now - lastSend < 0.1 then return end
+        lastSend = now
+
+        toggleVal = (toggleVal == 4999) and 0 or 4999
+
+        if not aaEnabled or not camRemote then return end
+        pcall(function()
+            local encoded = encodeUnclamped(pitchOverride, yawOverride)
+            camRemote:FireServer(encoded, nil)
+        end)
+    end)
+end
+
+-- ===== GUN MODS (MISC) =====
+do
+    local GunModsSection = Tabs.Misc:AddLeftGroupbox("Gun Mods")
 
 getgenv().RageSettings = {
     Enabled = false,
@@ -5469,207 +5966,322 @@ task.spawn(function()
         end
     end)
 end)
-end
--- ========== ANTI AIM ==========
-do
-    local AntiAimSection = Tabs.Rage:AddRightGroupbox("AntiAim")
 
-    local aaEnabled = false
-    local pitchMode = "Glitch Pitch"
-    local yawMode   = "Random Yaw"
-    local customPitch = 179
-    local customYaw   = 360
-    local pitchOverride = 1150
-    local yawOverride   = 0
-    local toggleVal     = 4999
+    -- ========== AUTO WEPON ==========
+local autoLoadoutEnabled = false
+local ChosenWeapons = {}
+local WeaponLists = {}
+local ListIndexes = {1, 1, 1, 1}
 
-    local function getAAEnemyPart()
-        local myChar = lp and lp.Character
-        local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-        if not myRoot then return nil end
+local AutoLoadout_ItemLibrary = nil
+local AutoLoadout_FighterController = nil
+local AutoLoadout_DuelController = nil
 
-        local bestPart = nil
-        local bestDist = math.huge
-        local tc = getgenv().Config and getgenv().Config.TeamCheck
-
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player == lp then continue end
-            if tc ~= false and not getgenv().KETY_IsEnemy(player) then continue end
-
-            local pChar = player.Character
-            if not pChar then continue end
-            local pHum = pChar:FindFirstChildWhichIsA("Humanoid")
-            if not (pHum and pHum.Health > 0) then continue end
-
-            local pRoot = pChar:FindFirstChild("HumanoidRootPart")
-            if not pRoot then continue end
-
-            local targetPart = pChar:FindFirstChild("HitboxHead")
-                or pChar:FindFirstChild("Head")
-                or pChar:FindFirstChild("HitboxBody")
-                or pRoot
-
-            local dist = (myRoot.Position - targetPart.Position).Magnitude
-            if dist < bestDist then
-                bestDist = dist
-                bestPart = targetPart
-            end
+pcall(function()
+    local Modules = ReplicatedStorage:FindFirstChild("Modules") or ReplicatedStorage:WaitForChild("Modules", 3)
+    if Modules and Modules:FindFirstChild("ItemLibrary") then
+        AutoLoadout_ItemLibrary = require(Modules.ItemLibrary)
+    end
+end)
+pcall(function()
+    local ps = lp:FindFirstChild("PlayerScripts") or lp:WaitForChild("PlayerScripts", 3)
+    local Controllers = ps and (ps:FindFirstChild("Controllers") or ps:WaitForChild("Controllers", 3))
+    if Controllers then
+        if Controllers:FindFirstChild("FighterController") then
+            AutoLoadout_FighterController = require(Controllers.FighterController)
         end
-        return bestPart
+        if Controllers:FindFirstChild("DuelController") then
+            AutoLoadout_DuelController = require(Controllers.DuelController)
+        end
     end
+end)
 
-    local function encodeUnclamped(pitchDeg, yawDeg)
-        local pitchRad = math.rad(pitchDeg)
-        local yawRad   = math.rad(yawDeg)
-        local pVal = math.floor(pitchRad / (2 * math.pi) * 256 + 0.5)
-        local yVal = math.floor(yawRad   / (2 * math.pi) * 256 + 0.5)
-        pVal = math.clamp(pVal, 0, 1114111)
-        yVal = math.clamp(yVal, 0, 1114111)
-        return utf8.char(pVal) .. utf8.char(yVal)
-    end
-
-    local AntiAimToggle = AntiAimSection:AddToggle("AntiAim_Enabled", {
-        Text = "Enabled",
-        Default = false,
-        Callback = function(value) aaEnabled = value end
-    })
-
-    AntiAimToggle:AddKeyPicker("AntiAimKey", {
-        Default = "None",
-        SyncToggleState = true,
-        Mode = "Toggle",
-        Text = "Anti Aim",
-    })
-
-    local AntiAimDep = AntiAimSection:AddDependencyBox()
-
-    local PitchDropdown = AntiAimDep:AddDropdown("AntiAim_PitchMode", {
-        Values = {"Glitch Pitch", "Random Pitch", "Custom Pitch", "HitboxExtend"},
-        Default = 1,
-        Multi = false,
-        Text = "Pitch Mode",
-        Callback = function(value) pitchMode = value end
-    })
-
-    local PitchCustomDep = AntiAimSection:AddDependencyBox()
-    PitchCustomDep:AddSlider("AntiAim_CustomPitch", {
-        Text = "Custom Pitch",
-        Default = 179,
-        Min = 1,
-        Max = 179,
-        Rounding = 0,
-        Callback = function(value) customPitch = value end
-    })
-    PitchCustomDep:SetupDependencies({ { AntiAimToggle, true }, { PitchDropdown, "Custom Pitch" } })
-
-    local AntiAimDep2 = AntiAimSection:AddDependencyBox()
-
-    local YawDropdown = AntiAimDep2:AddDropdown("AntiAim_YawMode", {
-        Values = {"Random Yaw", "Custom Yaw", "HitboxExtend"},
-        Default = 1,
-        Multi = false,
-        Text = "Yaw Mode",
-        Callback = function(value) yawMode = value end
-    })
-
-    local YawCustomDep = AntiAimSection:AddDependencyBox()
-    YawCustomDep:AddSlider("AntiAim_CustomYaw", {
-        Text = "Custom Yaw",
-        Default = 360,
-        Min = 1,
-        Max = 360,
-        Rounding = 0,
-        Callback = function(value) customYaw = value end
-    })
-    YawCustomDep:SetupDependencies({ { AntiAimToggle, true }, { YawDropdown, "Custom Yaw" } })
-
-    AntiAimDep:SetupDependencies({ { AntiAimToggle, true } })
-    AntiAimDep2:SetupDependencies({ { AntiAimToggle, true } })
-
-    local camRemote = nil
-    task.spawn(function()
-        local ok1, remote = pcall(function()
-            return ReplicatedStorage
-                :WaitForChild("Remotes", 10)
-                :WaitForChild("Replication", 10)
-                :WaitForChild("Fighter", 10)
-                :WaitForChild("UpdateCameraRotation", 10)
-        end)
-        if ok1 and remote then camRemote = remote end
-    end)
-
-    if not getgenv()._antiAimHooked then
-        local oldNamecall
-        oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-            local method = getnamecallmethod()
-            if not checkcaller()
-                and aaEnabled
-                and camRemote ~= nil
-                and method == "FireServer"
-            then
-                local ok, isCam = pcall(function() return self == camRemote end)
-                if ok and isCam then
-                    local encoded = encodeUnclamped(pitchOverride, yawOverride)
-                    return oldNamecall(self, encoded, nil)
+local function getSavedWeaponSelections()
+    local saved = {}
+    pcall(function()
+        local sm = getgenv().SaveManager or SaveManager
+        if not sm then return end
+        local folder = sm.Folder or "KETY"
+        local autoFile = folder .. "/settings/autoload.txt"
+        if sm.CheckSubFolder and sm:CheckSubFolder(true) and sm.SubFolder and sm.SubFolder ~= "" then
+            autoFile = folder .. "/settings/" .. sm.SubFolder .. "/autoload.txt"
+        end
+        if not (type(isfile) == "function" and isfile(autoFile)) then return end
+        local name = readfile(autoFile)
+        if not name or name == "" or name == "none" then return end
+        name = name:gsub("\r", ""):gsub("\n", ""):match("^%s*(.-)%s*$")
+        local path = folder .. "/settings/" .. name .. ".json"
+        if sm.CheckSubFolder and sm:CheckSubFolder(true) and sm.SubFolder and sm.SubFolder ~= "" then
+            path = folder .. "/settings/" .. sm.SubFolder .. "/" .. name .. ".json"
+        end
+        if not isfile(path) then return end
+        local content = readfile(path)
+        local decoded = game:GetService("HttpService"):JSONDecode(content)
+        if type(decoded) == "table" then
+            if type(decoded.objects) == "table" then
+                for _, obj in ipairs(decoded.objects) do
+                    if type(obj) == "table" and obj.idx and obj.value then
+                        if obj.idx == "PriDrop" then saved[1] = obj.value
+                        elseif obj.idx == "SecDrop" then saved[2] = obj.value
+                        elseif obj.idx == "MelDrop" then saved[3] = obj.value
+                        elseif obj.idx == "UtiDrop" then saved[4] = obj.value
+                        end
+                    end
                 end
             end
-            return oldNamecall(self, ...)
-        end)
-        getgenv()._antiAimHooked = true
-    end
-
-    local lastSend = 0
-    RunService.Heartbeat:Connect(function()
-        local enemyPart = nil
-        if pitchMode == "HitboxExtend" or yawMode == "HitboxExtend" then
-            enemyPart = getAAEnemyPart()
-        end
-
-        local enemyPitchDeg, enemyYawDeg = nil, nil
-        if enemyPart then
-            local myChar = lp and lp.Character
-            local myHead = myChar and (myChar:FindFirstChild("HitboxHead") or myChar:FindFirstChild("Head") or myChar:FindFirstChild("HumanoidRootPart"))
-            if myHead then
-                local dir = enemyPart.Position - myHead.Position
-                local distXZ = math.sqrt(dir.X * dir.X + dir.Z * dir.Z)
-                local tau = math.pi * 2
-                local pRad = math.atan2(dir.Y, distXZ)
-                local yRad = math.atan2(-dir.X, -dir.Z)
-                enemyPitchDeg = math.deg((pRad % tau + tau) % tau)
-                enemyYawDeg   = math.deg((yRad % tau + tau) % tau)
+            if type(decoded.Options) == "table" then
+                saved[1] = saved[1] or decoded.Options.PriDrop
+                saved[2] = saved[2] or decoded.Options.SecDrop
+                saved[3] = saved[3] or decoded.Options.MelDrop
+                saved[4] = saved[4] or decoded.Options.UtiDrop
             end
         end
-
-        if pitchMode == "Glitch Pitch" then
-            pitchOverride = 1150
-        elseif pitchMode == "Random Pitch" then
-            pitchOverride = toggleVal
-        elseif pitchMode == "Custom Pitch" then
-            pitchOverride = customPitch
-        elseif pitchMode == "HitboxExtend" then
-            pitchOverride = enemyPitchDeg or 0
-        end
-
-        if yawMode == "Random Yaw" then
-            yawOverride = toggleVal
-        elseif yawMode == "Custom Yaw" then
-            yawOverride = customYaw
-        elseif yawMode == "HitboxExtend" then
-            yawOverride = enemyYawDeg or 0
-        end
-
-        local now = tick()
-        if now - lastSend < 0.1 then return end
-        lastSend = now
-
-        toggleVal = (toggleVal == 4999) and 0 or 4999
-
-        if not aaEnabled or not camRemote then return end
-        pcall(function()
-            local encoded = encodeUnclamped(pitchOverride, yawOverride)
-            camRemote:FireServer(encoded, nil)
-        end)
     end)
+    return saved
+end
+
+local function refreshWeapons()
+    if not AutoLoadout_ItemLibrary then
+        pcall(function()
+            local Modules = ReplicatedStorage:FindFirstChild("Modules")
+            if Modules and Modules:FindFirstChild("ItemLibrary") then
+                AutoLoadout_ItemLibrary = require(Modules.ItemLibrary)
+            end
+        end)
+    end
+    if not AutoLoadout_FighterController then
+        pcall(function()
+            local ps = lp:FindFirstChild("PlayerScripts")
+            local Controllers = ps and ps:FindFirstChild("Controllers")
+            if Controllers and Controllers:FindFirstChild("FighterController") then
+                AutoLoadout_FighterController = require(Controllers.FighterController)
+            end
+        end)
+    end
+    if not AutoLoadout_DuelController then
+        pcall(function()
+            local ps = lp:FindFirstChild("PlayerScripts")
+            local Controllers = ps and ps:FindFirstChild("Controllers")
+            if Controllers and Controllers:FindFirstChild("DuelController") then
+                AutoLoadout_DuelController = require(Controllers.DuelController)
+            end
+        end)
+    end
+    if not AutoLoadout_ItemLibrary then return end
+
+    local localFighter = AutoLoadout_FighterController and AutoLoadout_FighterController.LocalFighter
+    local maxSlots = (localFighter and type(localFighter.GetMaxEquippableWeapons) == "function" and localFighter:GetMaxEquippableWeapons()) or 4
+    for slotIndex = 1, maxSlots do
+        local weapons = {}
+        local classData = AutoLoadout_ItemLibrary.SlotToClass and AutoLoadout_ItemLibrary.SlotToClass[slotIndex]
+        local className = classData and classData.Name
+        if className then
+            local weaponPool = (localFighter and type(localFighter.Get) == "function" and localFighter:Get("WeaponPool")) or {}
+            local filterType = (localFighter and type(localFighter.Get) == "function" and localFighter:Get("WeaponPoolFilterType")) or ""
+            local itemsList = AutoLoadout_ItemLibrary.ItemsAlphabetized or {}
+            for _, itemName in ipairs(itemsList) do
+                local itemData = AutoLoadout_ItemLibrary.Items and AutoLoadout_ItemLibrary.Items[itemName]
+                if itemData and itemData.Class == className then
+                    local isBlacklisted = (filterType == "Blacklist") and table.find(weaponPool, itemName)
+                    local canUse = localFighter and type(localFighter.CanUseWeapon) == "function" and localFighter:CanUseWeapon(itemName)
+                    if (canUse or isBlacklisted) or (not localFighter) then
+                        table.insert(weapons, itemName)
+                    end
+                end
+            end
+        end
+        if #weapons > 0 then
+            WeaponLists[slotIndex] = weapons
+        elseif not WeaponLists[slotIndex] or #WeaponLists[slotIndex] == 0 then
+            WeaponLists[slotIndex] = {"None"}
+        end
+        if ChosenWeapons[slotIndex] == nil or ChosenWeapons[slotIndex] == "None" then
+            if WeaponLists[slotIndex] and WeaponLists[slotIndex][1] and WeaponLists[slotIndex][1] ~= "None" then
+                ChosenWeapons[slotIndex] = WeaponLists[slotIndex][1]
+            end
+        end
+    end
+end
+
+-- 初期リストを事前に生成
+refreshWeapons()
+local savedInitial = getSavedWeaponSelections()
+
+local AutoWeponToggle = GunModsSection:AddToggle("AutoLoadToggle", {
+    Text = "AutoWepon",
+    Default = autoLoadoutEnabled,
+    Callback = function(Value)
+        autoLoadoutEnabled = Value
+    end
+})
+
+AutoWeponToggle:AddKeyPicker("AutoLoadKey", {
+    Default = "None",
+    SyncToggleState = true,
+    Mode = "Toggle",
+    Text = "AutoWepon",
+})
+
+local AutoWeponDep = GunModsSection:AddDependencyBox()
+
+local list1 = (WeaponLists[1] and #WeaponLists[1] > 0 and WeaponLists[1]) or {"None"}
+local def1 = (savedInitial[1] and table.find(list1, savedInitial[1])) or 1
+local PriDropObj = AutoWeponDep:AddDropdown("PriDrop", { Values = list1, Default = def1, Multi = false, Text = "Primary", Callback = function(Value) ChosenWeapons[1] = Value end })
+
+local list2 = (WeaponLists[2] and #WeaponLists[2] > 0 and WeaponLists[2]) or {"None"}
+local def2 = (savedInitial[2] and table.find(list2, savedInitial[2])) or 1
+local SecDropObj = AutoWeponDep:AddDropdown("SecDrop", { Values = list2, Default = def2, Multi = false, Text = "Secondary", Callback = function(Value) ChosenWeapons[2] = Value end })
+
+local list3 = (WeaponLists[3] and #WeaponLists[3] > 0 and WeaponLists[3]) or {"None"}
+local def3 = (savedInitial[3] and table.find(list3, savedInitial[3])) or 1
+local MelDropObj = AutoWeponDep:AddDropdown("MelDrop", { Values = list3, Default = def3, Multi = false, Text = "Melee", Callback = function(Value) ChosenWeapons[3] = Value end })
+
+local list4 = (WeaponLists[4] and #WeaponLists[4] > 0 and WeaponLists[4]) or {"None"}
+local def4 = (savedInitial[4] and table.find(list4, savedInitial[4])) or 1
+local UtiDropObj = AutoWeponDep:AddDropdown("UtiDrop", { Values = list4, Default = def4, Multi = false, Text = "Utility", Callback = function(Value) ChosenWeapons[4] = Value end })
+
+AutoWeponDep:AddButton({
+    Text = "Refresh Weapons Data",
+    Func = function()
+        refreshWeapons()
+        updateWeaponLabels()
+    end,
+})
+
+AutoWeponDep:SetupDependencies({ { AutoWeponToggle, true } })
+
+local dropObjs = {PriDropObj, SecDropObj, MelDropObj, UtiDropObj}
+
+local function updateWeaponLabels()
+    local saved = getSavedWeaponSelections()
+    for i = 1, 4 do
+        local drop = dropObjs[i]
+        local list = WeaponLists[i]
+        if drop and list and #list > 0 then
+            drop:SetValues(list)
+            local current = drop.Value
+            local targetVal = nil
+            if current and current ~= "None" and table.find(list, current) then
+                targetVal = current
+            elseif saved[i] and table.find(list, saved[i]) then
+                targetVal = saved[i]
+            elseif ChosenWeapons[i] and ChosenWeapons[i] ~= "None" and table.find(list, ChosenWeapons[i]) then
+                targetVal = ChosenWeapons[i]
+            else
+                targetVal = list[1]
+            end
+            if targetVal then
+                drop:SetValue(targetVal)
+                ChosenWeapons[i] = targetVal
+            end
+        end
+    end
+end
+
+
+
+local lastAutoLoadoutTime = 0
+local function triggerAutoLoadout()
+    if not autoLoadoutEnabled then return end
+    
+    -- 騾｣邯夐∽ｿ｡縺ｫ繧医ｋ讀懃衍繧帝亟縺舌ョ繝舌え繝ｳ繧ｹ・・遘偵↓1蝗槭∪縺ｧ・・
+    if os.clock() - lastAutoLoadoutTime < 1 then return end
+    lastAutoLoadoutTime = os.clock()
+
+    local validLoadout = {}
+    local maxSlots = AutoLoadout_FighterController and AutoLoadout_FighterController.LocalFighter and AutoLoadout_FighterController.LocalFighter:GetMaxEquippableWeapons() or 4
+    
+    local index = 1
+    for i = 1, maxSlots do 
+        if ChosenWeapons[i] and ChosenWeapons[i] ~= "None" then
+            validLoadout[index] = ChosenWeapons[i]
+            index = index + 1
+        end
+    end
+    
+    local duel = AutoLoadout_DuelController and AutoLoadout_DuelController:GetDuel(lp)
+    if duel and duel.LocalDueler and duel.LocalDueler:GetStaggeredSpawnsTurn() then
+        ReplicatedStorage.Remotes.Duels.PickWeaponsAheadOfTime:FireServer(validLoadout)
+    else
+        ReplicatedStorage.Remotes.Replication.Fighter.PickWeapons:FireServer(validLoadout)
+    end
+end
+
+local function enforceAutoLoadout()
+    local function hideExpectedUI(guiObj)
+        if not autoLoadoutEnabled then return end
+        local nameStr = string.lower(guiObj.Name)
+        if string.find(nameStr, "pickweapon") or string.find(nameStr, "weaponselect") then
+            task.spawn(function()
+                if guiObj:IsA("ScreenGui") then
+                    guiObj.Enabled = false
+                    guiObj:GetPropertyChangedSignal("Enabled"):Connect(function()
+                        if autoLoadoutEnabled and guiObj.Enabled then
+                            guiObj.Enabled = false; refreshWeapons(); triggerAutoLoadout()
+                        end
+                    end)
+                elseif guiObj:IsA("GuiObject") then
+                    guiObj.Visible = false
+                    guiObj:GetPropertyChangedSignal("Visible"):Connect(function()
+                        if autoLoadoutEnabled and guiObj.Visible then
+                            guiObj.Visible = false; refreshWeapons(); triggerAutoLoadout()
+                        end
+                    end)
+                end
+            end)
+            refreshWeapons()
+            triggerAutoLoadout()
+        end
+    end
+    
+    local PlayerGui = lp:WaitForChild("PlayerGui")
+    PlayerGui.ChildAdded:Connect(hideExpectedUI)
+    PlayerGui.DescendantAdded:Connect(hideExpectedUI)
+    for _, desc in ipairs(PlayerGui:GetDescendants()) do hideExpectedUI(desc) end
+
+    local function attachToFighter()
+        if AutoLoadout_FighterController and AutoLoadout_FighterController.LocalFighter and type(AutoLoadout_FighterController.LocalFighter.GetPropertyChangedSignal) == "function" then
+            pcall(function()
+                AutoLoadout_FighterController.LocalFighter:GetPropertyChangedSignal("CanPickWeapons"):Connect(function()
+                    if autoLoadoutEnabled and AutoLoadout_FighterController.LocalFighter:Get("CanPickWeapons") then
+                        refreshWeapons(); triggerAutoLoadout()
+                    end
+                end)
+            end)
+        end
+    end
+
+    if AutoLoadout_FighterController then
+        attachToFighter()
+        if type(AutoLoadout_FighterController.FighterAdded) == "userdata" then
+            AutoLoadout_FighterController.FighterAdded:Connect(attachToFighter)
+        end
+    end
+end
+
+task.spawn(function()
+    local Modules = ReplicatedStorage:WaitForChild("Modules", 10)
+    if Modules then AutoLoadout_ItemLibrary = require(Modules:WaitForChild("ItemLibrary", 10)) end
+    local playerScripts = lp:WaitForChild("PlayerScripts", 10)
+    local Controllers = playerScripts and playerScripts:WaitForChild("Controllers", 10)
+    if Controllers then
+        AutoLoadout_FighterController = require(Controllers:WaitForChild("FighterController", 10))
+        AutoLoadout_DuelController = require(Controllers:WaitForChild("DuelController", 10))
+    end
+    
+    task.wait(1)
+    refreshWeapons()
+    updateWeaponLabels()
+    enforceAutoLoadout()
+end)
+
+lp.CharacterAdded:Connect(function()
+    task.wait(1.5)
+    if autoLoadoutEnabled then
+        refreshWeapons()
+        triggerAutoLoadout()
+    end
+end)
 end
 
 do
@@ -6033,10 +6645,9 @@ if hookmetamethod then
     local _fightRem  = _repRem and _repRem:FindFirstChild("Fighter")
     local _useItmRem = _fightRem and _fightRem:FindFirstChild("UseItem")
 
-    if _equipRem then
-        local _onc
-        _onc = hookmetamethod(game, "__namecall", function(self, ...)
-            if getnamecallmethod() ~= "FireServer" then
+    if _equipRem and getgenv().KETY_HookNamecall then
+        getgenv().KETY_HookNamecall({"FireServer"}, function(_onc) return function(self, ...)
+            if self ~= _equipRem and self ~= _favRem and self ~= _useItmRem then
                 return _onc(self, ...)
             end
             local _a = {...}
@@ -6101,7 +6712,7 @@ if hookmetamethod then
             end
 
             return _onc(self, ...)
-        end)
+        end end)
     end
 end
 
@@ -6208,13 +6819,14 @@ local DisableOOBToggle = OutOfBoundsSection:AddToggle("DisableOOBToggle", {
                     else oob_remote = nil end
                 end
 
-                if hookmetamethod and oob_remote then
-                    local oldNamecall
-                    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-                        if getgenv().DisableOutOfBoundsEnabled and getnamecallmethod() == "FireServer" and self == oob_remote then
-                            return nil
+                if getgenv().KETY_HookNamecall and oob_remote then
+                    getgenv().KETY_HookNamecall({"FireServer"}, function(oldNamecall)
+                        return function(self, ...)
+                            if self == oob_remote and getgenv().DisableOutOfBoundsEnabled then
+                                return nil
+                            end
+                            return oldNamecall(self, ...)
                         end
-                        return oldNamecall(self, ...)
                     end)
                 end
 
@@ -6946,10 +7558,21 @@ end
 local function startNoclip()
     if noclipConnection then noclipConnection:Disconnect() end
     noclipEnabled = true
+    local noclipParts, noclipLast, noclipChar = {}, 0, nil
     noclipConnection = RunService.Stepped:Connect(function()
-        if noclipEnabled and lp.Character then
-            for _, part in pairs(lp.Character:GetDescendants()) do
-                if part:IsA("BasePart") then part.CanCollide = false end
+        local ch = lp.Character
+        if noclipEnabled and ch then
+            local now = tick()
+            if ch ~= noclipChar or now - noclipLast > 0.5 then
+                noclipChar, noclipLast = ch, now
+                noclipParts = {}
+                for _, part in ipairs(ch:GetDescendants()) do
+                    if part:IsA("BasePart") then noclipParts[#noclipParts + 1] = part end
+                end
+            end
+            for i = 1, #noclipParts do
+                local p = noclipParts[i]
+                if p.CanCollide then p.CanCollide = false end
             end
         end
     end)
@@ -7260,318 +7883,6 @@ HideInFloorDep:SetupDependencies({ { HideInFloorToggle, true } })
     end)
 end
 
--- ========== AUTO LOADOUT ==========
-do
-local autoLoadoutEnabled = false
-local ChosenWeapons = {}
-local WeaponLists = {}
-local ListIndexes = {1, 1, 1, 1}
-
-local AutoLoadout_ItemLibrary = nil
-local AutoLoadout_FighterController = nil
-local AutoLoadout_DuelController = nil
-
-pcall(function()
-    local Modules = ReplicatedStorage:FindFirstChild("Modules") or ReplicatedStorage:WaitForChild("Modules", 3)
-    if Modules and Modules:FindFirstChild("ItemLibrary") then
-        AutoLoadout_ItemLibrary = require(Modules.ItemLibrary)
-    end
-end)
-pcall(function()
-    local ps = lp:FindFirstChild("PlayerScripts") or lp:WaitForChild("PlayerScripts", 3)
-    local Controllers = ps and (ps:FindFirstChild("Controllers") or ps:WaitForChild("Controllers", 3))
-    if Controllers then
-        if Controllers:FindFirstChild("FighterController") then
-            AutoLoadout_FighterController = require(Controllers.FighterController)
-        end
-        if Controllers:FindFirstChild("DuelController") then
-            AutoLoadout_DuelController = require(Controllers.DuelController)
-        end
-    end
-end)
-
-local function getSavedWeaponSelections()
-    local saved = {}
-    pcall(function()
-        local sm = getgenv().SaveManager or SaveManager
-        if not sm then return end
-        local folder = sm.Folder or "KETY"
-        local autoFile = folder .. "/settings/autoload.txt"
-        if sm.CheckSubFolder and sm:CheckSubFolder(true) and sm.SubFolder and sm.SubFolder ~= "" then
-            autoFile = folder .. "/settings/" .. sm.SubFolder .. "/autoload.txt"
-        end
-        if not (type(isfile) == "function" and isfile(autoFile)) then return end
-        local name = readfile(autoFile)
-        if not name or name == "" or name == "none" then return end
-        name = name:gsub("\r", ""):gsub("\n", ""):match("^%s*(.-)%s*$")
-        local path = folder .. "/settings/" .. name .. ".json"
-        if sm.CheckSubFolder and sm:CheckSubFolder(true) and sm.SubFolder and sm.SubFolder ~= "" then
-            path = folder .. "/settings/" .. sm.SubFolder .. "/" .. name .. ".json"
-        end
-        if not isfile(path) then return end
-        local content = readfile(path)
-        local decoded = game:GetService("HttpService"):JSONDecode(content)
-        if type(decoded) == "table" then
-            if type(decoded.objects) == "table" then
-                for _, obj in ipairs(decoded.objects) do
-                    if type(obj) == "table" and obj.idx and obj.value then
-                        if obj.idx == "PriDrop" then saved[1] = obj.value
-                        elseif obj.idx == "SecDrop" then saved[2] = obj.value
-                        elseif obj.idx == "MelDrop" then saved[3] = obj.value
-                        elseif obj.idx == "UtiDrop" then saved[4] = obj.value
-                        end
-                    end
-                end
-            end
-            if type(decoded.Options) == "table" then
-                saved[1] = saved[1] or decoded.Options.PriDrop
-                saved[2] = saved[2] or decoded.Options.SecDrop
-                saved[3] = saved[3] or decoded.Options.MelDrop
-                saved[4] = saved[4] or decoded.Options.UtiDrop
-            end
-        end
-    end)
-    return saved
-end
-
-local function refreshWeapons()
-    if not AutoLoadout_ItemLibrary then
-        pcall(function()
-            local Modules = ReplicatedStorage:FindFirstChild("Modules")
-            if Modules and Modules:FindFirstChild("ItemLibrary") then
-                AutoLoadout_ItemLibrary = require(Modules.ItemLibrary)
-            end
-        end)
-    end
-    if not AutoLoadout_FighterController then
-        pcall(function()
-            local ps = lp:FindFirstChild("PlayerScripts")
-            local Controllers = ps and ps:FindFirstChild("Controllers")
-            if Controllers and Controllers:FindFirstChild("FighterController") then
-                AutoLoadout_FighterController = require(Controllers.FighterController)
-            end
-        end)
-    end
-    if not AutoLoadout_DuelController then
-        pcall(function()
-            local ps = lp:FindFirstChild("PlayerScripts")
-            local Controllers = ps and ps:FindFirstChild("Controllers")
-            if Controllers and Controllers:FindFirstChild("DuelController") then
-                AutoLoadout_DuelController = require(Controllers.DuelController)
-            end
-        end)
-    end
-    if not AutoLoadout_ItemLibrary then return end
-
-    local localFighter = AutoLoadout_FighterController and AutoLoadout_FighterController.LocalFighter
-    local maxSlots = (localFighter and type(localFighter.GetMaxEquippableWeapons) == "function" and localFighter:GetMaxEquippableWeapons()) or 4
-    for slotIndex = 1, maxSlots do
-        local weapons = {}
-        local classData = AutoLoadout_ItemLibrary.SlotToClass and AutoLoadout_ItemLibrary.SlotToClass[slotIndex]
-        local className = classData and classData.Name
-        if className then
-            local weaponPool = (localFighter and type(localFighter.Get) == "function" and localFighter:Get("WeaponPool")) or {}
-            local filterType = (localFighter and type(localFighter.Get) == "function" and localFighter:Get("WeaponPoolFilterType")) or ""
-            local itemsList = AutoLoadout_ItemLibrary.ItemsAlphabetized or {}
-            for _, itemName in ipairs(itemsList) do
-                local itemData = AutoLoadout_ItemLibrary.Items and AutoLoadout_ItemLibrary.Items[itemName]
-                if itemData and itemData.Class == className then
-                    local isBlacklisted = (filterType == "Blacklist") and table.find(weaponPool, itemName)
-                    local canUse = localFighter and type(localFighter.CanUseWeapon) == "function" and localFighter:CanUseWeapon(itemName)
-                    if (canUse or isBlacklisted) or (not localFighter) then
-                        table.insert(weapons, itemName)
-                    end
-                end
-            end
-        end
-        if #weapons > 0 then
-            WeaponLists[slotIndex] = weapons
-        elseif not WeaponLists[slotIndex] or #WeaponLists[slotIndex] == 0 then
-            WeaponLists[slotIndex] = {"None"}
-        end
-        if ChosenWeapons[slotIndex] == nil or ChosenWeapons[slotIndex] == "None" then
-            if WeaponLists[slotIndex] and WeaponLists[slotIndex][1] and WeaponLists[slotIndex][1] ~= "None" then
-                ChosenWeapons[slotIndex] = WeaponLists[slotIndex][1]
-            end
-        end
-    end
-end
-
--- 初期リストを事前に生成
-refreshWeapons()
-local savedInitial = getSavedWeaponSelections()
-
-local LoadCoreBox = Tabs.Misc:AddLeftGroupbox("Loadout Core")
-local AutoLoadToggle = LoadCoreBox:AddToggle("AutoLoadToggle", { Text = "Enable Auto Loadout", Default = autoLoadoutEnabled, Callback = function(Value) autoLoadoutEnabled = Value end })
-
-AutoLoadToggle:AddKeyPicker("AutoLoadKey", {
-    Default = "None",
-    SyncToggleState = true,
-    Mode = "Toggle",
-    Text = "Auto Loadout",
-})
-
-local LoadSlotsBox = Tabs.Misc:AddRightGroupbox("Weapon Slots")
-local LoadSlotsDep = LoadSlotsBox:AddDependencyBox()
-
-local list1 = (WeaponLists[1] and #WeaponLists[1] > 0 and WeaponLists[1]) or {"None"}
-local def1 = (savedInitial[1] and table.find(list1, savedInitial[1])) or 1
-local PriDropObj = LoadSlotsDep:AddDropdown("PriDrop", { Values = list1, Default = def1, Multi = false, Text = "Primary", Callback = function(Value) ChosenWeapons[1] = Value end })
-
-local list2 = (WeaponLists[2] and #WeaponLists[2] > 0 and WeaponLists[2]) or {"None"}
-local def2 = (savedInitial[2] and table.find(list2, savedInitial[2])) or 1
-local SecDropObj = LoadSlotsDep:AddDropdown("SecDrop", { Values = list2, Default = def2, Multi = false, Text = "Secondary", Callback = function(Value) ChosenWeapons[2] = Value end })
-
-local list3 = (WeaponLists[3] and #WeaponLists[3] > 0 and WeaponLists[3]) or {"None"}
-local def3 = (savedInitial[3] and table.find(list3, savedInitial[3])) or 1
-local MelDropObj = LoadSlotsDep:AddDropdown("MelDrop", { Values = list3, Default = def3, Multi = false, Text = "Melee", Callback = function(Value) ChosenWeapons[3] = Value end })
-
-local list4 = (WeaponLists[4] and #WeaponLists[4] > 0 and WeaponLists[4]) or {"None"}
-local def4 = (savedInitial[4] and table.find(list4, savedInitial[4])) or 1
-local UtiDropObj = LoadSlotsDep:AddDropdown("UtiDrop", { Values = list4, Default = def4, Multi = false, Text = "Utility", Callback = function(Value) ChosenWeapons[4] = Value end })
-
-LoadSlotsDep:SetupDependencies({ { AutoLoadToggle, true } })
-
-local dropObjs = {PriDropObj, SecDropObj, MelDropObj, UtiDropObj}
-
-local function updateWeaponLabels()
-    local saved = getSavedWeaponSelections()
-    for i = 1, 4 do
-        local drop = dropObjs[i]
-        local list = WeaponLists[i]
-        if drop and list and #list > 0 then
-            drop:SetValues(list)
-            local current = drop.Value
-            local targetVal = nil
-            if current and current ~= "None" and table.find(list, current) then
-                targetVal = current
-            elseif saved[i] and table.find(list, saved[i]) then
-                targetVal = saved[i]
-            elseif ChosenWeapons[i] and ChosenWeapons[i] ~= "None" and table.find(list, ChosenWeapons[i]) then
-                targetVal = ChosenWeapons[i]
-            else
-                targetVal = list[1]
-            end
-            if targetVal then
-                drop:SetValue(targetVal)
-                ChosenWeapons[i] = targetVal
-            end
-        end
-    end
-end
-
-LoadCoreBox:AddButton({
-    Text = "Refresh Weapons Data",
-    Func = function()
-        refreshWeapons()
-        updateWeaponLabels()
-    end,
-})
-
-local lastAutoLoadoutTime = 0
-local function triggerAutoLoadout()
-    if not autoLoadoutEnabled then return end
-    
-    -- 騾｣邯夐∽ｿ｡縺ｫ繧医ｋ讀懃衍繧帝亟縺舌ョ繝舌え繝ｳ繧ｹ・・遘偵↓1蝗槭∪縺ｧ・・
-    if os.clock() - lastAutoLoadoutTime < 1 then return end
-    lastAutoLoadoutTime = os.clock()
-
-    local validLoadout = {}
-    local maxSlots = AutoLoadout_FighterController and AutoLoadout_FighterController.LocalFighter and AutoLoadout_FighterController.LocalFighter:GetMaxEquippableWeapons() or 4
-    
-    local index = 1
-    for i = 1, maxSlots do 
-        if ChosenWeapons[i] and ChosenWeapons[i] ~= "None" then
-            validLoadout[index] = ChosenWeapons[i]
-            index = index + 1
-        end
-    end
-    
-    local duel = AutoLoadout_DuelController and AutoLoadout_DuelController:GetDuel(lp)
-    if duel and duel.LocalDueler and duel.LocalDueler:GetStaggeredSpawnsTurn() then
-        ReplicatedStorage.Remotes.Duels.PickWeaponsAheadOfTime:FireServer(validLoadout)
-    else
-        ReplicatedStorage.Remotes.Replication.Fighter.PickWeapons:FireServer(validLoadout)
-    end
-end
-
-local function enforceAutoLoadout()
-    local function hideExpectedUI(guiObj)
-        if not autoLoadoutEnabled then return end
-        local nameStr = string.lower(guiObj.Name)
-        if string.find(nameStr, "pickweapon") or string.find(nameStr, "weaponselect") then
-            task.spawn(function()
-                if guiObj:IsA("ScreenGui") then
-                    guiObj.Enabled = false
-                    guiObj:GetPropertyChangedSignal("Enabled"):Connect(function()
-                        if autoLoadoutEnabled and guiObj.Enabled then
-                            guiObj.Enabled = false; refreshWeapons(); triggerAutoLoadout()
-                        end
-                    end)
-                elseif guiObj:IsA("GuiObject") then
-                    guiObj.Visible = false
-                    guiObj:GetPropertyChangedSignal("Visible"):Connect(function()
-                        if autoLoadoutEnabled and guiObj.Visible then
-                            guiObj.Visible = false; refreshWeapons(); triggerAutoLoadout()
-                        end
-                    end)
-                end
-            end)
-            refreshWeapons()
-            triggerAutoLoadout()
-        end
-    end
-    
-    local PlayerGui = lp:WaitForChild("PlayerGui")
-    PlayerGui.ChildAdded:Connect(hideExpectedUI)
-    PlayerGui.DescendantAdded:Connect(hideExpectedUI)
-    for _, desc in ipairs(PlayerGui:GetDescendants()) do hideExpectedUI(desc) end
-
-    local function attachToFighter()
-        if AutoLoadout_FighterController and AutoLoadout_FighterController.LocalFighter and type(AutoLoadout_FighterController.LocalFighter.GetPropertyChangedSignal) == "function" then
-            pcall(function()
-                AutoLoadout_FighterController.LocalFighter:GetPropertyChangedSignal("CanPickWeapons"):Connect(function()
-                    if autoLoadoutEnabled and AutoLoadout_FighterController.LocalFighter:Get("CanPickWeapons") then
-                        refreshWeapons(); triggerAutoLoadout()
-                    end
-                end)
-            end)
-        end
-    end
-
-    if AutoLoadout_FighterController then
-        attachToFighter()
-        if type(AutoLoadout_FighterController.FighterAdded) == "userdata" then
-            AutoLoadout_FighterController.FighterAdded:Connect(attachToFighter)
-        end
-    end
-end
-
-task.spawn(function()
-    local Modules = ReplicatedStorage:WaitForChild("Modules", 10)
-    if Modules then AutoLoadout_ItemLibrary = require(Modules:WaitForChild("ItemLibrary", 10)) end
-    local playerScripts = lp:WaitForChild("PlayerScripts", 10)
-    local Controllers = playerScripts and playerScripts:WaitForChild("Controllers", 10)
-    if Controllers then
-        AutoLoadout_FighterController = require(Controllers:WaitForChild("FighterController", 10))
-        AutoLoadout_DuelController = require(Controllers:WaitForChild("DuelController", 10))
-    end
-    
-    task.wait(1)
-    refreshWeapons()
-    updateWeaponLabels()
-    enforceAutoLoadout()
-end)
-
-lp.CharacterAdded:Connect(function()
-    task.wait(1.5)
-    if autoLoadoutEnabled then
-        refreshWeapons()
-        triggerAutoLoadout()
-    end
-end)
-end -- do AutoLoadout
-
 -- ========== CHANGER TAB ==========
 do
     local changerLocalPlayer = lp
@@ -7772,9 +8083,7 @@ do
         end
     end
 
-    local function RegisterTextObject(obj)
-        if not IsTextObject(obj) then return end
-        local kAllowed = {
+    local kTextAllowed = {
             DisplayName = true,
             Username = true,
             Name = true,
@@ -7786,7 +8095,9 @@ do
             Wins = true,
             Value = true,
         }
-        if not kAllowed[obj.Name] then return end
+    local function RegisterTextObject(obj)
+        if not kTextAllowed[obj.Name] then return end
+        if not IsTextObject(obj) then return end
 
         ApplyNameSpoof(obj)
         if changerStates.text.name_spoof_conn[obj] then return end
@@ -7802,9 +8113,14 @@ do
         end)
     end
 
-    for _, obj in ipairs(game:GetDescendants()) do
-        RegisterTextObject(obj)
-    end
+    task.spawn(function()
+        local n = 0
+        for _, obj in ipairs(game:GetDescendants()) do
+            RegisterTextObject(obj)
+            n = n + 1
+            if n % 500 == 0 then task.wait() end
+        end
+    end)
     game.DescendantAdded:Connect(RegisterTextObject)
 
     -- Avatar helper functions
@@ -7946,14 +8262,14 @@ do
         end
     end
 
-    local function RegisterImageObject(obj)
-        if not obj:IsA("ImageLabel") then return end
-        local kAllowed = {
+    local kImageAllowed = {
             AvatarThumbnail = true,
             ImageLabel = true,
             Headshot = true
         }
-        if not kAllowed[obj.Name] then return end
+    local function RegisterImageObject(obj)
+        if not kImageAllowed[obj.Name] then return end
+        if not obj:IsA("ImageLabel") then return end
 
         ApplyThumbnailSpoof(obj)
         if changerStates.avatar.thumb_spoof_conn[obj] then return end
@@ -7969,9 +8285,14 @@ do
         end)
     end
 
-    for _, obj in ipairs(game:GetDescendants()) do
-        RegisterImageObject(obj)
-    end
+    task.spawn(function()
+        local n = 0
+        for _, obj in ipairs(game:GetDescendants()) do
+            RegisterImageObject(obj)
+            n = n + 1
+            if n % 500 == 0 then task.wait() end
+        end
+    end)
     game.DescendantAdded:Connect(RegisterImageObject)
 
     local function SetAvatar(use_old)
@@ -8223,7 +8544,8 @@ do
     end
 
     -- Badges Spoofs
-    if hookmetamethod and not getgenv()._BadgesHooked then
+    local function ensureBadgesHook()
+        if not hookmetamethod or getgenv()._BadgesHooked then return end
         getgenv()._BadgesHooked = true
         local old_index; old_index = hookmetamethod(game, "__index", function(self, key)
             if self == changerLocalPlayer then
@@ -8556,6 +8878,7 @@ do
         Default = false,
         Callback = function(val)
             changerStates.badges.Premium = val
+            if val then ensureBadgesHook() end
         end
     })
 
@@ -8564,6 +8887,7 @@ do
         Default = false,
         Callback = function(val)
             changerStates.badges.Verified = val
+            if val then ensureBadgesHook() end
         end
     })
 
@@ -8730,7 +9054,10 @@ end -- do Changer
 -- ========== AUTO EXECUTE ==========
 local AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
 
-local pastebinCode = "loadstring(game:HttpGet('https://raw.githubusercontent.com/ldtktldjadc/l/refs/heads/main/ModpackRivals.luau'))()"
+local function getAutoExecCode()
+    local key = tostring(getgenv().SCRIPT_KEY or "")
+    return string.format('getgenv().SCRIPT_KEY = %q\nloadstring(game:HttpGet("https://api.jnkie.com/api/v1/luascripts/public/d5ea756428802c506bf03e43cbd7e64f054d50c8921bcbe55f0bfbe46b1802a9/download"))()', tostring(key))
+end
 
 local _autoExecOn = false
 pcall(function()
@@ -8739,11 +9066,14 @@ pcall(function()
     end
 end)
 
--- 襍ｷ蜍墓凾縺ｫ繝輔ぃ繧､繝ｫ縺悟ｭ伜惠縺励※縺・ｌ縺ｰ queue_on_teleport 繧貞・逋ｻ骭ｲ
+-- 起動時にファイルが存在していれば queue_on_teleport を再登録 & ファイル更新
 if _autoExecOn then
     pcall(function()
-        if queue_on_teleport then queue_on_teleport(pastebinCode)
-        elseif syn and syn.queue_on_teleport then syn.queue_on_teleport(pastebinCode) end
+        local execCode = getAutoExecCode()
+        if queue_on_teleport then queue_on_teleport(execCode)
+        elseif syn and syn.queue_on_teleport then syn.queue_on_teleport(execCode) end
+        if isfile and isfile("autoexec/KETY.lua") then writefile("autoexec/KETY.lua", execCode) end
+        if isfile and isfile("KETY_AutoExec.lua") then writefile("KETY_AutoExec.lua", execCode) end
     end)
 end
 
@@ -8752,18 +9082,19 @@ AutoExecSection:AddToggle("AutoExecuteToggle", {
     Default = _autoExecOn,
     Callback = function(value)
         if value then
+            local execCode = getAutoExecCode()
             pcall(function()
                 if queue_on_teleport then
-                    queue_on_teleport(pastebinCode)
+                    queue_on_teleport(execCode)
                 elseif syn and syn.queue_on_teleport then
-                    syn.queue_on_teleport(pastebinCode)
+                    syn.queue_on_teleport(execCode)
                 end
             end)
             pcall(function()
                 if isfolder and not isfolder("autoexec") then makefolder("autoexec") end
-                writefile("autoexec/KETY.lua", pastebinCode)
+                writefile("autoexec/KETY.lua", execCode)
             end)
-            pcall(function() writefile("KETY_AutoExec.lua", pastebinCode) end)
+            pcall(function() writefile("KETY_AutoExec.lua", execCode) end)
         else
             pcall(function() if isfile("autoexec/KETY.lua") then delfile("autoexec/KETY.lua") end end)
             pcall(function() if isfile("KETY_AutoExec.lua") then delfile("KETY_AutoExec.lua") end end)
