@@ -5582,7 +5582,7 @@ do
         end
 
         if pitchMode == "Glitch Pitch" then
-            pitchOverride = 9999
+            pitchOverride = 30000
         elseif pitchMode == "Random Pitch" then
             pitchOverride = toggleVal
         elseif pitchMode == "Custom Pitch" then
