@@ -5493,7 +5493,7 @@ do
                     camRemote:FireServer(encoded, nil)
                 end)
             end
-            task.wait(0.05)
+            task.wait(0.2)
             glitchPitchVal = 74568
             pitchOverride = 74568
             if aaEnabled and camRemote then
@@ -5502,7 +5502,7 @@ do
                     camRemote:FireServer(encoded, nil)
                 end)
             end
-            task.wait(0.05)
+            task.wait(0.1)
             glitchPitchVal = 99999
             pitchOverride = 99999
             if aaEnabled and camRemote then
@@ -5562,7 +5562,7 @@ do
     local AntiAimDep2 = AntiAimSection:AddDependencyBox()
 
     local YawDropdown = AntiAimDep2:AddDropdown("AntiAim_YawMode", {
-        Values = {"Random Yaw", "Custom Yaw", "HitboxExtend"},
+        Values = {"Random Yaw", "0", "Custom Yaw", "HitboxExtend"},
         Default = 1,
         Multi = false,
         Text = "Yaw Mode",
@@ -5639,7 +5639,9 @@ do
             pitchOverride = enemyPitchDeg or 0
         end
 
-        if yawMode == "Random Yaw" then
+        if yawMode == "0" or yawMode == "0 Yaw" then
+            yawOverride = 0
+        elseif yawMode == "Random Yaw" then
             yawOverride = toggleVal
         elseif yawMode == "Custom Yaw" then
             yawOverride = customYaw
