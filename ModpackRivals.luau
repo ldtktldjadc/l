@@ -7,6 +7,24 @@
 
 
 if not game:IsLoaded() then game.Loaded:Wait() end
+
+-- require後にスレッド権限が下がる問題の対策（identityを復元）
+do
+    local gi = getthreadidentity or get_thread_identity or getidentity
+    local si = setthreadidentity or set_thread_identity or setidentity
+    if gi and si then
+        local origRequire = require
+        pcall(function()
+            getfenv(0).require = function(...)
+                local id = gi()
+                local res = table.pack(pcall(origRequire, ...))
+                pcall(si, id)
+                if not res[1] then error(res[2], 2) end
+                return table.unpack(res, 2, res.n)
+            end
+        end)
+    end
+end
 pcall(function() if clearconsole then clearconsole() end end)
 pcall(function() if rconsoleclear then rconsoleclear() end end)
 pcall(function()
