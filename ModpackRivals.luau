@@ -5302,7 +5302,13 @@ do
 
             local isKnife = (getgenv().Config.WeaponSlot == "Knife")
 
-            local minTpDelay = isKnife and 0 or ((autoAttack and 0.15) or 0.05)
+            local minTpDelay = (autoAttack and 0.15) or 0.05
+            if isKnife then
+                local okPing, pingMs = pcall(function()
+                    return game:GetService("Players").LocalPlayer:GetNetworkPing() * 2000
+                end)
+                minTpDelay = (okPing and type(pingMs) == "number") and (pingMs / 1000) or 0
+            end
             if tick() - tpStartTime < minTpDelay then return end
 
             if not canAttack then
