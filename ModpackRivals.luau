@@ -4199,6 +4199,7 @@ do
     attackBtnContainer.Active = true
     attackBtnContainer.ZIndex = 50
     attackBtnContainer.Visible = (getgenv().Config.ShowAttackButton ~= false)
+    do local _si=setthreadidentity or set_thread_identity or setidentity; if _si then pcall(_si,8) end end
     if targetGui then
         attackBtnContainer.Parent = targetGui
     end
@@ -6112,6 +6113,7 @@ end
 refreshWeapons()
 local savedInitial = getSavedWeaponSelections()
 
+do local _si=setthreadidentity or set_thread_identity or setidentity; if _si then pcall(_si,8) end end
 local AutoWeponToggle = GunModsSection:AddToggle("AutoLoadToggle", {
     Text = "AutoWepon",
     Default = autoLoadoutEnabled,
@@ -7635,6 +7637,7 @@ FlyDep:AddSlider("FlySpeedSlider", {
 
 FlyDep:SetupDependencies({ { FlyToggle, true } })
 
+do local _si=setthreadidentity or set_thread_identity or setidentity; if _si then pcall(_si,8) end end
 local hideInFloorEnabled = false
 local hideInFloorDepth = 5
 local hideDesyncConn = nil
