@@ -5182,9 +5182,7 @@ do
                 if not desyncCF then
                 local ox, oy, oz
                 if curSlot == "Knife" then
-                    ox = math.random(-50, 50) / 10
-                    oy = math.random(-50, 50) / 10
-                    oz = math.random(-50, 50) / 10
+                    ox, oy, oz = 0, 0, 3
                 else
                     local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
                     ox = (offsets and offsets.X) or 0
@@ -5302,10 +5300,10 @@ do
                 tpStartTime = tick()
             end
 
-            local minTpDelay = (autoAttack and 0.15) or 0.05
-            if tick() - tpStartTime < minTpDelay then return end
-
             local isKnife = (getgenv().Config.WeaponSlot == "Knife")
+
+            local minTpDelay = isKnife and 0 or ((autoAttack and 0.15) or 0.05)
+            if tick() - tpStartTime < minTpDelay then return end
 
             if not canAttack then
                 if isKnife and MechanicsController then
