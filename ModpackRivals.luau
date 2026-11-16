@@ -9558,7 +9558,7 @@ do
 end
 
 -- ========== CHANGER TAB ==========
-do
+;(function()
     local changerLocalPlayer = lp
     local LeaderboardController
     pcall(function()
@@ -10774,7 +10774,7 @@ do
     UnlockGroup:AddButton("Refresh Equipment UI", function()
         applyUnlockAllHook()
     end)
-end -- do Changer
+end)() -- do Changer
 
 -- ========== AUTO EXECUTE ==========
 local AutoExecSection = Tabs.Config:AddRightGroupbox("Auto Execute")
