@@ -6345,6 +6345,9 @@ do
     local glitchTask    = nil
     local camRemote     = nil
     local spinAngle     = 0
+    local aaSpinning    = false
+    local util = nil
+    pcall(function() util = require(ReplicatedStorage.Modules.Utility) end)
     local spinCur       = 0
 
     local function encodeUnclamped(pitchDeg, yawDeg)
@@ -6511,17 +6514,30 @@ do
     RunService.Heartbeat:Connect(function(dt)
         if not aaEnabled then return end
 
+        local spinDelta = 0
         if spinMode == "JustSpin" then
-            spinAngle = (spinAngle + spinSpeed * dt) % 360
+            spinDelta = spinSpeed * dt
         elseif spinMode == "Random" then
             if tick() - lastSpinRoll >= 0.1 then
                 lastSpinRoll = tick()
                 spinCur = math.random(-spinSpeed, spinSpeed)
             end
-            spinAngle = (spinAngle + spinCur * dt) % 360
-        else
-            spinAngle = 0
+            spinDelta = spinCur * dt
         end
+        pcall(function()
+            local char = lp.Character
+            local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if not (hum and root) then return end
+            if spinMode ~= "None" then
+                hum.AutoRotate = false
+                root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(spinDelta), 0)
+                aaSpinning = true
+            elseif aaSpinning then
+                hum.AutoRotate = true
+                aaSpinning = false
+            end
+        end)
 
         if pitchMode == "Glitch" then
             pitchOverride = glitchPitchVal or 99999
@@ -6550,7 +6566,7 @@ do
             if pitchMode == "Random" then pitchOverride = math.random(0, 360) end
             if yawMode == "Random" then yawOverride = math.random(0, 360) end
             if camRemote then
-                local p, y = pitchOverride, (yawOverride + spinAngle) % 360
+                local p, y = pitchOverride, yawOverride % 360
                 pcall(function() camRemote:FireServer(encodeUnclamped(p, y), nil) end)
             end
         end
@@ -6561,7 +6577,7 @@ do
                 local lf = fc and fc.LocalFighter
                 if lf and util then
                     local p = pitchOverride
-                    local y = (yawOverride + spinAngle) % 360
+                    local y = yawOverride % 360
                     if p < 0 then p = p % 360 end
                     local pv = math.clamp(math.floor(math.rad(p) / (2 * math.pi) * 256 + 0.5), 0, 1114111)
                     local yv = math.clamp(math.floor(math.rad(y) / (2 * math.pi) * 256 + 0.5), 0, 1114111)
