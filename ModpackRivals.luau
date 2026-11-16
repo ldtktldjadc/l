@@ -8,21 +8,39 @@
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
--- require後にスレッド権限が下がる問題の対策（identityを復元）
+-- require後にスレッド権限・Capabilityが下がる問題の対策（キャッシュ＋Identity8維持）
+local _fixId = function() end
+local require = require
 do
-    local gi = getthreadidentity or get_thread_identity or getidentity
-    local si = setthreadidentity or set_thread_identity or setidentity
-    if gi and si then
-        local origRequire = require
-        pcall(function()
-            getfenv(0).require = function(...)
-                local id = gi()
-                local res = table.pack(pcall(origRequire, ...))
-                pcall(si, id)
-                if not res[1] then error(res[2], 2) end
-                return table.unpack(res, 2, res.n)
-            end
-        end)
+    if not getgenv()._KETY_OrigRequire then
+        getgenv()._KETY_OrigRequire = require
+    end
+    local _origRequire = getgenv()._KETY_OrigRequire
+    if not getgenv()._KETY_ReqCache then
+        getgenv()._KETY_ReqCache = {}
+    end
+    local _reqCache = getgenv()._KETY_ReqCache
+    local _si = setthreadidentity or set_thread_identity or setidentity or (syn and syn.set_thread_identity)
+    _fixId = function()
+        if _si then
+            pcall(_si, 8)
+        end
+    end
+    _fixId()
+    require = function(mod, ...)
+        if mod ~= nil and _reqCache[mod] ~= nil then
+            return _reqCache[mod]
+        end
+        _fixId()
+        local res = table.pack(pcall(_origRequire, mod, ...))
+        _fixId()
+        if not res[1] then
+            error(res[2], 2)
+        end
+        if mod ~= nil and res[2] ~= nil then
+            _reqCache[mod] = res[2]
+        end
+        return table.unpack(res, 2, res.n)
     end
 end
 pcall(function() if clearconsole then clearconsole() end end)
@@ -39,9 +57,18 @@ getgenv().DeviceSpoofEnabled = false
 getgenv().DeviceSpoofValue = "Touch"
 getgenv()._LastPendingControls = nil
 
--- 単一の __namecall ディスパッチャ（メソッド名ごとのチェーン。該当しない呼び出しは1回のテーブル参照だけ）
-if not getgenv().KETY_HookNamecall and hookmetamethod and newcclosure then
+-- 単一の __namecall ディスパッチャ（再実行時は既存チェーンをクリアして最新フックに差し替え）
+if type(getgenv()._KETY_NCChains) == "table" then
+    table.clear(getgenv()._KETY_NCChains)
+    getgenv()._SetControlsHooked = false
+    getgenv()._SilentNCHooked = false
+    getgenv()._ragebotCamHooked = false
+    getgenv()._antiAimHooked = false
+    getgenv().OOBHookExecuted = false
+end
+if not getgenv()._KETY_NCChains and hookmetamethod and newcclosure then
     local chains = {}
+    getgenv()._KETY_NCChains = chains
     local realOld
     local function callReal(self, ...) return realOld(self, ...) end
     realOld = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
@@ -59,9 +86,17 @@ end
 
 if not getgenv()._SetControlsHooked and getgenv().KETY_HookNamecall then
     getgenv()._SetControlsHooked = true
+    local _setCtrlRemote = nil
+    local _setCtrlLookedUp = false
     getgenv().KETY_HookNamecall({"FireServer", "fireServer", "fireserver"}, function(old)
         return function(self, ...)
-            if self and (self.Name == "SetControls" or tostring(self) == "SetControls") then
+            if not _setCtrlLookedUp then
+                _setCtrlLookedUp = true
+                pcall(function()
+                    _setCtrlRemote = game:GetService("ReplicatedStorage").Remotes.Replication.Fighter.SetControls
+                end)
+            end
+            if _setCtrlRemote and self == _setCtrlRemote then
                 if not getgenv().ModpackLoaded then
                     getgenv()._LastPendingControls = ...
                     return nil
@@ -79,28 +114,93 @@ end
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
+local _RealRunService = game:GetService("RunService")
+local _RealUIS = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 
 local lp = Players.LocalPlayer
+while not lp do
+    task.wait(0.05)
+    lp = Players.LocalPlayer
+end
 local PlayerGui = lp:WaitForChild("PlayerGui")
 
 if PlayerGui:FindFirstChild("LoadingScreen") then
     repeat task.wait(0.05) until not PlayerGui:FindFirstChild("LoadingScreen")
 end
 
+-- 過去実行分の接続を完全破棄＆以降の接続を自動追跡
+if getgenv()._KETY_Conns then
+    for _, c in ipairs(getgenv()._KETY_Conns) do
+        pcall(function() c:Disconnect() end)
+    end
+end
+getgenv()._KETY_Conns = {}
+local _ketyConns = getgenv()._KETY_Conns
+
+local function _wrapSignal(sig)
+    return setmetatable({}, {
+        __index = function(_, k)
+            if k == "Connect" or k == "connect" then
+                return function(_, fn)
+                    local c = sig:Connect(function(...)
+                        _fixId()
+                        return fn(...)
+                    end)
+                    _ketyConns[#_ketyConns + 1] = c
+                    return c
+                end
+            elseif k == "Once" or k == "once" then
+                return function(_, fn)
+                    local c = sig:Once(function(...)
+                        _fixId()
+                        return fn(...)
+                    end)
+                    _ketyConns[#_ketyConns + 1] = c
+                    return c
+                end
+            elseif k == "Wait" or k == "wait" then
+                return function() return sig:Wait() end
+            end
+            local v = sig[k]
+            if type(v) == "function" then
+                return function(_, ...) return v(sig, ...) end
+            end
+            return v
+        end
+    })
+end
+
+local RunService = setmetatable({
+    RenderStepped = _wrapSignal(_RealRunService.RenderStepped),
+    Heartbeat = _wrapSignal(_RealRunService.Heartbeat),
+    Stepped = _wrapSignal(_RealRunService.Stepped),
+}, {
+    __index = function(_, k)
+        local v = _RealRunService[k]
+        if type(v) == "function" then
+            return function(_, ...) return v(_RealRunService, ...) end
+        end
+        return v
+    end
+})
+
 local boundRenderSteps = {}
 local function safeBindToRenderStep(rs, name, priority, func)
-    if type(rs.BindToRenderStep) == "function" then
-        pcall(function() rs:BindToRenderStep(name, priority, func) end)
+    local wrapped = function(...)
+        _fixId()
+        return func(...)
+    end
+    if type(_RealRunService.BindToRenderStep) == "function" then
+        pcall(function() _RealRunService:BindToRenderStep(name, priority, wrapped) end)
     else
         if boundRenderSteps[name] then boundRenderSteps[name]:Disconnect() end
-        boundRenderSteps[name] = rs.RenderStepped:Connect(func)
+        boundRenderSteps[name] = RunService.RenderStepped:Connect(wrapped)
     end
 end
 local function safeUnbindFromRenderStep(rs, name)
-    if type(rs.UnbindFromRenderStep) == "function" then
-        pcall(function() rs:UnbindFromRenderStep(name) end)
+    if type(_RealRunService.UnbindFromRenderStep) == "function" then
+        pcall(function() _RealRunService:UnbindFromRenderStep(name) end)
     end
     if boundRenderSteps[name] then
         boundRenderSteps[name]:Disconnect()
@@ -108,7 +208,7 @@ local function safeUnbindFromRenderStep(rs, name)
     end
 end
 
--- 螟夐㍾繝ｭ繝ｼ繝蛾亟豁｢・・遘剃ｻ･蜀・↓騾｣邯壹〒螳溯｡後＆繧後◆蝣ｴ蜷医・蠑ｾ縺擾ｼ・
+-- 多重ロード防止（5秒以内に連続で実行された場合は弾く）
 if getgenv().KETY_Executing then return end
 getgenv().KETY_Executing = true
 task.delay(5, function() getgenv().KETY_Executing = false end)
@@ -189,15 +289,30 @@ getgenv().KETY_IsEnemy = function(plr)
     end
     if _kSpectate then
         local duel = _kSpectate.CurrentDuelSubject
-        local localDueler = duel and duel:GetDueler(lp)
-        local localTeam = localDueler and localDueler:Get("TeamID") or nil
-        if localTeam and duel.Duelers then
-            for _, dueler in next, duel.Duelers do
-                if dueler.Player == plr then
-                    return dueler:Get("TeamID") ~= localTeam
+        if duel then
+            local byPlr = rawget(duel, "_duelers_by_player")
+            if byPlr then
+                local localDueler = byPlr[lp]
+                local targetDueler = byPlr[plr]
+                if localDueler and targetDueler then
+                    local lt = localDueler:Get("TeamID")
+                    if lt ~= nil then
+                        return targetDueler:Get("TeamID") ~= lt
+                    end
+                elseif localDueler then
+                    return false
                 end
             end
-            return false
+            local localDueler = duel:GetDueler(lp)
+            local localTeam = localDueler and localDueler:Get("TeamID") or nil
+            if localTeam and duel.Duelers then
+                for _, dueler in next, duel.Duelers do
+                    if dueler.Player == plr then
+                        return dueler:Get("TeamID") ~= localTeam
+                    end
+                end
+                return false
+            end
         end
     end
     local myID, theirID = lp:GetAttribute("TeamID"), plr:GetAttribute("TeamID")
@@ -325,48 +440,52 @@ do
         return closest
     end
 
-    local function getSilentAimDirection(origin, currentDir)
+    local saCurrentTarget = nil
+    local lastSaTargetUpdate = 0
+    RunService.Heartbeat:Connect(function()
         local cfg = getgenv().SilentConfig
-        if not cfg or not cfg.Enabled then return currentDir end
+        if not cfg or not cfg.Enabled then
+            saCurrentTarget = nil
+            return
+        end
+        local now = tick()
+        if now - lastSaTargetUpdate < 0.05 then return end
+        lastSaTargetUpdate = now
+
         local target = getClosestTarget(cfg.SilentFOV, cfg.SilentTargetPart)
         if target then
             local tModel = target:IsA("Model") and target or target:FindFirstAncestorOfClass("Model")
             local tPlr = tModel and Players:GetPlayerFromCharacter(tModel)
-            if tPlr and not checkTeam(tPlr, false) then return currentDir end
-
-            if math.random(1, 100) <= (cfg.SilentHitChance or 100) then
-                return (target.Position - origin).Unit * currentDir.Magnitude
+            if tPlr and not checkTeam(tPlr, false) then
+                saCurrentTarget = nil
+                return
             end
         end
-        return currentDir
-    end
+        saCurrentTarget = target
+    end)
 
     if getgenv().KETY_HookNamecall and checkcaller and not getgenv()._SilentNCHooked then
         getgenv()._SilentNCHooked = true
         getgenv().KETY_HookNamecall({"Raycast", "raycast"}, function(old)
             return function(self, ...)
                 local cfg = getgenv().SilentConfig
-                if self ~= workspace or not cfg or not cfg.Enabled or isInsideRaycastHook or checkcaller() then
+                if self ~= workspace or not cfg or not cfg.Enabled or not saCurrentTarget or isInsideRaycastHook or checkcaller() then
                     return old(self, ...)
                 end
-                local method = getnamecallmethod()
-
-                isInsideRaycastHook = true
-                local args = {...}
-                local origin = args[1]
-                local direction = args[2]
-                local success, resultDir = pcall(function()
-                    if typeof(origin) == "Vector3" and typeof(direction) == "Vector3" then
-                        return getSilentAimDirection(origin, direction)
-                    end
-                    return direction
-                end)
-                isInsideRaycastHook = false
-
-                if setnamecallmethod then setnamecallmethod(method) end
-                if success and typeof(resultDir) == "Vector3" then
-                    args[2] = resultDir
-                    return old(self, unpack(args))
+                local origin, direction = ...
+                if typeof(origin) ~= "Vector3" or typeof(direction) ~= "Vector3" then
+                    return old(self, ...)
+                end
+                if math.abs(direction.X) < 0.01 and math.abs(direction.Z) < 0.01 and direction.Y < -5 then
+                    return old(self, ...)
+                end
+                local mag = direction.Magnitude
+                if mag < 15 or not saCurrentTarget.Parent then
+                    return old(self, ...)
+                end
+                if math.random(1, 100) <= (cfg.SilentHitChance or 100) then
+                    local resultDir = (saCurrentTarget.Position - origin).Unit * mag
+                    return old(self, origin, resultDir, select(3, ...))
                 end
                 return old(self, ...)
             end
@@ -389,29 +508,53 @@ local function getPlayerFromObj(obj)
     return char and Players:GetPlayerFromCharacter(char)
 end
 
+getgenv()._KETY_OnEmit = function(self)
+    local espCfg = getgenv().espSettings
+    local rageCfg = getgenv().RageSettings
+    local kiciaCfg = getgenv().Config
+    if not ((espCfg and espCfg.MasterEnabled and espCfg.Katana) or (rageCfg and rageCfg.Enabled and rageCfg.AntiKatana) or (kiciaCfg and kiciaCfg.Enabled)) then
+        return
+    end
+    if typeof(self) == "Instance" and self.Name == "bigstar" then
+        local p = getPlayerFromObj(self)
+        if p then
+            if not getgenv().DeflectingStartTimes then getgenv().DeflectingStartTimes = {} end
+            local now = tick()
+            if not DeflectingPlayers[p] or DeflectingPlayers[p] <= now then
+                getgenv().DeflectingStartTimes[p] = now
+            end
+            DeflectingPlayers[p] = now + 1
+        end
+    end
+end
+
+getgenv()._KETY_OnClear = function(self)
+    local espCfg = getgenv().espSettings
+    local rageCfg = getgenv().RageSettings
+    local kiciaCfg = getgenv().Config
+    if not ((espCfg and espCfg.MasterEnabled and espCfg.Katana) or (rageCfg and rageCfg.Enabled and rageCfg.AntiKatana) or (kiciaCfg and kiciaCfg.Enabled)) then
+        return
+    end
+    if typeof(self) == "Instance" and self.Name == "bigstar" then
+        local p = getPlayerFromObj(self)
+        if p then DeflectingPlayers[p] = 0 end
+    end
+end
+
 if not getgenv().ParticleHooked then
     getgenv().ParticleHooked = true
+    local _wrap = newcclosure or function(f) return f end
     local _tempPE = Instance.new("ParticleEmitter")
-    local oldEmit; oldEmit = hookfunction(_tempPE.Emit, function(self, count)
-        if self.Name == "bigstar" then
-            local p = getPlayerFromObj(self)
-            if p then
-                if not getgenv().DeflectingStartTimes then getgenv().DeflectingStartTimes = {} end
-                if not DeflectingPlayers[p] or DeflectingPlayers[p] <= tick() then
-                    getgenv().DeflectingStartTimes[p] = tick()
-                end
-                DeflectingPlayers[p] = tick() + 1
-            end
-        end
+    local oldEmit; oldEmit = hookfunction(_tempPE.Emit, _wrap(function(self, count)
+        local fn = getgenv()._KETY_OnEmit
+        if fn then fn(self) end
         return oldEmit(self, count)
-    end)
-    local oldClear; oldClear = hookfunction(_tempPE.Clear, function(self)
-        if self.Name == "bigstar" then
-            local p = getPlayerFromObj(self)
-            if p then DeflectingPlayers[p] = 0 end
-        end
+    end))
+    local oldClear; oldClear = hookfunction(_tempPE.Clear, _wrap(function(self)
+        local fn = getgenv()._KETY_OnClear
+        if fn then fn(self) end
         return oldClear(self)
-    end)
+    end))
     _tempPE:Destroy()
 end
 
@@ -497,10 +640,15 @@ local teamEspSettings = {
     TextStrokeColor = Color3.fromRGB(0, 0, 0),
 }
 
+local _strokeCache = setmetatable({}, { __mode = "k" })
 local function safeSetStrokeColor(target, color)
     if typeof(target) == "Instance" then
-        local s = target:FindFirstChildOfClass("UIStroke")
-        if s then
+        local s = _strokeCache[target]
+        if s == nil then
+            s = target:FindFirstChildOfClass("UIStroke") or false
+            _strokeCache[target] = s
+        end
+        if s and s.Color ~= color then
             s.Color = color
         end
     end
@@ -751,30 +899,44 @@ local function clearHighlight(p)
     end
 end
 
+local function hidePlayerEspCache(c)
+    if not c or c._isHidden then return end
+    c._isHidden = true
+    c.NameTag.Visible = false
+    c.DistanceTag.Visible = false
+    if c.BoxFill then c.BoxFill.Visible = false end
+    for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
+    c.Tracer.Visible = false
+    c.WeaponBillboard.Enabled = false
+    if c.AmmoText then c.AmmoText.Visible = false end
+    if c.RankIcon then c.RankIcon.Visible = false end
+    if c.HPBarBg then c.HPBarBg.Visible = false end
+    for _, b in pairs(c.Bones) do b.Visible = false end
+end
+
+local _wallCheckCache = {}
 local _espLastTime = 0
+local _espWasDisabled = true
 RunService.Heartbeat:Connect(function()
+    if not espSettings.MasterEnabled then
+        if not _espWasDisabled then
+            _espWasDisabled = true
+            for p, c in pairs(espCache) do
+                hidePlayerEspCache(c)
+                clearHighlight(p)
+            end
+            for p in pairs(wallEspHighlightCache) do clearHighlight(p) end
+        end
+        return
+    end
+    _espWasDisabled = false
+
     local now = tick()
     if now - _espLastTime < 0.03 then return end -- Max ~30fps for ESP
     _espLastTime = now
 
     local cam = workspace.CurrentCamera
     if not cam then return end
-
-    if not espSettings.MasterEnabled then
-        for _, c in pairs(espCache) do
-            c.NameTag.Visible = false
-            c.DistanceTag.Visible = false
-            if c.BoxFill then c.BoxFill.Visible = false end
-            for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
-            c.Tracer.Visible = false
-            c.WeaponBillboard.Enabled = false
-            if c.AmmoText then c.AmmoText.Visible = false end
-            if c.RankIcon then c.RankIcon.Visible = false end
-            if c.HPBarBg then c.HPBarBg.Visible = false end
-            for _, b in pairs(c.Bones) do b.Visible = false end
-        end
-        return
-    end
 
     for _, p in pairs(Players:GetPlayers()) do
         if p == lp then continue end
@@ -785,19 +947,7 @@ RunService.Heartbeat:Connect(function()
         local head = char and (char:FindFirstChild("Head") or char:FindFirstChild("HitboxHead") or rootPart)
 
         if not char or not hum or hum.Health <= 0 or not rootPart or not head or not checkTeam(p, true) then
-            if espCache[p] then
-                local c = espCache[p]
-                c.NameTag.Visible = false
-                c.DistanceTag.Visible = false
-                if c.BoxFill then c.BoxFill.Visible = false end
-                for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
-                c.Tracer.Visible = false
-                c.WeaponBillboard.Enabled = false
-                if c.AmmoText then c.AmmoText.Visible = false end
-                if c.RankIcon then c.RankIcon.Visible = false end
-                if c.HPBarBg then c.HPBarBg.Visible = false end
-                for _, b in pairs(c.Bones) do b.Visible = false end
-            end
+            hidePlayerEspCache(espCache[p])
             clearHighlight(p)
             continue
         end
@@ -805,21 +955,21 @@ RunService.Heartbeat:Connect(function()
         -- Wall ESP Highlight処理
         if espSettings.WallESP then
             local hl = getOrCreateHighlight(p, char)
-            local behindWall = isPlayerBehindWall(char, cam)
-            if behindWall then
-                -- 壁越し時のみ表示
-                hl.Enabled = true
-                hl.FillColor = espSettings.WallESPColor
-                hl.OutlineColor = espSettings.WallESPColor
-                hl.FillTransparency = espSettings.WallESPTransparency
-                hl.OutlineTransparency = espSettings.WallESPTransparency
-            else
-                -- 壁なし時は別色で表示
-                hl.Enabled = true
-                hl.FillColor = espSettings.WallESPNoWallColor
-                hl.OutlineColor = espSettings.WallESPNoWallColor
-                hl.FillTransparency = espSettings.WallESPTransparency
-                hl.OutlineTransparency = espSettings.WallESPTransparency
+            local wc = _wallCheckCache[p]
+            if not wc or now - wc.t > 0.15 then
+                wc = { t = now, v = isPlayerBehindWall(char, cam) }
+                _wallCheckCache[p] = wc
+            end
+            local targetColor = wc.v and espSettings.WallESPColor or espSettings.WallESPNoWallColor
+            local targetTrans = espSettings.WallESPTransparency
+            if not hl.Enabled then hl.Enabled = true end
+            if hl.FillColor ~= targetColor then
+                hl.FillColor = targetColor
+                hl.OutlineColor = targetColor
+            end
+            if hl.FillTransparency ~= targetTrans then
+                hl.FillTransparency = targetTrans
+                hl.OutlineTransparency = targetTrans
             end
         else
             clearHighlight(p)
@@ -827,6 +977,7 @@ RunService.Heartbeat:Connect(function()
 
         createPlayerEsp(p)
         local cache = espCache[p]
+        cache._isHidden = false
 
         local rootPos, onScreen = cam:WorldToViewportPoint(rootPart.Position)
         local distance = math.floor((cam.CFrame.Position - rootPart.Position).Magnitude)
@@ -934,13 +1085,17 @@ RunService.Heartbeat:Connect(function()
                 local eloStat = p:FindFirstChild("CustomLeaderstats") and p.CustomLeaderstats:FindFirstChild("Current ELO")
                 if eloStat and eloStat.Value then
                     local elo = eloStat.Value
-                    local lbRank = nil
-                    pcall(function() lbRank = SeasonLibrary:GetHighestELOLeaderboardRanking(elo, p.UserId) end)
-                    local rankName = nil
-                    pcall(function() rankName = SeasonLibrary:GetRank(elo, p.UserId, lbRank) end)
-                    local rankInfo = rankName and SeasonLibrary.CurrentSeason.RankProfile.Ranks[rankName]
-                    if rankInfo and rankInfo.Image then
-                        cache.RankIcon.Image = rankInfo.Image
+                    if cache._lastElo ~= elo then
+                        cache._lastElo = elo
+                        local lbRank = nil
+                        pcall(function() lbRank = SeasonLibrary:GetHighestELOLeaderboardRanking(elo, p.UserId) end)
+                        local rankName = nil
+                        pcall(function() rankName = SeasonLibrary:GetRank(elo, p.UserId, lbRank) end)
+                        local rankInfo = rankName and SeasonLibrary.CurrentSeason.RankProfile.Ranks[rankName]
+                        cache._cachedRankImage = rankInfo and rankInfo.Image or false
+                    end
+                    if cache._cachedRankImage then
+                        cache.RankIcon.Image = cache._cachedRankImage
                         cache.RankIcon.Position = UDim2.new(0, topPos.X, 0, currentTopY)
                         cache.RankIcon.Visible = true
                     else
@@ -1087,22 +1242,29 @@ RunService.Heartbeat:Connect(function()
                 for _, b in pairs(cache.Bones) do b.Visible = false end
             end
         else
-            cache.NameTag.Visible = false
-            cache.DistanceTag.Visible = false
-            if cache.BoxFill then cache.BoxFill.Visible = false end
-            for _, l in pairs(cache.BoxLines or {}) do l.Visible = false end
-            cache.Tracer.Visible = false
-            cache.AmmoText.Visible = false
-            cache.RankIcon.Visible = false
-            if cache.HPBarBg then cache.HPBarBg.Visible = false end
-            for _, b in pairs(cache.Bones) do b.Visible = false end
+            hidePlayerEspCache(cache)
         end
     end
 end)
 
 -- ========== TEAM ESP LOOP ==========
 local _teamEspLastTime = 0
+local _teamEspWasDisabled = false
 RunService.Heartbeat:Connect(function()
+    if not teamEspSettings.Enabled then
+        if not _teamEspWasDisabled then
+            _teamEspWasDisabled = true
+            for _, c in pairs(teamEspCache) do
+                c.NameTag.Visible = false
+                c.BoxFill.Visible = false
+                c.Tracer.Visible = false
+                c.HPBarBg.Visible = false
+                for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
+            end
+        end
+        return
+    end
+
     local now = tick()
     if now - _teamEspLastTime < 0.03 then return end
     _teamEspLastTime = now
@@ -1112,16 +1274,20 @@ RunService.Heartbeat:Connect(function()
 
     local myID = getMyTeamID()
 
-    if not teamEspSettings.Enabled or not myID then
-        for _, c in pairs(teamEspCache) do
-            c.NameTag.Visible = false
-            c.BoxFill.Visible = false
-            c.Tracer.Visible = false
-            c.HPBarBg.Visible = false
-            for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
+    if not myID then
+        if not _teamEspWasDisabled then
+            _teamEspWasDisabled = true
+            for _, c in pairs(teamEspCache) do
+                c.NameTag.Visible = false
+                c.BoxFill.Visible = false
+                c.Tracer.Visible = false
+                c.HPBarBg.Visible = false
+                for _, l in pairs(c.BoxLines or {}) do l.Visible = false end
+            end
         end
         return
     end
+    _teamEspWasDisabled = false
 
     for _, p in pairs(Players:GetPlayers()) do
         if p == lp then continue end
@@ -1248,12 +1414,43 @@ end)
 -- ========== LINORIA UI ==========
 local repo = "https://raw.githubusercontent.com/mstudio45/LinoriaLib/main/"
 
+local function _patchLinoriaSource(src, file)
+    if file ~= "Library.lua" or type(src) ~= "string" then return src end
+    -- Dropdownが閉じている時は銃発射(MouseButton1)ごとにAbsolutePosition取得・CloseDropdown(Display/RecalculateListSize)を呼ばない
+    if not src:find("if Library.Unloaded or not ListOuter.Visible then return end", 1, true) then
+        src = src:gsub(
+            "local AbsPos, AbsSize = ListOuter%.AbsolutePosition, ListOuter%.AbsoluteSize",
+            "if Library.Unloaded or not ListOuter.Visible then return end; local AbsPos, AbsSize = ListOuter.AbsolutePosition, ListOuter.AbsoluteSize"
+        )
+    end
+    -- ColorPickerが閉じている時は銃発射(MouseButton1)ごとにAbsolutePosition取得・Hideを呼ばない
+    if not src:find("if not PickerFrameOuter.Visible and not ContextMenu.Container.Visible then return end", 1, true) then
+        src = src:gsub(
+            "local AbsPos, AbsSize = PickerFrameOuter%.AbsolutePosition, PickerFrameOuter%.AbsoluteSize",
+            "if not PickerFrameOuter.Visible and not ContextMenu.Container.Visible then return end; local AbsPos, AbsSize = PickerFrameOuter.AbsolutePosition, PickerFrameOuter.AbsoluteSize"
+        )
+    end
+    -- BuildDropdownList実行時に常にIdentity 8を保証（lacking capability Pluginクラッシュ防止）
+    if not src:find("function Dropdown:BuildDropdownList() do local _si", 1, true) then
+        src = src:gsub(
+            "function Dropdown:BuildDropdownList%(%)",
+            "function Dropdown:BuildDropdownList() do local _si = setthreadidentity or set_thread_identity or setidentity; if _si then pcall(_si, 8) end end"
+        )
+    end
+    -- 毎ピクセル移動ごとの不要なOnHighlight更新を停止
+    src = src:gsub(
+        "\n([ \t]*)HighlightInstance%.MouseMoved:Connect%(doHighlight%)",
+        "\n%1-- HighlightInstance.MouseMoved:Connect(doHighlight)"
+    )
+    return src
+end
+
 local function fetchRepo(file)
     local localName = "LinoriaLib_" .. file:gsub("[^%w%.%-_]", "_")
     if readfile and isfile and isfile(localName) then
         local success, content = pcall(readfile, localName)
         if success and content and #content > 0 then
-            local fn = loadstring(content)
+            local fn = loadstring(_patchLinoriaSource(content, file))
             if fn then return fn() end
         end
     end
@@ -1262,7 +1459,7 @@ local function fetchRepo(file)
         local success, res = pcall(function() return game:HttpGet(repo .. file) end)
         if success and type(res) == "string" and #res > 0 then
             if writefile then pcall(writefile, localName, res) end
-            local fn = loadstring(res)
+            local fn = loadstring(_patchLinoriaSource(res, file))
             if fn then return fn() end
         end
         task.wait(0.1)
@@ -1274,7 +1471,615 @@ local Library     = fetchRepo("Library.lua")
 local ThemeManager = fetchRepo("addons/ThemeManager.lua")
 local SaveManager  = fetchRepo("addons/SaveManager.lua")
 
+if Library and type(Library.SafeCallback) == "function" then
+    local _origSafeCallback = Library.SafeCallback
+    function Library:SafeCallback(f, ...)
+        _fixId()
+        local r = _origSafeCallback(self, f, ...)
+        _fixId()
+        return r
+    end
+end
+
 getgenv().MyLinoriaLibrary = Library
+
+-- ========== KEYPICKER & TOGGLE LAG / UNKEYBIND FIX ==========
+do
+    local _allKeyPickers = {}
+    local _activePickingKP = nil
+    local _openModeSelect = nil
+
+    local function _refreshKeybindFrameSize()
+        _fixId()
+        if not Library.KeybindContainer or not Library.KeybindFrame then return end
+        local maxWidth = 0
+        local count = 0
+        for i = 1, #_allKeyPickers do
+            local kp = _allKeyPickers[i]
+            local cl = kp._containerLabel
+            if cl and cl.Visible then
+                count = count + 1
+                local w = kp._cachedTextWidth or 100
+                if w > maxWidth then maxWidth = w end
+            end
+        end
+        Library.KeybindFrame.Size = UDim2.new(0, math.max(maxWidth + 18, 210), 0, count * 20 + 28)
+    end
+
+    -- 全33個のKeyPickerを単一のInputBegan/InputEndedで高速処理（MouseButton1射撃時は完全O(1)スキップ）
+    Library:GiveSignal(_RealUIS.InputBegan:Connect(function(Input, GameProcessedEvent)
+        _fixId()
+        if Library.Unloaded then return end
+        local uType = Input.UserInputType
+
+        if _openModeSelect and _openModeSelect.Visible and (uType == Enum.UserInputType.MouseButton1 or uType == Enum.UserInputType.MouseButton2) then
+            if not Library:MouseIsOverFrame(_openModeSelect) then
+                _openModeSelect.Visible = false
+                _openModeSelect = nil
+            end
+        end
+
+        -- キー設定待機中 ([...])
+        if _activePickingKP then
+            local kp = _activePickingKP
+            if not kp._picking then
+                _activePickingKP = nil
+                return
+            end
+            if uType == Enum.UserInputType.MouseButton1 then
+                -- 左クリックはMB1にバインドせずUnbind(None)扱いにする（UI操作不能＆射撃ラグ防止）
+                kp._picking = false
+                _activePickingKP = nil
+                kp:SetValue({ "None", kp.Mode, {} })
+                Library:SafeCallback(kp.ChangedCallback, "None")
+                Library:SafeCallback(kp.Changed, "None")
+                return
+            elseif uType == Enum.UserInputType.MouseButton2 then
+                if kp.DisplayFrame and Library:MouseIsOverFrame(kp.DisplayFrame) then
+                    kp._picking = false
+                    _activePickingKP = nil
+                    kp:Display()
+                    return
+                end
+                kp._picking = false
+                _activePickingKP = nil
+                kp:SetValue({ "MB2", kp.Mode, {} })
+                Library:SafeCallback(kp.ChangedCallback, Enum.UserInputType.MouseButton2)
+                Library:SafeCallback(kp.Changed, Enum.UserInputType.MouseButton2)
+                return
+            elseif uType == Enum.UserInputType.MouseButton3 then
+                kp._picking = false
+                _activePickingKP = nil
+                kp:SetValue({ "MB3", kp.Mode, {} })
+                Library:SafeCallback(kp.ChangedCallback, Enum.UserInputType.MouseButton3)
+                Library:SafeCallback(kp.Changed, Enum.UserInputType.MouseButton3)
+                return
+            elseif uType == Enum.UserInputType.Keyboard then
+                local kc = Input.KeyCode
+                kp._picking = false
+                _activePickingKP = nil
+                if kc == Enum.KeyCode.Backspace or kc == Enum.KeyCode.Escape or kc == Enum.KeyCode.Delete or kc == Enum.KeyCode.Unknown then
+                    kp:SetValue({ "None", kp.Mode, {} })
+                    Library:SafeCallback(kp.ChangedCallback, "None")
+                    Library:SafeCallback(kp.Changed, "None")
+                else
+                    kp:SetValue({ kc.Name, kp.Mode, {} })
+                    Library:SafeCallback(kp.ChangedCallback, kc)
+                    Library:SafeCallback(kp.Changed, kc)
+                end
+                return
+            end
+            return
+        end
+
+        -- 通常時: MouseButton1(銃発射/UIクリック)や無関係な入力は即座にreturn
+        local keyName = nil
+        if uType == Enum.UserInputType.Keyboard then
+            local kc = Input.KeyCode
+            if kc and kc ~= Enum.KeyCode.Unknown then keyName = kc.Name end
+        elseif uType == Enum.UserInputType.MouseButton2 then
+            keyName = "MB2"
+        elseif uType == Enum.UserInputType.MouseButton3 then
+            keyName = "MB3"
+        else
+            return
+        end
+        if not keyName then return end
+
+        for i = 1, #_allKeyPickers do
+            local kp = _allKeyPickers[i]
+            if kp.Value == keyName and not kp._picking then
+                if not GameProcessedEvent or kp.AllowGameProcessed then
+                    if kp.Mode == "Toggle" then
+                        kp.Toggled = not kp.Toggled
+                        kp:DoClick()
+                        kp:Update()
+                    elseif kp.Mode == "Hold" then
+                        kp:Update()
+                    end
+                end
+            end
+        end
+    end))
+
+    Library:GiveSignal(_RealUIS.InputEnded:Connect(function(Input)
+        _fixId()
+        if Library.Unloaded or _activePickingKP then return end
+        local uType = Input.UserInputType
+        local keyName = nil
+        if uType == Enum.UserInputType.Keyboard then
+            local kc = Input.KeyCode
+            if kc and kc ~= Enum.KeyCode.Unknown then keyName = kc.Name end
+        elseif uType == Enum.UserInputType.MouseButton2 then
+            keyName = "MB2"
+        elseif uType == Enum.UserInputType.MouseButton3 then
+            keyName = "MB3"
+        else
+            return
+        end
+        if not keyName then return end
+
+        for i = 1, #_allKeyPickers do
+            local kp = _allKeyPickers[i]
+            if kp.Mode == "Hold" and kp.Value == keyName and not kp._picking then
+                kp:Update()
+            end
+        end
+    end))
+
+    local function _customAddKeyPicker(self, Idx, Info)
+        Info = Info or {}
+        local ParentObj = self
+        local ToggleLabel = ParentObj.TextLabel
+        local Options = Library.Options or getgenv().Options
+
+        local defKey = Info.Default
+        if not defKey or defKey == "" or defKey == "MB1" or defKey == "Unknown" then
+            defKey = "None"
+        end
+
+        local KeyPicker = {
+            Value = defKey,
+            Toggled = false,
+            Mode = Info.Mode or "Toggle",
+            Type = "KeyPicker",
+            Callback = Info.Callback or function() end,
+            ChangedCallback = Info.ChangedCallback or function() end,
+            Changed = Info.Changed or function() end,
+            SyncToggleState = Info.SyncToggleState or false,
+            Modifiers = {},
+            AllowGameProcessed = Info.AllowGameProcessed or false,
+            NoUI = Info.NoUI or false,
+            _picking = false,
+            _cachedTextWidth = 100,
+        }
+
+        if KeyPicker.SyncToggleState then
+            Info.Modes = { "Toggle", "Hold" }
+            if KeyPicker.Mode ~= "Hold" then
+                KeyPicker.Mode = "Toggle"
+            end
+        end
+
+        local PickOuter = Library:Create("Frame", {
+            BackgroundColor3 = Color3.new(0, 0, 0),
+            BorderColor3 = Color3.new(0, 0, 0),
+            Size = UDim2.new(0, 28, 0, 15),
+            ZIndex = 6,
+            Parent = ToggleLabel,
+        })
+
+        local PickInner = Library:Create("Frame", {
+            BackgroundColor3 = Library.BackgroundColor,
+            BorderColor3 = Library.OutlineColor,
+            BorderMode = Enum.BorderMode.Inset,
+            Size = UDim2.new(1, 0, 1, 0),
+            ZIndex = 6,
+            Parent = PickOuter,
+        })
+
+        Library:AddToRegistry(PickInner, {
+            BackgroundColor3 = "BackgroundColor",
+            BorderColor3 = "OutlineColor",
+        })
+
+        local DisplayLabel = Library:CreateLabel({
+            Size = UDim2.new(1, 0, 1, 0),
+            TextSize = 13,
+            Text = Info.Default or "None",
+            TextWrapped = true,
+            ZIndex = 6,
+            Parent = PickInner,
+        })
+
+        local ModeSelectOuter = Library:Create("Frame", {
+            BorderColor3 = Color3.new(0, 0, 0),
+            Position = UDim2.fromOffset(0, 0),
+            Size = UDim2.new(0, 60, 0, 45 + 2 + 15),
+            Visible = false,
+            ZIndex = 14,
+            Parent = Library.ScreenGui,
+        })
+
+        local function _updateModePos()
+            if ModeSelectOuter.Visible then
+                ModeSelectOuter.Position = UDim2.fromOffset(
+                    PickOuter.AbsolutePosition.X + PickOuter.AbsoluteSize.X + 4,
+                    PickOuter.AbsolutePosition.Y + 1
+                )
+            end
+        end
+
+        local ModeSelectInner = Library:Create("Frame", {
+            BackgroundColor3 = Library.BackgroundColor,
+            BorderColor3 = Library.OutlineColor,
+            BorderMode = Enum.BorderMode.Inset,
+            Size = UDim2.new(1, 0, 1, 0),
+            ZIndex = 15,
+            Parent = ModeSelectOuter,
+        })
+
+        Library:AddToRegistry(ModeSelectInner, {
+            BackgroundColor3 = "BackgroundColor",
+            BorderColor3 = "OutlineColor",
+        })
+
+        Library:Create("UIListLayout", {
+            FillDirection = Enum.FillDirection.Vertical,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Parent = ModeSelectInner,
+        })
+
+        local ContainerLabel = Library:CreateLabel({
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Size = UDim2.new(1, 0, 0, 18),
+            TextSize = 13,
+            Visible = false,
+            ZIndex = 110,
+            Parent = Library.KeybindContainer,
+        }, true)
+        KeyPicker._containerLabel = ContainerLabel
+
+        local Modes = Info.Modes or { "Always", "Toggle", "Hold" }
+        local ModeButtons = {}
+
+        for _, Mode in next, Modes do
+            local ModeButton = {}
+            local ModeLabel = Library:CreateLabel({
+                Active = false,
+                Size = UDim2.new(1, 0, 0, 15),
+                TextSize = 13,
+                Text = Mode,
+                ZIndex = 16,
+                Parent = ModeSelectInner,
+            })
+
+            function ModeButton:Select()
+                for _, Button in next, ModeButtons do
+                    Button:Deselect()
+                end
+                KeyPicker.Mode = Mode
+                ModeLabel.TextColor3 = Library.AccentColor
+                Library.RegistryMap[ModeLabel].Properties.TextColor3 = "AccentColor"
+                ModeSelectOuter.Visible = false
+                if _openModeSelect == ModeSelectOuter then _openModeSelect = nil end
+            end
+
+            function ModeButton:Deselect()
+                KeyPicker.Mode = nil
+                ModeLabel.TextColor3 = Library.FontColor
+                Library.RegistryMap[ModeLabel].Properties.TextColor3 = "FontColor"
+            end
+
+            ModeLabel.InputBegan:Connect(function(Input)
+                _fixId()
+                if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    ModeButton:Select()
+                    KeyPicker:Update()
+                end
+            end)
+
+            if Mode == KeyPicker.Mode then
+                ModeButton:Select()
+            end
+            ModeButtons[Mode] = ModeButton
+        end
+
+        -- Unbind Key ボタン
+        local UnbindLabel = Library:CreateLabel({
+            Active = false,
+            Size = UDim2.new(1, 0, 0, 15),
+            TextSize = 13,
+            Text = "Unbind Key",
+            ZIndex = 16,
+            Parent = ModeSelectInner,
+        })
+        ModeSelectOuter.Size = UDim2.new(0, 68, 0, (#Modes + 1) * 15 + 2)
+
+        UnbindLabel.InputBegan:Connect(function(Input)
+            _fixId()
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                if _activePickingKP == KeyPicker then _activePickingKP = nil end
+                KeyPicker._picking = false
+                ModeSelectOuter.Visible = false
+                if _openModeSelect == ModeSelectOuter then _openModeSelect = nil end
+                KeyPicker:SetValue({ "None", KeyPicker.Mode or "Toggle", {} })
+                Library:SafeCallback(KeyPicker.ChangedCallback, "None")
+                Library:SafeCallback(KeyPicker.Changed, "None")
+            end
+        end)
+
+        function KeyPicker:GetTextDisplay()
+            local k = KeyPicker.Value
+            if not k or k == "" or k == "None" or k == "Unknown" then
+                return "None"
+            end
+            return tostring(k)
+        end
+
+        function KeyPicker:Display(CustomText)
+            _fixId()
+            if Library.Unloaded then return end
+            if KeyPicker._picking and not CustomText then
+                DisplayLabel.Text = "..."
+                PickOuter.Size = UDim2.new(0, 28, 0, 15)
+                return
+            end
+            local txt = CustomText or KeyPicker:GetTextDisplay()
+            DisplayLabel.Text = txt
+            local w = 28
+            pcall(function()
+                w = Library:GetTextBounds( tostring(txt), DisplayLabel.Font, DisplayLabel.TextSize ) + 10
+            end)
+            PickOuter.Size = UDim2.new(0, math.max(28, w), 0, 15)
+        end
+
+        function KeyPicker:GetState()
+            if KeyPicker.Mode == "Always" then
+                return true
+            end
+            local k = KeyPicker.Value
+            if not k or k == "None" or k == "Unknown" then
+                if KeyPicker.SyncToggleState and ParentObj then
+                    return ParentObj.Value == true
+                end
+                return KeyPicker.Toggled == true
+            end
+            if KeyPicker.Mode == "Hold" then
+                if k == "MB2" then
+                    return _RealUIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+                elseif k == "MB3" then
+                    return _RealUIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton3)
+                else
+                    local ok, kc = pcall(function() return Enum.KeyCode[k] end)
+                    return ok and kc ~= nil and _RealUIS:IsKeyDown(kc) or false
+                end
+            else
+                return KeyPicker.Toggled == true
+            end
+        end
+
+        function KeyPicker:_UpdateKeybindListOnly()
+            _fixId()
+            if Library.Unloaded then return end
+            local k = KeyPicker.Value
+            local hasBoundKey = (k ~= nil and k ~= "" and k ~= "None" and k ~= "Unknown")
+            if KeyPicker.NoUI or not hasBoundKey then
+                if ContainerLabel.Visible then
+                    ContainerLabel.Visible = false
+                    _refreshKeybindFrameSize()
+                end
+                return
+            end
+            local State = (KeyPicker.SyncToggleState and ParentObj) and (ParentObj.Value == true) or KeyPicker:GetState()
+            local newStr = string.format("[%s] %s (%s)", tostring(k), Info.Text or Idx, tostring(KeyPicker.Mode or "Toggle"))
+            if ContainerLabel.Text ~= newStr then
+                ContainerLabel.Text = newStr
+                pcall(function()
+                    KeyPicker._cachedTextWidth = Library:GetTextBounds(newStr, ContainerLabel.Font, ContainerLabel.TextSize)
+                end)
+            end
+            ContainerLabel.TextColor3 = State and Library.AccentColor or Library.FontColor
+            if Library.RegistryMap[ContainerLabel] then
+                Library.RegistryMap[ContainerLabel].Properties.TextColor3 = State and "AccentColor" or "FontColor"
+            end
+            if not ContainerLabel.Visible then
+                ContainerLabel.Visible = true
+            end
+            _refreshKeybindFrameSize()
+        end
+
+        function KeyPicker:Update()
+            _fixId()
+            if Library.Unloaded then return end
+            local k = KeyPicker.Value
+            local hasBoundKey = (k ~= nil and k ~= "" and k ~= "None" and k ~= "Unknown")
+            if hasBoundKey then
+                local State = KeyPicker:GetState()
+                if KeyPicker.SyncToggleState and ParentObj and ParentObj.Value ~= State then
+                    ParentObj:SetValue(State)
+                end
+            elseif KeyPicker.Mode == "Always" then
+                if KeyPicker.SyncToggleState and ParentObj and not ParentObj.Value then
+                    ParentObj:SetValue(true)
+                end
+            end
+            KeyPicker:_UpdateKeybindListOnly()
+        end
+
+        function KeyPicker:OnClick(Callback)
+            KeyPicker.Clicked = Callback
+        end
+
+        function KeyPicker:OnChanged(Callback)
+            KeyPicker.Changed = Callback
+            Callback(KeyPicker.Value)
+        end
+
+        function KeyPicker:DoClick()
+            if ParentObj and ParentObj.Type == "Toggle" and KeyPicker.SyncToggleState then
+                ParentObj:SetValue(KeyPicker.Toggled)
+            end
+            Library:SafeCallback(KeyPicker.Callback, KeyPicker.Toggled)
+            Library:SafeCallback(KeyPicker.Clicked, KeyPicker.Toggled)
+        end
+
+        function KeyPicker:SetModePickerVisibility(bool)
+            _fixId()
+            local vis = (bool == true)
+            ModeSelectOuter.Visible = vis
+            if vis then
+                _openModeSelect = ModeSelectOuter
+                _updateModePos()
+            elseif _openModeSelect == ModeSelectOuter then
+                _openModeSelect = nil
+            end
+        end
+
+        function KeyPicker:GetModePickerVisibility()
+            _fixId()
+            return ModeSelectOuter.Visible
+        end
+
+        function KeyPicker:SetValue(Data)
+            _fixId()
+            if type(Data) ~= "table" then return end
+            local Key, Mode, Modifiers = Data[1], Data[2], Data[3]
+            if Key == nil or Key == "" or Key == "None" or Key == "Unknown" or Key == "MB1" or Key == "Backspace" or Key == "Escape" or Key == "Delete" then
+                KeyPicker.Value = "None"
+                KeyPicker.Modifiers = {}
+            else
+                KeyPicker.Value = tostring(Key)
+                KeyPicker.Modifiers = type(Modifiers) == "table" and Modifiers or {}
+            end
+            KeyPicker.DisplayValue = KeyPicker.Value
+            if Mode and ModeButtons[Mode] then
+                ModeButtons[Mode]:Select()
+            end
+            KeyPicker:Display()
+            KeyPicker:_UpdateKeybindListOnly()
+        end
+
+        PickOuter.InputBegan:Connect(function(Input)
+            _fixId()
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 and not Library:MouseIsOverFrame(ModeSelectOuter) then
+                if KeyPicker._picking then
+                    KeyPicker._picking = false
+                    if _activePickingKP == KeyPicker then _activePickingKP = nil end
+                    KeyPicker:SetValue({ "None", KeyPicker.Mode, {} })
+                    Library:SafeCallback(KeyPicker.ChangedCallback, "None")
+                    Library:SafeCallback(KeyPicker.Changed, "None")
+                    return
+                end
+                if _activePickingKP and _activePickingKP ~= KeyPicker then
+                    _activePickingKP._picking = false
+                    _activePickingKP:Display()
+                end
+                ModeSelectOuter.Visible = false
+                if _openModeSelect == ModeSelectOuter then _openModeSelect = nil end
+                KeyPicker._picking = true
+                KeyPicker:Display()
+                task.delay(0.05, function()
+                    if KeyPicker._picking then
+                        _activePickingKP = KeyPicker
+                    end
+                end)
+            elseif Input.UserInputType == Enum.UserInputType.MouseButton2 then
+                if KeyPicker._picking then
+                    KeyPicker._picking = false
+                    if _activePickingKP == KeyPicker then _activePickingKP = nil end
+                    KeyPicker:Display()
+                end
+                if _openModeSelect and _openModeSelect ~= ModeSelectOuter then
+                    _openModeSelect.Visible = false
+                end
+                ModeSelectOuter.Visible = not ModeSelectOuter.Visible
+                if ModeSelectOuter.Visible then
+                    _openModeSelect = ModeSelectOuter
+                    _updateModePos()
+                elseif _openModeSelect == ModeSelectOuter then
+                    _openModeSelect = nil
+                end
+            end
+        end)
+
+        KeyPicker.DisplayFrame = PickOuter
+        KeyPicker.DisplayValue = KeyPicker.Value
+        KeyPicker.Default = KeyPicker.Value
+        KeyPicker.DefaultModifiers = {}
+        if ParentObj and ParentObj.Addons then
+            table.insert(ParentObj.Addons, KeyPicker)
+        end
+        if Options and Idx then
+            Options[Idx] = KeyPicker
+        end
+        _allKeyPickers[#_allKeyPickers + 1] = KeyPicker
+
+        KeyPicker:Display()
+        KeyPicker:_UpdateKeybindListOnly()
+
+        return ParentObj
+    end
+
+    local _gbHooked = false
+    local _addonHooked = false
+    local function _hookAddonTable(obj)
+        if _addonHooked or not obj then return end
+        local mt = getmetatable(obj)
+        local funcs = mt and mt.__index
+        if type(funcs) == "table" and type(funcs.AddKeyPicker) == "function" then
+            _addonHooked = true
+            funcs.AddKeyPicker = _customAddKeyPicker
+        end
+    end
+
+    local function _hookGroupbox(gb)
+        if _gbHooked or not gb then return end
+        local mt = getmetatable(gb)
+        local funcs = mt and mt.__index
+        if type(funcs) == "table" and type(funcs.AddToggle) == "function" then
+            _gbHooked = true
+            local origAddToggle = funcs.AddToggle
+            funcs.AddToggle = function(self, Idx, Info)
+                local Toggle = origAddToggle(self, Idx, Info)
+                _hookAddonTable(Toggle)
+                function Toggle:SetValue(Bool)
+                    _fixId()
+                    Bool = not not Bool
+                    if Toggle.Value == Bool then
+                        return
+                    end
+                    Toggle.Value = Bool
+                    Toggle:Display()
+                    for _, Addon in next, Toggle.Addons do
+                        if Addon.Type == "KeyPicker" and Addon.SyncToggleState then
+                            Addon.Toggled = Bool
+                            if Addon._UpdateKeybindListOnly then
+                                Addon:_UpdateKeybindListOnly()
+                            else
+                                Addon:Update()
+                            end
+                        end
+                    end
+                    Library:SafeCallback(Toggle.Callback, Toggle.Value)
+                    Library:SafeCallback(Toggle.Changed, Toggle.Value)
+                    Library:UpdateDependencyBoxes()
+                end
+                return Toggle
+            end
+            local origAddLabel = funcs.AddLabel
+            if type(origAddLabel) == "function" then
+                funcs.AddLabel = function(self, ...)
+                    local Label = origAddLabel(self, ...)
+                    _hookAddonTable(Label)
+                    return Label
+                end
+            end
+        end
+    end
+
+    Library._KETY_HookGroupbox = _hookGroupbox
+end
 
 local Window = Library:CreateWindow({
     Title = "KETY",
@@ -1291,9 +2096,17 @@ local Tabs = {
     Changer = Window:AddTab("Changer"),
     Config  = Window:AddTab("Config"),
 }
+do
+    local _origAddLeft = Tabs.Combat.AddLeftGroupbox
+    if type(_origAddLeft) == "function" then
+        local _firstGb = _origAddLeft(Tabs.Combat, "Silent Aim")
+        if Library._KETY_HookGroupbox then Library._KETY_HookGroupbox(_firstGb) end
+        Tabs.Combat._ketyFirstSilentGb = _firstGb
+    end
+end
 
 -- ===== COMBAT TAB =====
-local AimSection = Tabs.Combat:AddLeftGroupbox("Silent Aim")
+local AimSection = Tabs.Combat._ketyFirstSilentGb or Tabs.Combat:AddLeftGroupbox("Silent Aim")
 
 local SilentToggle = AimSection:AddToggle("SilentEnabled", {
     Text    = "Enabled",
@@ -1536,6 +2349,7 @@ task.spawn(function()
         local RunService = game:GetService("RunService")
         pcall(function() RunService:UnbindFromRenderStep("AimLockLate") end)
         RunService:BindToRenderStep("AimLockLate", Enum.RenderPriority.Last.Value, function()
+            _fixId()
             local self = CameraController
             if self.IsFrozen or not AimLockSettings.Enabled then return end
 
@@ -1671,18 +2485,26 @@ local function hideFovElements()
     end
 end
 
+local _fovWasVisible = false
 getgenv()._AimLockFOVConn = RunService.RenderStepped:Connect(function()
-    pcall(function()
-        if not (AimLockSettings.Enabled and AimLockSettings.FovEnabled) then
-            hideFovElements()
-            return
+    if not (AimLockSettings.Enabled and AimLockSettings.FovEnabled) then
+        if _fovWasVisible then
+            _fovWasVisible = false
+            pcall(hideFovElements)
         end
+        return
+    end
 
-        local camera = workspace.CurrentCamera
-        if not camera then
-            hideFovElements()
-            return
+    local camera = workspace.CurrentCamera
+    if not camera then
+        if _fovWasVisible then
+            _fovWasVisible = false
+            pcall(hideFovElements)
         end
+        return
+    end
+    _fovWasVisible = true
+    pcall(function()
 
         local center = camera.ViewportSize / 2
         local baseSize = AimLockSettings.FovSize or 150
@@ -2245,13 +3067,23 @@ do
 
 	ensureVMHook = function()
 		if _vmCVM then return true end
-		local scripts = lp:WaitForChild("PlayerScripts", 10)
-		if not scripts then return false end
-		local cvmM
-		for _, v in pairs(scripts:GetDescendants()) do
-			if v:IsA("ModuleScript") and (v.Name == "ClientViewModel" or v.Name == "ModuleScript_ClientViewModel") then
-				cvmM = v; break
+		local cvmM = getgenv()._KETY_CVMModule
+		if not cvmM then
+			local scripts = lp:WaitForChild("PlayerScripts", 10)
+			if not scripts then return false end
+			local mods = scripts:FindFirstChild("Modules")
+			local crc = mods and mods:FindFirstChild("ClientReplicatedClasses")
+			local cf = crc and crc:FindFirstChild("ClientFighter")
+			local ci = cf and cf:FindFirstChild("ClientItem")
+			cvmM = ci and (ci:FindFirstChild("ClientViewModel") or ci:FindFirstChild("ModuleScript_ClientViewModel"))
+			if not cvmM then
+				for _, v in pairs(scripts:GetDescendants()) do
+					if v:IsA("ModuleScript") and (v.Name == "ClientViewModel" or v.Name == "ModuleScript_ClientViewModel") then
+						cvmM = v; break
+					end
+				end
 			end
+			if cvmM then getgenv()._KETY_CVMModule = cvmM end
 		end
 		if not cvmM then return false end
 		local ok, CVM = pcall(require, cvmM)
@@ -2452,14 +3284,16 @@ local function checkVMLoopState()
     if noArmEnabled or vmMaterialActive() then
         if not noArmConnection then
             local _vmLast = 0
+            local _noArmLast = 0
             noArmConnection = RunService.RenderStepped:Connect(function()
-                if noArmEnabled then updateNoArmInWorld(true) end
-                if vmMaterialActive() then
-                    local t = tick()
-                    if t - _vmLast >= 0.1 then
-                        _vmLast = t
-                        updateVMMaterials()
-                    end
+                local t = tick()
+                if noArmEnabled and t - _noArmLast >= 0.03 then
+                    _noArmLast = t
+                    updateNoArmInWorld(true)
+                end
+                if vmMaterialActive() and t - _vmLast >= 0.1 then
+                    _vmLast = t
+                    updateVMMaterials()
                 end
             end)
             getgenv().KETY_NoArmConnection = noArmConnection
@@ -2497,8 +3331,20 @@ updateNoArmInWorld = function(hidden)
 end
 
 local function _nvmFindModule(nameSet)
+    if (nameSet.ClientViewModel or nameSet.ModuleScript_ClientViewModel) and getgenv()._KETY_CVMModule then
+        return getgenv()._KETY_CVMModule
+    end
     local scripts = lp:FindFirstChild("PlayerScripts")
     if scripts then
+        local mods = scripts:FindFirstChild("Modules")
+        local crc = mods and mods:FindFirstChild("ClientReplicatedClasses")
+        local cf = crc and crc:FindFirstChild("ClientFighter")
+        local ci = cf and cf:FindFirstChild("ClientItem")
+        if ci then
+            for _, ch in ipairs(ci:GetChildren()) do
+                if ch:IsA("ModuleScript") and nameSet[ch.Name] then return ch end
+            end
+        end
         for _, v in pairs(scripts:GetDescendants()) do
             if v:IsA("ModuleScript") and nameSet[v.Name] then return v end
         end
@@ -2516,10 +3362,16 @@ local function ensureNoVMAnimHook()
         if cvmM then
             local ok, CVM = pcall(require, cvmM)
             if ok and type(CVM) == "table" then
-                local origApplyRecoil = CVM.ApplyRecoil
-                local origImpulse     = CVM.Impulse
-                local origUpdate      = CVM.Update
-                local origCreateSound = CVM.CreateSound
+                if not CVM._ketyOrigApplyRecoil then
+                    CVM._ketyOrigApplyRecoil = CVM.ApplyRecoil
+                    CVM._ketyOrigImpulse     = CVM.Impulse
+                    CVM._ketyOrigUpdate      = CVM.Update
+                    CVM._ketyOrigCreateSound = CVM.CreateSound
+                end
+                local origApplyRecoil = CVM._ketyOrigApplyRecoil
+                local origImpulse     = CVM._ketyOrigImpulse
+                local origUpdate      = CVM._ketyOrigUpdate
+                local origCreateSound = CVM._ketyOrigCreateSound
 
                 CVM.ApplyRecoil = function(self, ...)
                     if noVMAnim then return end
@@ -2578,42 +3430,46 @@ local function ensureNoVMAnimHook()
                     end
                     local ret = origUpdate(self, ...)
                     if noArmEnabled then
-                        pcall(function()
-                            if self._left_arm then
-                                self._left_arm.Transparency = 1
-                                self._left_arm.LocalTransparencyModifier = 1
-                            end
-                            if self._right_arm then
-                                self._right_arm.Transparency = 1
-                                self._right_arm.LocalTransparencyModifier = 1
-                            end
-                            if self._left_arm_shirt_texture then self._left_arm_shirt_texture.Transparency = 1 end
-                            if self._right_arm_shirt_texture then self._right_arm_shirt_texture.Transparency = 1 end
-                            if self._left_arm_wrapped_part then
-                                self._left_arm_wrapped_part.Transparency = 1
-                                self._left_arm_wrapped_part.LocalTransparencyModifier = 1
-                            end
-                            if self._right_arm_wrapped_part then
-                                self._right_arm_wrapped_part.Transparency = 1
-                                self._right_arm_wrapped_part.LocalTransparencyModifier = 1
-                            end
-                            if self._arm_submodels then
-                                for submodel, _ in pairs(self._arm_submodels) do
-                                    for _, p in ipairs(submodel:GetDescendants()) do
-                                        if p:IsA("BasePart") then
-                                            p.Transparency = 1
-                                            p.LocalTransparencyModifier = 1
-                                        elseif p:IsA("Decal") or p:IsA("Texture") then
-                                            p.Transparency = 1
+                        local _t = tick()
+                        if _t - (self._noArmT or 0) >= 0.15 then
+                            self._noArmT = _t
+                            pcall(function()
+                                if self._left_arm then
+                                    self._left_arm.Transparency = 1
+                                    self._left_arm.LocalTransparencyModifier = 1
+                                end
+                                if self._right_arm then
+                                    self._right_arm.Transparency = 1
+                                    self._right_arm.LocalTransparencyModifier = 1
+                                end
+                                if self._left_arm_shirt_texture then self._left_arm_shirt_texture.Transparency = 1 end
+                                if self._right_arm_shirt_texture then self._right_arm_shirt_texture.Transparency = 1 end
+                                if self._left_arm_wrapped_part then
+                                    self._left_arm_wrapped_part.Transparency = 1
+                                    self._left_arm_wrapped_part.LocalTransparencyModifier = 1
+                                end
+                                if self._right_arm_wrapped_part then
+                                    self._right_arm_wrapped_part.Transparency = 1
+                                    self._right_arm_wrapped_part.LocalTransparencyModifier = 1
+                                end
+                                if self._arm_submodels then
+                                    for submodel, _ in pairs(self._arm_submodels) do
+                                        for _, p in ipairs(submodel:GetDescendants()) do
+                                            if p:IsA("BasePart") then
+                                                p.Transparency = 1
+                                                p.LocalTransparencyModifier = 1
+                                            elseif p:IsA("Decal") or p:IsA("Texture") then
+                                                p.Transparency = 1
+                                            end
                                         end
                                     end
                                 end
-                            end
-                            if self.Model then
-                                applyNoArmToModel(self.Model, true)
-                            end
-                            self._noArmActive = true
-                        end)
+                                if self.Model then
+                                    applyNoArmToModel(self.Model, true)
+                                end
+                                self._noArmActive = true
+                            end)
+                        end
                     elseif self._noArmActive then
                         self._noArmActive = false
                         pcall(function()
@@ -2677,7 +3533,8 @@ local function ensureNoVMAnimHook()
             local okA, ANIM = pcall(require, animM)
             if okA and type(ANIM) == "table" then
                 if type(ANIM.PlayAnimation) == "function" then
-                    local origPlay = ANIM.PlayAnimation
+                    if not ANIM._ketyOrigPlay then ANIM._ketyOrigPlay = ANIM.PlayAnimation end
+                    local origPlay = ANIM._ketyOrigPlay
                     ANIM.PlayAnimation = function(self, key, ...)
                         if type(key) == "string" then
                             local isShoot  = key == "QuickShot" or key == "FinalShoot" or key == "ShootAiming" or string.sub(key,1,5) == "Shoot"
@@ -2713,14 +3570,16 @@ local function ensureNoVMAnimHook()
                     end
                 end
                 if type(ANIM.PlaySprintAnimation) == "function" then
-                    local origSprint = ANIM.PlaySprintAnimation
+                    if not ANIM._ketyOrigSprint then ANIM._ketyOrigSprint = ANIM.PlaySprintAnimation end
+                    local origSprint = ANIM._ketyOrigSprint
                     ANIM.PlaySprintAnimation = function(self, ...)
                         if noVMAnim then return end
                         return origSprint(self, ...)
                     end
                 end
                 if type(ANIM.PlayIdleAnimation) == "function" then
-                    local origIdle = ANIM.PlayIdleAnimation
+                    if not ANIM._ketyOrigIdle then ANIM._ketyOrigIdle = ANIM.PlayIdleAnimation end
+                    local origIdle = ANIM._ketyOrigIdle
                     ANIM.PlayIdleAnimation = function(self, ...)
                         local ret = origIdle(self, ...)
                         if noVMAnim then
@@ -2745,7 +3604,8 @@ local function ensureNoVMAnimHook()
         if cfcM then
             local okC, CFC = pcall(require, cfcM)
             if okC and type(CFC) == "table" and type(CFC.PlaySlidingAnimation) == "function" then
-                local origPlaySlide = CFC.PlaySlidingAnimation
+                if not CFC._ketyOrigPlaySlide then CFC._ketyOrigPlaySlide = CFC.PlaySlidingAnimation end
+                local origPlaySlide = CFC._ketyOrigPlaySlide
                 CFC.PlaySlidingAnimation = function(self, ...)
                     if noVMAnim then
                         pcall(function() self:StopSlidingAnimation() end)
@@ -2765,7 +3625,8 @@ local function ensureNoVMAnimHook()
             if mcM then
                 local MC = require(mcM)
                 if MC and type(MC) == "table" and type(MC.Slide) == "function" then
-                    local origSlide = MC.Slide
+                    if not MC._ketyOrigSlideVM then MC._ketyOrigSlideVM = MC.Slide end
+                    local origSlide = MC._ketyOrigSlideVM
                     MC.Slide = function(self, ...)
                         if noVMAnim and self.LocalFighter and self.LocalFighter.Entity then
                             pcall(function() self.LocalFighter.Entity:StopSlidingAnimation() end)
@@ -2787,16 +3648,18 @@ VisVMBox:AddToggle("NoVMAnim_Enabled", {
     Callback = function(v)
         noVMAnim = v
         if v then
-            task.spawn(ensureNoVMAnimHook)
-            pcall(function()
-                local controllers = lp:FindFirstChild("PlayerScripts") and lp.PlayerScripts:FindFirstChild("Controllers")
-                local mcM = controllers and controllers:FindFirstChild("MechanicsController")
-                if mcM then
-                    local MC = require(mcM)
-                    if MC and MC.LocalFighter and MC.LocalFighter.Entity then
-                        MC.LocalFighter.Entity:StopSlidingAnimation()
+            task.spawn(function()
+                ensureNoVMAnimHook()
+                pcall(function()
+                    local controllers = lp:FindFirstChild("PlayerScripts") and lp.PlayerScripts:FindFirstChild("Controllers")
+                    local mcM = controllers and controllers:FindFirstChild("MechanicsController")
+                    if mcM then
+                        local MC = require(mcM)
+                        if MC and MC.LocalFighter and MC.LocalFighter.Entity then
+                            MC.LocalFighter.Entity:StopSlidingAnimation()
+                        end
                     end
-                end
+                end)
             end)
         end
     end,
@@ -3118,22 +3981,11 @@ do
     BulletTracerDep:SetupDependencies({ { BulletTracerToggle, true } })
 
     task.spawn(function()
-        local function findModule(parent, name)
-            local found = parent:FindFirstChild(name, true)
-            if found and found:IsA("ModuleScript") then return found end
-            return nil
-        end
-
-        local GunModule = nil
-        while not GunModule do
-            GunModule = findModule(lp:WaitForChild("PlayerScripts"), "Gun") or findModule(game:GetService("ReplicatedStorage"), "Gun")
-            task.wait(1)
-        end
-
-        local Gun = require(GunModule)
         local TweenService = game:GetService("TweenService")
         local tracerColor = Color3.fromRGB(190, 40, 255)
         local tracerFadeStyle = Enum.EasingStyle.Quart
+        local colorSeq = ColorSequence.new(tracerColor)
+        local initTrans = NumberSequence.new(0.5)
         local BEAM_CONFIGS = {
             { Texture = "rbxassetid://84577820022939", Speed = 1, Length = 1, LightInf = 0 },
             { Texture = "rbxassetid://15253860988",    Speed = 1, Length = 3, LightInf = 1 },
@@ -3141,21 +3993,22 @@ do
             { Texture = "rbxassetid://12251459424",    Speed = 1, Length = 1, LightInf = 1 },
         }
 
-        local function drawTracers(self, data)
+        getgenv()._KETY_DrawTracers = function(self, data)
             if not (data and data.IsLocal) then return end
             local ok, muzzle = pcall(function() return self.ViewModel:GetMuzzlePosition() end)
             if not ok or typeof(muzzle) ~= "Vector3" then return end
             local cam = workspace.CurrentCamera
             if not cam then return end
             local bt = getgenv()._bt
-            local colorSeq = ColorSequence.new(tracerColor)
-            local initTrans = NumberSequence.new(0.5)
+            local tInfo = TweenInfo.new(bt.fadeTime, tracerFadeStyle, Enum.EasingDirection.Out)
             for _, res in ipairs(data.RaycastResults or {}) do
                 if not res or typeof(res.Position) ~= "Vector3" then continue end
                 pcall(function()
                     local container = Instance.new("Part")
                     container.Anchored = true
                     container.CanCollide = false
+                    container.CanQuery = false
+                    container.CanTouch = false
                     container.Transparency = 1
                     container.CFrame = CFrame.new()
                     container.Parent = cam
@@ -3163,7 +4016,6 @@ do
                     a0.WorldPosition = muzzle
                     local a1 = Instance.new("Attachment", container)
                     a1.WorldPosition = res.Position
-                    local beams = {}
                     for _, cfg in ipairs(BEAM_CONFIGS) do
                         local b = Instance.new("Beam")
                         b.Attachment0 = a0; b.Attachment1 = a1
@@ -3172,39 +4024,41 @@ do
                         b.Brightness = 1; b.Width0 = bt.width; b.Width1 = bt.width
                         b.FaceCamera = true; b.Transparency = initTrans
                         b.Parent = container
-                        table.insert(beams, b)
+                        TweenService:Create(b, tInfo, { Width0 = 0, Width1 = 0 }):Play()
                     end
-                    local alive = true
-                    local fv = Instance.new("NumberValue", container)
-                    fv.Value = 0
-                    local tw = TweenService:Create(fv, TweenInfo.new(bt.fadeTime, tracerFadeStyle, Enum.EasingDirection.Out), { Value = 1 })
-                    local conn = fv:GetPropertyChangedSignal("Value"):Connect(function()
-                        if not alive then return end
-                        local pct = fv.Value
-                        if type(pct) ~= "number" then return end
-                        local seq = NumberSequence.new(math.clamp(0.5 + 0.5 * pct, 0, 1))
-                        local w = bt.width * (1 - pct)
-                        for _, bm in ipairs(beams) do
-                            pcall(function() bm.Transparency = seq; bm.Width0 = w; bm.Width1 = w end)
-                        end
-                    end)
-                    task.delay(0, function()
-                        if not alive then return end
-                        tw:Play()
-                        task.delay(bt.fadeTime + 0.2, function()
-                            alive = false
-                            pcall(function() conn:Disconnect() end)
-                            pcall(function() if container.Parent then container:Destroy() end end)
-                        end)
+                    task.delay(bt.fadeTime + 0.1, function()
+                        pcall(function() if container.Parent then container:Destroy() end end)
                     end)
                 end)
             end
         end
 
+        local function getGunModule()
+            local ps = lp:FindFirstChild("PlayerScripts")
+            local m = ps and ps:FindFirstChild("Modules")
+            local it = m and m:FindFirstChild("Items")
+            local g = it and it:FindFirstChild("Gun")
+            if g and g:IsA("ModuleScript") then return g end
+            local found = (ps and ps:FindFirstChild("Gun", true)) or game:GetService("ReplicatedStorage"):FindFirstChild("Gun", true)
+            if found and found:IsA("ModuleScript") then return found end
+            return nil
+        end
+
+        local GunModule = getGunModule()
+        while not GunModule do
+            task.wait(2)
+            if getgenv()._bt and getgenv()._bt.enabled then
+                GunModule = getGunModule()
+            end
+        end
+
+        local Gun = require(GunModule)
         if not getgenv()._bulletTracerHooked_Rich then
             local oldTracers = Gun._Tracers
             Gun._Tracers = function(self, data, p2, p3)
-                if getgenv()._bt.enabled then drawTracers(self, data) end
+                if getgenv()._bt and getgenv()._bt.enabled and getgenv()._KETY_DrawTracers then
+                    getgenv()._KETY_DrawTracers(self, data)
+                end
                 return oldTracers(self, data, p2, p3)
             end
             getgenv()._bulletTracerHooked_Rich = true
@@ -3229,7 +4083,8 @@ do
             end
 
             local SmokeScreen = fighter.FighterInterface.SmokeScreen
-            local origUpdate = SmokeScreen.Update
+            if not SmokeScreen._ketyOrigUpdate then SmokeScreen._ketyOrigUpdate = SmokeScreen.Update end
+            local origUpdate = SmokeScreen._ketyOrigUpdate
 
             SmokeScreen.Update = function(self, ...)
                 if antiSmokeEnabled then
@@ -3245,7 +4100,8 @@ do
     task.spawn(function()
         pcall(function()
             local flashbang = require(lp:WaitForChild("PlayerScripts"):WaitForChild("Modules"):WaitForChild("Items"):WaitForChild("Flashbang"))
-            local origReplicate = flashbang.ReplicateFromServer
+            if not flashbang._ketyOrigReplicate then flashbang._ketyOrigReplicate = flashbang.ReplicateFromServer end
+            local origReplicate = flashbang._ketyOrigReplicate
             flashbang.ReplicateFromServer = function(self, effectType, ...)
                 if effectType == "BlindEffect" and noFlashEnabled then
                     return
@@ -3290,31 +4146,27 @@ do
     local function applyMuzzleFlashHook()
         if cachedClientViewModel then return end
         pcall(function()
+            local cvmM = getgenv()._KETY_CVMModule
             local scripts = lp:FindFirstChild("PlayerScripts") or lp:WaitForChild("PlayerScripts", 5)
-            if scripts then
-                for _, v in pairs(scripts:GetDescendants()) do
-                    if v:IsA("ModuleScript") and (v.Name == "ClientViewModel" or v.Name == "ModuleScript_ClientViewModel") then
-                        local ok, res = pcall(require, v)
-                        if ok and type(res) == "table" then
-                            cachedClientViewModel = res
-                            break
-                        end
-                    end
-                end
+            if not cvmM and scripts then
+                local mods = scripts:FindFirstChild("Modules")
+                local crc = mods and mods:FindFirstChild("ClientReplicatedClasses")
+                local cf = crc and crc:FindFirstChild("ClientFighter")
+                local ci = cf and cf:FindFirstChild("ClientItem")
+                cvmM = ci and (ci:FindFirstChild("ClientViewModel") or ci:FindFirstChild("ModuleScript_ClientViewModel"))
             end
-            if not cachedClientViewModel then
-                for _, v in pairs(ReplicatedStorage:GetDescendants()) do
-                    if v:IsA("ModuleScript") and (v.Name == "ClientViewModel" or v.Name == "ModuleScript_ClientViewModel") then
-                        local ok, res = pcall(require, v)
-                        if ok and type(res) == "table" then
-                            cachedClientViewModel = res
-                            break
-                        end
-                    end
+            if cvmM then
+                local ok, res = pcall(require, cvmM)
+                if ok and type(res) == "table" then
+                    cachedClientViewModel = res
+                    getgenv()._KETY_CVMModule = cvmM
                 end
             end
             if cachedClientViewModel and not originalMuzzleFlash then
-                originalMuzzleFlash = cachedClientViewModel.MuzzleFlash
+                if not cachedClientViewModel._ketyOrigMuzzleFlash then
+                    cachedClientViewModel._ketyOrigMuzzleFlash = cachedClientViewModel.MuzzleFlash
+                end
+                originalMuzzleFlash = cachedClientViewModel._ketyOrigMuzzleFlash
                 cachedClientViewModel.MuzzleFlash = function(self, ...)
                     if noMuzzleFlashEnabled then
                         return
@@ -3326,7 +4178,6 @@ do
             end
         end)
     end
-    task.spawn(applyMuzzleFlashHook)
 
     local NoMuzzleFlashToggle = EffectsSection:AddToggle("Visuals_NoMuzzleFlash_Enabled", {
         Text = "No Muzzle Flash",
@@ -3334,7 +4185,7 @@ do
         Callback = function(v)
             noMuzzleFlashEnabled = v
             if v then
-                applyMuzzleFlashHook()
+                task.spawn(applyMuzzleFlashHook)
             end
         end
     })
@@ -3457,9 +4308,14 @@ do
 
     local function startHideCharacter()
         if not hideCharRenderConn then
+            local _lastHide = 0
             hideCharRenderConn = RunService.RenderStepped:Connect(function()
                 if hideCharacterEnabled and lp.Character then
-                    applyHideCharacter(lp.Character)
+                    local t = tick()
+                    if t - _lastHide >= 0.1 then
+                        _lastHide = t
+                        applyHideCharacter(lp.Character)
+                    end
                 end
             end)
             getgenv().KETY_HideCharConnection = hideCharRenderConn
@@ -3491,56 +4347,48 @@ do
         getgenv().KETY_HideCharAddedConnection = nil
     end
     getgenv().KETY_HideCharAddedConnection = lp.CharacterAdded:Connect(function(newChar)
-        setupCharDescendants(newChar)
         if hideCharacterEnabled then
+            setupCharDescendants(newChar)
             task.defer(function()
                 applyHideCharacter(newChar)
             end)
         end
     end)
-    if lp.Character then
-        setupCharDescendants(lp.Character)
-    end
 
-    -- Hook ClientFighterCharacter if available
-    task.spawn(function()
-        pcall(function()
-            local scripts = lp:FindFirstChild("PlayerScripts") or lp:WaitForChild("PlayerScripts", 5)
-            local cfcM
-            if scripts then
-                for _, v in pairs(scripts:GetDescendants()) do
-                    if v:IsA("ModuleScript") and (v.Name == "ClientFighterCharacter" or v.Name == "ModuleScript_ClientFighterCharacter") then
-                        cfcM = v
-                        break
-                    end
+    local _cfcVisHooked = false
+    local function hookCFCVisibility()
+        if _cfcVisHooked then return end
+        _cfcVisHooked = true
+        task.spawn(function()
+            pcall(function()
+                local scripts = lp:FindFirstChild("PlayerScripts") or lp:WaitForChild("PlayerScripts", 5)
+                local cfcM
+                if scripts then
+                    local mods = scripts:FindFirstChild("Modules")
+                    local crc = mods and mods:FindFirstChild("ClientReplicatedClasses")
+                    local cf = crc and crc:FindFirstChild("ClientFighter")
+                    cfcM = cf and (cf:FindFirstChild("ClientFighterCharacter") or cf:FindFirstChild("ModuleScript_ClientFighterCharacter"))
                 end
-            end
-            if not cfcM then
-                for _, v in pairs(ReplicatedStorage:GetDescendants()) do
-                    if v:IsA("ModuleScript") and (v.Name == "ClientFighterCharacter" or v.Name == "ModuleScript_ClientFighterCharacter") then
-                        cfcM = v
-                        break
-                    end
-                end
-            end
-            if cfcM then
-                local CFC = require(cfcM)
-                if CFC and type(CFC._UpdateVisibility) == "function" then
-                    local origVis = CFC._UpdateVisibility
-                    CFC._UpdateVisibility = function(self, force, override)
-                        if hideCharacterEnabled and (self.Player == lp or (self.ClientFighter and self.ClientFighter.Player == lp) or (self.Model == lp.Character)) then
-                            self._is_hidden = true
-                            if type(self._BulkUpdateVisibility) == "function" then
-                                pcall(function() self:_BulkUpdateVisibility() end)
+                if cfcM then
+                    local CFC = require(cfcM)
+                    if CFC and type(CFC._UpdateVisibility) == "function" then
+                        if not CFC._ketyOrigUpdateVis then CFC._ketyOrigUpdateVis = CFC._UpdateVisibility end
+                        local origVis = CFC._ketyOrigUpdateVis
+                        CFC._UpdateVisibility = function(self, force, override)
+                            if hideCharacterEnabled and (self.Player == lp or (self.ClientFighter and self.ClientFighter.Player == lp) or (self.Model == lp.Character)) then
+                                self._is_hidden = true
+                                if type(self._BulkUpdateVisibility) == "function" then
+                                    pcall(function() self:_BulkUpdateVisibility() end)
+                                end
+                                return
                             end
-                            return
+                            return origVis(self, force, override)
                         end
-                        return origVis(self, force, override)
                     end
                 end
-            end
+            end)
         end)
-    end)
+    end
 
     local HideCharacterToggle = EffectsSection:AddToggle("Visuals_HideCharacter_Enabled", {
         Text = "Hide Character",
@@ -3548,6 +4396,7 @@ do
         Callback = function(v)
             hideCharacterEnabled = v
             if v then
+                hookCFCVisibility()
                 startHideCharacter()
             else
                 stopHideCharacter()
@@ -3925,25 +4774,25 @@ do
                 local _cn = tick()
                 if _cn - _lastCloudScan > 2 then
                     _lastCloudScan = _cn
-                    for _, clouds in ipairs(workspace:GetDescendants()) do
-                        if clouds:IsA("Clouds") and clouds.Enabled then
-                            cloudsWas = true
-                            clouds.Enabled = false
-                        end
+                    local terrain = workspace.Terrain
+                    local clouds = terrain and terrain:FindFirstChildOfClass("Clouds")
+                    if clouds and clouds.Enabled then
+                        cloudsWas = true
+                        clouds.Enabled = false
                     end
                 end
             elseif cloudsWas then
-                for _, clouds in ipairs(workspace:GetDescendants()) do
-                    if clouds:IsA("Clouds") then clouds.Enabled = true end
-                end
+                local terrain = workspace.Terrain
+                local clouds = terrain and terrain:FindFirstChildOfClass("Clouds")
+                if clouds then clouds.Enabled = true end
                 cloudsWas = nil
             end
         else
             setDebugSkyGray(false)
             if cloudsWas then
-                for _, clouds in ipairs(workspace:GetDescendants()) do
-                    if clouds:IsA("Clouds") then clouds.Enabled = true end
-                end
+                local terrain = workspace.Terrain
+                local clouds = terrain and terrain:FindFirstChildOfClass("Clouds")
+                if clouds then clouds.Enabled = true end
                 cloudsWas = nil
             end
             if mySky then mySky:Destroy(); mySky = nil end
@@ -3971,6 +4820,7 @@ do
     end
 
     local worldConn
+    local _lastWorldStep = 0
     local function step()
         local d = desired()
         for _, p in ipairs(PROPS) do
@@ -3983,7 +4833,16 @@ do
 
     local function refresh()
         if lightOn or skyOn then
-            if not worldConn then worldConn = RunService.Heartbeat:Connect(step) end
+            step()
+            if not worldConn then
+                worldConn = RunService.Heartbeat:Connect(function()
+                    local t = tick()
+                    if t - _lastWorldStep >= 0.25 then
+                        _lastWorldStep = t
+                        step()
+                    end
+                end)
+            end
         else
             if worldConn then worldConn:Disconnect(); worldConn = nil end
             step()
@@ -4336,6 +5195,7 @@ do
 
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if not dragStart and not isDragging and not getgenv()._RageAttackHeld then return end
             dragStart = nil
             isDragging = false
             getgenv()._RageAttackHeld = false
@@ -4735,15 +5595,24 @@ do
             getgenv()._ragebotCamHooked = true
             getgenv().KETY_HookNamecall({"FireServer"}, function(oldNamecall)
                 return function(self, ...)
+                    local cfg = getgenv().Config
+                    local knifeMode = cfg and cfg.Enabled and cfg.WeaponSlot == "Knife" and currentTargetYaw
+                    if not kiciaActive and not knifeMode then
+                        return oldNamecall(self, ...)
+                    end
                     if checkcaller() then return oldNamecall(self, ...) end
+                    if knifeMode and camRemote and self == camRemote then
+                        local encoded = util and util:EncodeCameraRotation(Vector2.new(currentTargetPitch or 0, currentTargetYaw))
+                        if encoded then
+                            return oldNamecall(self, encoded, nil)
+                        end
+                    end
                     local sname = self.Name
                     if sname == "UpdateState" and kiciaActive and enum and (...) == enum:ToEnum("IsCrouching") then return oldNamecall(self, (...), true) end
-                    if sname == "UpdateCameraRotation" or (camRemote and self == camRemote) then
-                        if currentTargetYaw and getgenv().Config and getgenv().Config.Enabled and getgenv().Config.WeaponSlot == "Knife" then
-                            local encoded = util and util:EncodeCameraRotation(Vector2.new(currentTargetPitch or 0, currentTargetYaw))
-                            if encoded then
-                                return oldNamecall(self, encoded, nil)
-                            end
+                    if sname == "UpdateCameraRotation" and knifeMode then
+                        local encoded = util and util:EncodeCameraRotation(Vector2.new(currentTargetPitch or 0, currentTargetYaw))
+                        if encoded then
+                            return oldNamecall(self, encoded, nil)
                         end
                     end
                     return oldNamecall(self, ...)
@@ -4817,7 +5686,10 @@ do
                 handle = hok and h or target
             end
             local ok, res = pcall(sethiddenproperty_, part, "PhysicsRepRootRef", handle)
-            if setthreadidentity_ and oldIdentity then pcall(setthreadidentity_, oldIdentity) end
+            if setthreadidentity_ then
+                local restId = (type(oldIdentity) == "number" and oldIdentity >= 7) and oldIdentity or 8
+                pcall(setthreadidentity_, restId)
+            end
             return ok, res
         end
 
@@ -5182,7 +6054,9 @@ do
                 if not desyncCF then
                 local ox, oy, oz
                 if curSlot == "Knife" then
-                    ox, oy, oz = 0, 0, 3
+                    ox = math.random(-50, 50) / 10
+                    oy = math.random(-50, 50) / 10
+                    oz = math.random(-50, 50) / 10
                 else
                     local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
                     ox = (offsets and offsets.X) or 0
@@ -5273,6 +6147,7 @@ do
             currentDesyncCF = desyncCF
             pcall(function() runS:UnbindFromRenderStep("__restore") end)
             runS:BindToRenderStep("__restore", 101, function()
+                _fixId()
                 if myRoot then
                     myRoot.CFrame    = oldCF
                     myRoot.Velocity  = oldVel
@@ -5300,16 +6175,10 @@ do
                 tpStartTime = tick()
             end
 
-            local isKnife = (getgenv().Config.WeaponSlot == "Knife")
-
             local minTpDelay = (autoAttack and 0.15) or 0.05
-            if isKnife then
-                local okPing, pingMs = pcall(function()
-                    return game:GetService("Players").LocalPlayer:GetNetworkPing() * 2000
-                end)
-                minTpDelay = (okPing and type(pingMs) == "number") and (pingMs / 1000) or 0
-            end
             if tick() - tpStartTime < minTpDelay then return end
+
+            local isKnife = (getgenv().Config.WeaponSlot == "Knife")
 
             if not canAttack then
                 if isKnife and MechanicsController then
@@ -5446,57 +6315,43 @@ do
     local AntiAimSection = Tabs.Rage:AddRightGroupbox("AntiAim")
 
     local aaEnabled = false
-    local pitchMode = "Glitch Pitch"
-    local yawMode   = "Random Yaw"
+    local pitchMode = "Glitch"
+    local yawMode   = "0"
+    local spinMode  = "None"
+    local customYaw = 0
     local customPitch = 179
-    local customYaw   = 360
+    local _aaFC = nil
+    local function getAAFighterController()
+        if not _aaFC then pcall(function() _aaFC = require(lp.PlayerScripts.Controllers.FighterController) end) end
+        return _aaFC
+    end
+    local function restoreNeck()
+        pcall(function()
+            local fc = getAAFighterController()
+            local lf = fc and fc.LocalFighter
+            local cam = workspace.CurrentCamera
+            if lf and cam then
+                local x, y = cam.CFrame:ToOrientation()
+                lf:SetReplicate("CameraRotation", Vector2.new(x, y))
+            end
+        end)
+    end
+    local spinSpeed = 360
+    local visualize = false
     local pitchOverride = 99999
     local yawOverride   = 0
     local toggleVal     = 4999
     local glitchPitchVal = 99999
     local glitchTask    = nil
     local camRemote     = nil
-
-    local function getAAEnemyPart()
-        local myChar = lp and lp.Character
-        local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-        if not myRoot then return nil end
-
-        local bestPart = nil
-        local bestDist = math.huge
-        local tc = getgenv().Config and getgenv().Config.TeamCheck
-
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player == lp then continue end
-            if tc ~= false and not getgenv().KETY_IsEnemy(player) then continue end
-
-            local pChar = player.Character
-            if not pChar then continue end
-            local pHum = pChar:FindFirstChildWhichIsA("Humanoid")
-            if not (pHum and pHum.Health > 0) then continue end
-
-            local pRoot = pChar:FindFirstChild("HumanoidRootPart")
-            if not pRoot then continue end
-
-            local targetPart = pChar:FindFirstChild("HitboxHead")
-                or pChar:FindFirstChild("Head")
-                or pChar:FindFirstChild("HitboxBody")
-                or pRoot
-
-            local dist = (myRoot.Position - targetPart.Position).Magnitude
-            if dist < bestDist then
-                bestDist = dist
-                bestPart = targetPart
-            end
-        end
-        return bestPart
-    end
+    local spinAngle     = 0
+    local spinCur       = 0
 
     local function encodeUnclamped(pitchDeg, yawDeg)
-        local pitchRad = math.rad(pitchDeg)
-        local yawRad   = math.rad(yawDeg)
-        local pVal = math.floor(pitchRad / (2 * math.pi) * 256 + 0.5)
-        local yVal = math.floor(yawRad   / (2 * math.pi) * 256 + 0.5)
+        if pitchDeg < 0 then pitchDeg = pitchDeg % 360 end
+        if yawDeg < 0 then yawDeg = yawDeg % 360 end
+        local pVal = math.floor(math.rad(pitchDeg) / (2 * math.pi) * 256 + 0.5)
+        local yVal = math.floor(math.rad(yawDeg)   / (2 * math.pi) * 256 + 0.5)
         pVal = math.clamp(pVal, 0, 1114111)
         yVal = math.clamp(yVal, 0, 1114111)
         return utf8.char(pVal) .. utf8.char(yVal)
@@ -5511,28 +6366,19 @@ do
             glitchPitchVal = 0
             pitchOverride = 0
             if aaEnabled and camRemote then
-                pcall(function()
-                    local encoded = encodeUnclamped(0, yawOverride)
-                    camRemote:FireServer(encoded, nil)
-                end)
+                pcall(function() camRemote:FireServer(encodeUnclamped(0, yawOverride), nil) end)
             end
             task.wait(0.2)
             glitchPitchVal = 74568
             pitchOverride = 74568
             if aaEnabled and camRemote then
-                pcall(function()
-                    local encoded = encodeUnclamped(74568, yawOverride)
-                    camRemote:FireServer(encoded, nil)
-                end)
+                pcall(function() camRemote:FireServer(encodeUnclamped(74568, yawOverride), nil) end)
             end
             task.wait(0.1)
             glitchPitchVal = 99999
             pitchOverride = 99999
             if aaEnabled and camRemote then
-                pcall(function()
-                    local encoded = encodeUnclamped(99999, yawOverride)
-                    camRemote:FireServer(encoded, nil)
-                end)
+                pcall(function() camRemote:FireServer(encodeUnclamped(99999, yawOverride), nil) end)
             end
             glitchTask = nil
         end)
@@ -5543,8 +6389,11 @@ do
         Default = false,
         Callback = function(value)
             aaEnabled = value
-            if value and pitchMode == "Glitch Pitch" then
-                triggerGlitchPitch()
+            if value and pitchMode == "Glitch" then triggerGlitchPitch() end
+            if not value then
+                local hum = lp and lp.Character and lp.Character:FindFirstChildWhichIsA("Humanoid")
+                if hum then hum.AutoRotate = true end
+                restoreNeck()
             end
         end
     })
@@ -5559,15 +6408,13 @@ do
     local AntiAimDep = AntiAimSection:AddDependencyBox()
 
     local PitchDropdown = AntiAimDep:AddDropdown("AntiAim_PitchMode", {
-        Values = {"Glitch Pitch", "Random Pitch", "Custom Pitch", "HitboxExtend"},
+        Values = {"Glitch", "Up", "Down", "Random", "Extended Random", "Custom", "0"},
         Default = 1,
         Multi = false,
-        Text = "Pitch Mode",
+        Text = "Pitch",
         Callback = function(value)
             pitchMode = value
-            if value == "Glitch Pitch" then
-                triggerGlitchPitch()
-            end
+            if value == "Glitch" then triggerGlitchPitch() end
         end
     })
 
@@ -5575,36 +6422,65 @@ do
     PitchCustomDep:AddSlider("AntiAim_CustomPitch", {
         Text = "Custom Pitch",
         Default = 179,
-        Min = 1,
-        Max = 179,
+        Min = 0,
+        Max = 360,
         Rounding = 0,
         Callback = function(value) customPitch = value end
     })
-    PitchCustomDep:SetupDependencies({ { AntiAimToggle, true }, { PitchDropdown, "Custom Pitch" } })
+    PitchCustomDep:SetupDependencies({ { AntiAimToggle, true }, { PitchDropdown, "Custom" } })
 
-    local AntiAimDep2 = AntiAimSection:AddDependencyBox()
-
-    local YawDropdown = AntiAimDep2:AddDropdown("AntiAim_YawMode", {
-        Values = {"Random Yaw", "0", "Custom Yaw", "HitboxExtend"},
+    local YawDropdown = AntiAimDep:AddDropdown("AntiAim_YawMode", {
+        Values = {"0", "Custom", "Random"},
         Default = 1,
         Multi = false,
-        Text = "Yaw Mode",
+        Text = "Yaw",
         Callback = function(value) yawMode = value end
     })
 
     local YawCustomDep = AntiAimSection:AddDependencyBox()
     YawCustomDep:AddSlider("AntiAim_CustomYaw", {
         Text = "Custom Yaw",
-        Default = 360,
-        Min = 1,
+        Default = 0,
+        Min = 0,
         Max = 360,
         Rounding = 0,
         Callback = function(value) customYaw = value end
     })
-    YawCustomDep:SetupDependencies({ { AntiAimToggle, true }, { YawDropdown, "Custom Yaw" } })
+    YawCustomDep:SetupDependencies({ { AntiAimToggle, true }, { YawDropdown, "Custom" } })
+
+    local SpinDropdown = AntiAimDep:AddDropdown("AntiAim_SpinType", {
+        Values = {"None", "JustSpin", "Random"},
+        Default = 1,
+        Multi = false,
+        Text = "SpinType",
+        Callback = function(value) spinMode = value end
+    })
+
+    local SpinSpeedDep = AntiAimSection:AddDependencyBox()
+    SpinSpeedDep:AddSlider("AntiAim_SpinSpeed", {
+        Text = "Spin Speed",
+        Default = 360,
+        Min = 10,
+        Max = 2000,
+        Rounding = 0,
+        Callback = function(value) spinSpeed = value end
+    })
+    SpinSpeedDep:SetupDependencies({ { AntiAimToggle, true }, { SpinDropdown, "JustSpin" } })
+
+    AntiAimDep:AddToggle("AntiAim_Visualize", {
+        Text = "Visualize",
+        Default = false,
+        Callback = function(value)
+            visualize = value
+            if not value then
+                local hum = lp and lp.Character and lp.Character:FindFirstChildWhichIsA("Humanoid")
+                if hum then hum.AutoRotate = true end
+                restoreNeck()
+            end
+        end
+    })
 
     AntiAimDep:SetupDependencies({ { AntiAimToggle, true } })
-    AntiAimDep2:SetupDependencies({ { AntiAimToggle, true } })
 
     task.spawn(function()
         local ok1, remote = pcall(function()
@@ -5631,61 +6507,70 @@ do
     end
 
     local lastSend = 0
-    RunService.Heartbeat:Connect(function()
-        local enemyPart = nil
-        if pitchMode == "HitboxExtend" or yawMode == "HitboxExtend" then
-            enemyPart = getAAEnemyPart()
-        end
+    local lastSpinRoll = 0
+    RunService.Heartbeat:Connect(function(dt)
+        if not aaEnabled then return end
 
-        local enemyPitchDeg, enemyYawDeg = nil, nil
-        if enemyPart then
-            local myChar = lp and lp.Character
-            local myHead = myChar and (myChar:FindFirstChild("HitboxHead") or myChar:FindFirstChild("Head") or myChar:FindFirstChild("HumanoidRootPart"))
-            if myHead then
-                local dir = enemyPart.Position - myHead.Position
-                local distXZ = math.sqrt(dir.X * dir.X + dir.Z * dir.Z)
-                local tau = math.pi * 2
-                local pRad = math.atan2(dir.Y, distXZ)
-                local yRad = math.atan2(-dir.X, -dir.Z)
-                enemyPitchDeg = math.deg((pRad % tau + tau) % tau)
-                enemyYawDeg   = math.deg((yRad % tau + tau) % tau)
+        if spinMode == "JustSpin" then
+            spinAngle = (spinAngle + spinSpeed * dt) % 360
+        elseif spinMode == "Random" then
+            if tick() - lastSpinRoll >= 0.1 then
+                lastSpinRoll = tick()
+                spinCur = math.random(-spinSpeed, spinSpeed)
             end
+            spinAngle = (spinAngle + spinCur * dt) % 360
+        else
+            spinAngle = 0
         end
 
-        if pitchMode == "Glitch Pitch" then
+        if pitchMode == "Glitch" then
             pitchOverride = glitchPitchVal or 99999
-        elseif pitchMode == "Random Pitch" then
+        elseif pitchMode == "Up" then
+            pitchOverride = 90
+        elseif pitchMode == "Down" then
+            pitchOverride = 270
+        elseif pitchMode == "Extended Random" then
             pitchOverride = toggleVal
-        elseif pitchMode == "Custom Pitch" then
+        elseif pitchMode == "Custom" then
             pitchOverride = customPitch
-        elseif pitchMode == "HitboxExtend" then
-            pitchOverride = enemyPitchDeg or 0
+        elseif pitchMode == "0" then
+            pitchOverride = 0
         end
 
-        if yawMode == "0" or yawMode == "0 Yaw" then
-            yawOverride = 0
-        elseif yawMode == "Random Yaw" then
-            yawOverride = toggleVal
-        elseif yawMode == "Custom Yaw" then
+        if yawMode == "Custom" then
             yawOverride = customYaw
-        elseif yawMode == "HitboxExtend" then
-            yawOverride = enemyYawDeg or 0
+        elseif yawMode ~= "Random" then
+            yawOverride = 0
         end
 
         local now = tick()
-        if now - lastSend < 0.1 then return end
-        lastSend = now
+        if now - lastSend >= 0.1 then
+            lastSend = now
+            toggleVal = (toggleVal == 4999) and 0 or 4999
+            if pitchMode == "Random" then pitchOverride = math.random(0, 360) end
+            if yawMode == "Random" then yawOverride = math.random(0, 360) end
+            if camRemote then
+                local p, y = pitchOverride, (yawOverride + spinAngle) % 360
+                pcall(function() camRemote:FireServer(encodeUnclamped(p, y), nil) end)
+            end
+        end
 
-        toggleVal = (toggleVal == 4999) and 0 or 4999
-
-        if not aaEnabled or not camRemote then return end
-        pcall(function()
-            local encoded = encodeUnclamped(pitchOverride, yawOverride)
-            camRemote:FireServer(encoded, nil)
-        end)
+        if visualize then
+            pcall(function()
+                local fc = getAAFighterController()
+                local lf = fc and fc.LocalFighter
+                if lf and util then
+                    local p = pitchOverride
+                    local y = (yawOverride + spinAngle) % 360
+                    if p < 0 then p = p % 360 end
+                    local pv = math.clamp(math.floor(math.rad(p) / (2 * math.pi) * 256 + 0.5), 0, 1114111)
+                    local yv = math.clamp(math.floor(math.rad(y) / (2 * math.pi) * 256 + 0.5), 0, 1114111)
+                    lf:SetReplicate("CameraRotation", util:FromXYToCameraRotation(pv, yv))
+                end
+            end)
+        end
     end)
 end
-
 -- ===== GUN MODS (MISC) =====
 do
     local GunModsSection = Tabs.Misc:AddLeftGroupbox("Gun Mods")
@@ -5745,10 +6630,17 @@ end
 
 task.spawn(function()
     local OriginalStats = {} 
-    local PlayerScripts = lp:WaitForChild("PlayerScripts", 10)
+    local PlayerScripts = lp and lp:WaitForChild("PlayerScripts", 10)
     if not PlayerScripts then return end
     
-    local clientItemModule = require(PlayerScripts:WaitForChild("Modules", 5):WaitForChild("ClientReplicatedClasses", 5):WaitForChild("ClientFighter", 5):WaitForChild("ClientItem", 5))
+    local okCI, clientItemModule = pcall(function()
+        local mods = PlayerScripts:WaitForChild("Modules", 5)
+        local crc = mods and mods:WaitForChild("ClientReplicatedClasses", 5)
+        local cf = crc and crc:WaitForChild("ClientFighter", 5)
+        local ci = cf and cf:WaitForChild("ClientItem", 5)
+        return ci and require(ci)
+    end)
+    if not okCI then return end
     
     if type(clientItemModule) == "table" then
         local originalEquip = clientItemModule.Equip
@@ -5815,57 +6707,59 @@ task.spawn(function()
         end
     end
 
-    local inputFunc = clientItemModule.Input
-    if type(inputFunc) == "function" and not clientItemModule._isInputHooked then
+    if type(clientItemModule.Input) == "function" then
+        if not clientItemModule._origInput then
+            clientItemModule._origInput = clientItemModule.Input
+        end
+        local inputFunc = clientItemModule._origInput
         clientItemModule._isInputHooked = true
         clientItemModule.Input = function(self, ...)
-            if not getgenv().RageSettings.Enabled then
+            local rs = getgenv().RageSettings
+            if not (rs and rs.Enabled) then
                 return inputFunc(self, ...)
             end
-            if type(self) == "table" and self.Info then
-                local gunName = self.Name or tostring(self)
-                if not OriginalStats[gunName] then
-                    OriginalStats[gunName] = {
-                        ShootRecoil = self.Info.ShootRecoil,
-                        ShootSpread = self.Info.ShootSpread,
-                        ShootCooldown = self.Info.ShootCooldown,
-                        QuickShotCooldown = self.Info.QuickShotCooldown,
-                        ShootBurstCooldown = self.Info.ShootBurstCooldown,
-                        AttackCooldown = self.Info.AttackCooldown,
-                        SwingCooldown = self.Info.SwingCooldown,
-                        MeleeCooldown = self.Info.MeleeCooldown,
-                        Cooldown = self.Info.Cooldown,
-                        RecoveryTime = self.Info.RecoveryTime,
-                        ResetTime = self.Info.ResetTime
-                    }
-                end
-                local orig = OriginalStats[gunName]
-                if not self._isStatsHooked then
-                    self._isStatsHooked = true
-                    if setreadonly then pcall(function() setreadonly(self.Info, false) end) end
-                end
-
-                local rapid = getgenv().RageSettings.RapidFire and 0.001 or nil
-
-                local overrides = {
-                    ShootRecoil = getgenv().RageSettings.NoRecoil and 0 or orig.ShootRecoil,
-                    ShootSpread = getgenv().RageSettings.NoSpread and 0 or orig.ShootSpread,
-                    ShootCooldown = rapid or orig.ShootCooldown,
-                    QuickShotCooldown = rapid or orig.QuickShotCooldown,
-                    ShootBurstCooldown = rapid or orig.ShootBurstCooldown,
-                    AttackCooldown = rapid or orig.AttackCooldown,
-                    SwingCooldown = rapid or orig.SwingCooldown,
-                    MeleeCooldown = rapid or orig.MeleeCooldown,
-                    Cooldown = rapid or orig.Cooldown,
-                    RecoveryTime = rapid or orig.RecoveryTime,
-                    ResetTime = rapid or orig.ResetTime
-                }
-
-                for prop, tgtValue in pairs(overrides) do
-                    -- 繧ゅ→繧ゅ→縺昴・豁ｦ蝎ｨ縺ｫ繝励Ο繝代ユ繧｣縺悟ｭ伜惠縺吶ｋ蝣ｴ蜷医・縺ｿ荳頑嶌縺阪☆繧・
-                    if orig[prop] ~= nil and self.Info[prop] ~= tgtValue then
-                        self.Info[prop] = tgtValue
+            if type(self) == "table" then
+                local info = rawget(self, "Info") or self.Info
+                if info then
+                    local gunName = rawget(self, "Name") or self.Name or tostring(self)
+                    local orig = OriginalStats[gunName]
+                    if not orig then
+                        orig = {
+                            ShootRecoil = info.ShootRecoil,
+                            ShootSpread = info.ShootSpread,
+                            ShootCooldown = info.ShootCooldown,
+                            QuickShotCooldown = info.QuickShotCooldown,
+                            ShootBurstCooldown = info.ShootBurstCooldown,
+                            AttackCooldown = info.AttackCooldown,
+                            SwingCooldown = info.SwingCooldown,
+                            MeleeCooldown = info.MeleeCooldown,
+                            Cooldown = info.Cooldown,
+                            RecoveryTime = info.RecoveryTime,
+                            ResetTime = info.ResetTime
+                        }
+                        OriginalStats[gunName] = orig
                     end
+                    if not rawget(self, "_isStatsHooked") then
+                        rawset(self, "_isStatsHooked", true)
+                        if setreadonly then pcall(setreadonly, info, false) end
+                    end
+
+                    local rec = rs.NoRecoil and 0 or orig.ShootRecoil
+                    if orig.ShootRecoil ~= nil and info.ShootRecoil ~= rec then info.ShootRecoil = rec end
+                    local spr = rs.NoSpread and 0 or orig.ShootSpread
+                    if orig.ShootSpread ~= nil and info.ShootSpread ~= spr then info.ShootSpread = spr end
+
+                    local rapid = rs.RapidFire and 0.001 or nil
+                    local v
+                    v = rapid or orig.ShootCooldown; if orig.ShootCooldown ~= nil and info.ShootCooldown ~= v then info.ShootCooldown = v end
+                    v = rapid or orig.QuickShotCooldown; if orig.QuickShotCooldown ~= nil and info.QuickShotCooldown ~= v then info.QuickShotCooldown = v end
+                    v = rapid or orig.ShootBurstCooldown; if orig.ShootBurstCooldown ~= nil and info.ShootBurstCooldown ~= v then info.ShootBurstCooldown = v end
+                    v = rapid or orig.AttackCooldown; if orig.AttackCooldown ~= nil and info.AttackCooldown ~= v then info.AttackCooldown = v end
+                    v = rapid or orig.SwingCooldown; if orig.SwingCooldown ~= nil and info.SwingCooldown ~= v then info.SwingCooldown = v end
+                    v = rapid or orig.MeleeCooldown; if orig.MeleeCooldown ~= nil and info.MeleeCooldown ~= v then info.MeleeCooldown = v end
+                    v = rapid or orig.Cooldown; if orig.Cooldown ~= nil and info.Cooldown ~= v then info.Cooldown = v end
+                    v = rapid or orig.RecoveryTime; if orig.RecoveryTime ~= nil and info.RecoveryTime ~= v then info.RecoveryTime = v end
+                    v = rapid or orig.ResetTime; if orig.ResetTime ~= nil and info.ResetTime ~= v then info.ResetTime = v end
                 end
             end
             return inputFunc(self, ...)
@@ -6051,6 +6945,7 @@ local function getSavedWeaponSelections()
 end
 
 local function refreshWeapons()
+    _fixId()
     if not AutoLoadout_ItemLibrary then
         pcall(function()
             local Modules = ReplicatedStorage:FindFirstChild("Modules")
@@ -6077,6 +6972,7 @@ local function refreshWeapons()
             end
         end)
     end
+    _fixId()
     if not AutoLoadout_ItemLibrary then return end
 
     local localFighter = AutoLoadout_FighterController and AutoLoadout_FighterController.LocalFighter
@@ -6106,11 +7002,12 @@ local function refreshWeapons()
             WeaponLists[slotIndex] = {"None"}
         end
         if ChosenWeapons[slotIndex] == nil or ChosenWeapons[slotIndex] == "None" then
-            if WeaponLists[slotIndex] and WeaponLists[slotIndex][1] and WeaponLists[slotIndex][1] ~= "None" then
+            if localFighter and WeaponLists[slotIndex] and WeaponLists[slotIndex][1] and WeaponLists[slotIndex][1] ~= "None" then
                 ChosenWeapons[slotIndex] = WeaponLists[slotIndex][1]
             end
         end
     end
+    _fixId()
 end
 
 -- 初期リストを事前に生成
@@ -6118,11 +7015,15 @@ refreshWeapons()
 local savedInitial = getSavedWeaponSelections()
 
 do local _si=setthreadidentity or set_thread_identity or setidentity; if _si then pcall(_si,8) end end
+local enforceAutoLoadout
 local AutoWeponToggle = GunModsSection:AddToggle("AutoLoadToggle", {
     Text = "AutoWepon",
     Default = autoLoadoutEnabled,
     Callback = function(Value)
         autoLoadoutEnabled = Value
+        if Value and enforceAutoLoadout then
+            enforceAutoLoadout()
+        end
     end
 })
 
@@ -6164,6 +7065,7 @@ AutoWeponDep:SetupDependencies({ { AutoWeponToggle, true } })
 local dropObjs = {PriDropObj, SecDropObj, MelDropObj, UtiDropObj}
 
 local function updateWeaponLabels()
+    _fixId()
     local saved = getSavedWeaponSelections()
     for i = 1, 4 do
         local drop = dropObjs[i]
@@ -6210,6 +7112,8 @@ local function triggerAutoLoadout()
         end
     end
     
+    if #validLoadout == 0 then return end
+
     local duel = AutoLoadout_DuelController and AutoLoadout_DuelController:GetDuel(lp)
     if duel and duel.LocalDueler and duel.LocalDueler:GetStaggeredSpawnsTurn() then
         ReplicatedStorage.Remotes.Duels.PickWeaponsAheadOfTime:FireServer(validLoadout)
@@ -6218,7 +7122,10 @@ local function triggerAutoLoadout()
     end
 end
 
-local function enforceAutoLoadout()
+local _autoLoadoutEnforced = false
+enforceAutoLoadout = function()
+    if _autoLoadoutEnforced then return end
+    _autoLoadoutEnforced = true
     local function hideExpectedUI(guiObj)
         if not autoLoadoutEnabled then return end
         local nameStr = string.lower(guiObj.Name)
@@ -6246,7 +7153,6 @@ local function enforceAutoLoadout()
     end
     
     local PlayerGui = lp:WaitForChild("PlayerGui")
-    PlayerGui.ChildAdded:Connect(hideExpectedUI)
     PlayerGui.DescendantAdded:Connect(hideExpectedUI)
     for _, desc in ipairs(PlayerGui:GetDescendants()) do hideExpectedUI(desc) end
 
@@ -6271,19 +7177,26 @@ local function enforceAutoLoadout()
 end
 
 task.spawn(function()
-    local Modules = ReplicatedStorage:WaitForChild("Modules", 10)
-    if Modules then AutoLoadout_ItemLibrary = require(Modules:WaitForChild("ItemLibrary", 10)) end
-    local playerScripts = lp:WaitForChild("PlayerScripts", 10)
-    local Controllers = playerScripts and playerScripts:WaitForChild("Controllers", 10)
-    if Controllers then
-        AutoLoadout_FighterController = require(Controllers:WaitForChild("FighterController", 10))
-        AutoLoadout_DuelController = require(Controllers:WaitForChild("DuelController", 10))
-    end
+    pcall(function()
+        local Modules = ReplicatedStorage and ReplicatedStorage:WaitForChild("Modules", 10)
+        local il = Modules and Modules:WaitForChild("ItemLibrary", 10)
+        if il then AutoLoadout_ItemLibrary = require(il) end
+        local playerScripts = lp and lp:WaitForChild("PlayerScripts", 10)
+        local Controllers = playerScripts and playerScripts:WaitForChild("Controllers", 10)
+        if Controllers then
+            local fc = Controllers:WaitForChild("FighterController", 10)
+            if fc then AutoLoadout_FighterController = require(fc) end
+            local dc = Controllers:WaitForChild("DuelController", 10)
+            if dc then AutoLoadout_DuelController = require(dc) end
+        end
+    end)
     
     task.wait(1)
     refreshWeapons()
     updateWeaponLabels()
-    enforceAutoLoadout()
+    if autoLoadoutEnabled and enforceAutoLoadout then
+        enforceAutoLoadout()
+    end
 end)
 
 lp.CharacterAdded:Connect(function()
@@ -6372,6 +7285,7 @@ do
         end
         
         if AutoQueueDropObj then
+            _fixId()
             pcall(function() AutoQueueDropObj:SetValues(labels) end)
             if labels[1] then
                 autoQueueName = autoQueueDisplayToInternal[labels[1]] or labels[1]
@@ -6439,49 +7353,96 @@ local UnlockAllToggle = UnlockAllSection:AddToggle("UnlockAllToggle", {
             getgenv().UnlockAllExecuted = true
             task.spawn(function()
                 -- [EMBEDDED UNLOCKALL.LUA]
+local _cloneref = cloneref or function(x) return x end
+local _getid = getthreadidentity or getidentity or function() return 8 end
+local _rawsetid = setthreadidentity or set_thread_identity or setidentity or function() end
+local function _setid(id)
+    pcall(_rawsetid, id)
+end
+local function _restoreId(oldId)
+    local target = (type(oldId) == "number" and oldId >= 7) and oldId or 8
+    pcall(_rawsetid, target)
+end
 
+local _plrs = _cloneref(game:GetService("Players"))
+local _rs   = _cloneref(game:GetService("ReplicatedStorage"))
+local _http = _cloneref(game:GetService("HttpService"))
+local _cs   = _cloneref(game:GetService("CollectionService"))
+local _lp   = _plrs.LocalPlayer or lp
+local _pscripts = _lp and _lp:WaitForChild("PlayerScripts", 10)
+local _ctrl = _pscripts and _pscripts:WaitForChild("Controllers", 10)
+local _pmods = _pscripts and _pscripts:WaitForChild("Modules", 10)
+local _mods = _rs and _rs:WaitForChild("Modules", 10)
 
--- Unlock All Skins / Wraps / Charms.
-local _plrs    = game:GetService("Players")
-local _rs      = game:GetService("ReplicatedStorage")
-local _http    = game:GetService("HttpService")
-local _run     = game:GetService("RunService")
-local _ws      = game:GetService("Workspace")
-local _lp      = _plrs.LocalPlayer
-local _pscripts = _lp.PlayerScripts
-local _ctrl    = _pscripts.Controllers
-local _mods    = _rs:WaitForChild("Modules", 10)
-
-local _enumLib = require(_mods:WaitForChild("EnumLibrary", 10))
+local _enumLib
+pcall(function() if _mods then _enumLib = require(_mods:WaitForChild("EnumLibrary", 10)) end end)
 if _enumLib then pcall(function() _enumLib:WaitForEnumBuilder() end) end
+local _toEnumTbl = _enumLib and rawget(_enumLib, "_to_enum")
+local function _encKey(k)
+    if type(k) ~= "string" then return k end
+    if _toEnumTbl and rawget(_toEnumTbl, k) ~= nil then return rawget(_toEnumTbl, k) end
+    if _enumLib and _enumLib.ToEnum then
+        local ok, v = pcall(_enumLib.ToEnum, _enumLib, k)
+        if ok and v ~= nil then return v end
+    end
+    return k
+end
+local function _encTable(t)
+    local out = {}
+    for k, v in next, t, nil do
+        out[type(k) == "string" and _encKey(k) or k] = v
+    end
+    return out
+end
 
-local _cosLib  = require(_mods:WaitForChild("CosmeticLibrary", 10))
-local _itmLib  = require(_mods:WaitForChild("ItemLibrary", 10))
-local _datCtrl = require(_ctrl:WaitForChild("PlayerDataController", 10))
+local _cosLib, _itmLib, _datUtil, _datCtrl, _fightCtrl
+pcall(function() if _mods then _cosLib  = require(_mods:WaitForChild("CosmeticLibrary", 10)) end end)
+pcall(function() if _mods then _itmLib  = require(_mods:WaitForChild("ItemLibrary", 10)) end end)
+pcall(function() if _mods then _datUtil = require(_mods:WaitForChild("PlayerDataUtility", 10)) end end)
+pcall(function() if _ctrl then _datCtrl = require(_ctrl:WaitForChild("PlayerDataController", 10)) end end)
+pcall(function() if _ctrl then _fightCtrl = require(_ctrl:WaitForChild("FighterController", 10)) end end)
+
+local _uiFolder = _pmods and _pmods:FindFirstChild("UserInterface")
+local _equipment, _lobby, _cosmeticSlot, _cosmeticViewportFrame
+pcall(function() if _uiFolder then _equipment = require(_uiFolder:WaitForChild("Equipment", 5)) end end)
+pcall(function() if _uiFolder then _lobby = require(_uiFolder:WaitForChild("Lobby", 5)) end end)
+pcall(function() if _pmods then _cosmeticSlot = require(_pmods:WaitForChild("CosmeticSlot", 5)) end end)
+pcall(function() if _pmods then _cosmeticViewportFrame = require(_pmods:WaitForChild("CosmeticViewportFrame", 5)) end end)
+
+local _crc = _pmods and _pmods:FindFirstChild("ClientReplicatedClasses")
+local _clientEntity, _clientItem, _clientViewModel
+pcall(function() if _crc then _clientEntity = require(_crc:WaitForChild("ClientEntity", 5)) end end)
+pcall(function() if _crc then _clientItem = require(_crc.ClientFighter:WaitForChild("ClientItem", 5)) end end)
+pcall(function() if _crc then _clientViewModel = require(_crc.ClientFighter.ClientItem:WaitForChild("ClientViewModel", 5)) end end)
 
 local _eq, _favs = {}, {}
-local _buildingWep, _viewProf = nil, nil
 local _lastWep = nil
-local _fakeInv = {}
+local _isInvertedState = false
+local _noneCosmetic = "NONE_COSMETIC"
+
+local _cosTypes = {"Skin","Wrap","Charm","Finisher","Dance","Emote"}
+local _itemCosSet = { Skin = true, Wrap = true, Charm = true, Finisher = true }
+local function _isCosType(cosObj)
+    if not cosObj then return false end
+    local t = rawget(cosObj, "Type") or cosObj.Type
+    for _, ct in ipairs(_cosTypes) do
+        if t == ct then return true end
+    end
+    return false
+end
 
 local function _mkCosmetic(nm, ctype, opts)
+    if not nm or nm == "None" or nm == "" or nm == _noneCosmetic then return nil end
     local _base = _cosLib.Cosmetics[nm]
-    if not _base then return nil end
     local _d = {}
-    for k, v in pairs(_base) do _d[k] = v end
+    if _base then
+        for k, v in pairs(_base) do _d[k] = v end
+    end
     _d.Name = nm
     _d.Type = _d.Type or ctype
-    _d.Seed = _d.Seed or math.random(1, 1000000)
-    if _enumLib then
-        local _s, _eid = pcall(_enumLib.ToEnum, _enumLib, nm)
-        if _s and _eid then
-            _d.Enum = _eid
-            _d.ObjectID = _d.ObjectID or _eid
-        end
-    end
     if opts then
-        if opts.inverted ~= nil then _d.Inverted = opts.inverted end
-        if opts.favoritesOnly ~= nil then _d.OnlyUseFavorites = opts.favoritesOnly end
+        if opts.inverted ~= nil then _d.Inverted = opts.inverted or nil end
+        if opts.favoritesOnly ~= nil then _d.OnlyUseFavorites = opts.favoritesOnly or nil end
     end
     return _d
 end
@@ -6514,26 +7475,18 @@ local function _loadCfg()
     if not _ok2 or not _raw or _raw == "" then return end
     local _ok3, _dec = pcall(_http.JSONDecode, _http, _raw)
     if not _ok3 or not _dec then return end
-    if _dec.favorites then
-        _favs = _dec.favorites
-    end
+    if _dec.favorites then _favs = _dec.favorites end
     if _dec.equipped then
         _eq = {}
-        local _cnt = 0
         for wn, cos in pairs(_dec.equipped) do
             _eq[wn] = {}
             for ct, sd in pairs(cos) do
                 if sd and sd.Name then
-                    if _cosLib.Cosmetics[sd.Name] then
-                        local _cloned = _mkCosmetic(sd.Name, ct, {
-                            inverted = sd.Inverted,
-                            favoritesOnly = sd.OnlyUseFavorites
-                        })
-                        if _cloned then
-                            _eq[wn][ct] = _cloned
-                            _cnt += 1
-                        end
-                    end
+                    local _cloned = _mkCosmetic(sd.Name, ct, {
+                        inverted = sd.Inverted,
+                        favoritesOnly = sd.OnlyUseFavorites
+                    })
+                    if _cloned then _eq[wn][ct] = _cloned end
                 end
             end
             if not next(_eq[wn]) then _eq[wn] = nil end
@@ -6545,108 +7498,569 @@ local function _saveCfg()
     if not writefile or _saveLock then return end
     _saveLock = true
     task.spawn(function()
+        _restoreId(8)
         task.wait(1)
+        _restoreId(8)
         local _payload = _stripForSave()
         local _ok, _enc = pcall(_http.JSONEncode, _http, _payload)
-        if _ok then
-            pcall(writefile, _cfgFile, _enc)
-        end
+        if _ok then pcall(writefile, _cfgFile, _enc) end
         _saveLock = false
     end)
 end
 
 _loadCfg()
 
-local _cosTypes = {"Skin","Wrap","Charm","Dance","Emote"}
-local function _isCosType(cosObj)
-    if not cosObj then return false end
-    for _, t in ipairs(_cosTypes) do
-        if cosObj.Type == t then return true end
+-- Catalog & Inventory builder (dZ in あいうえお5)
+local _cachedInv = nil
+local function _buildFullInv()
+    if _cachedInv then return _cachedInv end
+    local _allItems = {}
+    if _itmLib and rawget(_itmLib, "Items") then
+        for k in next, rawget(_itmLib, "Items"), nil do
+            _allItems[k] = true
+        end
     end
-    return false
+    local _inv = {}
+    if _cosLib and rawget(_cosLib, "Cosmetics") then
+        for k, v in next, rawget(_cosLib, "Cosmetics"), nil do
+            local ct = rawget(v, "Type")
+            if ct == "Skin" or ct == "Finisher" or ct == "Emote" or ct == "Dance" then
+                _inv[k] = true
+            elseif ct == "Wrap" or ct == "Charm" then
+                _inv[k] = _allItems
+            end
+        end
+    end
+    _cachedInv = _inv
+    return _inv
 end
 
-_cosLib.OwnsCosmeticNormally = function(self, inv, nm, wep)
-    local c = _cosLib.Cosmetics[nm]
-    if c and c.Type == "Skin" then return true end
-    return false
-end
-_cosLib.OwnsCosmeticUniversally = function(self, inv, nm, wep)
-    local c = _cosLib.Cosmetics[nm]
-    if c and c.Type == "Skin" then return true end
-    return false
-end
-_cosLib.OwnsCosmeticForWeapon = function(self, inv, nm, wep)
-    local c = _cosLib.Cosmetics[nm]
-    if c and c.Type == "Skin" then return true end
-    return false
+-- OwnsCosmetic hooks
+for _, fnName in ipairs({"OwnsCosmeticNormally", "OwnsCosmeticUniversally", "OwnsCosmeticForWeapon", "OwnsCosmetic"}) do
+    local orig = _cosLib[fnName]
+    if type(orig) == "function" then
+        _cosLib[fnName] = function(self, inv, nm, wep)
+            if type(nm) == "string" and (nm:find("MISSING_") or nm == "Bubble Gun") then
+                return orig(self, inv, nm, wep)
+            end
+            local c = _cosLib.Cosmetics[nm]
+            if c and _isCosType(c) then return true end
+            return orig(self, inv, nm, wep)
+        end
+    end
 end
 
-local _origOwns = _cosLib.OwnsCosmetic
-_cosLib.OwnsCosmetic = function(self, inv, nm, wep)
-    if nm:find("MISSING_") or nm == "Bubble Gun" then
-        return _origOwns(self, inv, nm, wep)
+-- DataHook on CurrentData.Data (dR in あいうえお5)
+local _dataRestore = nil
+local function _getOriginalData(key)
+    if _dataRestore and _dataRestore.Inner then
+        return rawget(_dataRestore.Inner, key)
     end
-    local c = _cosLib.Cosmetics[nm]
-    if c and _isCosType(c) then return true end
-    return _origOwns(self, inv, nm, wep)
+    local cd = rawget(_datCtrl, "CurrentData")
+    local d = cd and rawget(cd, "Data")
+    return d and rawget(d, key)
+end
+
+local function _getSpoofedField(key)
+    if key == "CosmeticInventory" then
+        return _buildFullInv()
+    elseif key == "FavoritedCosmetics" then
+        local orig = _getOriginalData("FavoritedCosmetics")
+        local res = orig and table.clone(orig) or {}
+        for wep, fv in pairs(_favs) do
+            res[wep] = res[wep] and table.clone(res[wep]) or {}
+            for nm, isFav in pairs(fv) do
+                res[wep][nm] = isFav
+            end
+        end
+        return res
+    end
+    return nil
+end
+
+local function _hookCurrentData(curData)
+    if not curData then return end
+    if _dataRestore and _dataRestore.Current == curData then return end
+    local inner = rawget(curData, "Data")
+    if not inner then return end
+    _dataRestore = { Current = curData, Inner = inner }
+    local proxy = {}
+    for k, v in next, inner, nil do
+        if k ~= "CosmeticInventory" and k ~= "FavoritedCosmetics" then
+            rawset(proxy, k, v)
+        end
+    end
+    rawset(proxy, "CosmeticInventory", _buildFullInv())
+    rawset(curData, "Data", setmetatable(proxy, {
+        __index = function(t, key)
+            local sp = _getSpoofedField(key)
+            if sp ~= nil then return sp end
+            local val = rawget(inner, key)
+            if val ~= nil then rawset(t, key, val) end
+            return val
+        end,
+        __newindex = function(t, key, val)
+            rawset(inner, key, val)
+            if key ~= "CosmeticInventory" and key ~= "FavoritedCosmetics" then
+                rawset(t, key, val)
+            end
+        end,
+    }))
+end
+
+if rawget(_datCtrl, "CurrentData") then
+    _hookCurrentData(rawget(_datCtrl, "CurrentData"))
+end
+if rawget(_datCtrl, "PlayerDataAdded") then
+    pcall(function()
+        rawget(_datCtrl, "PlayerDataAdded"):Connect(function()
+            _hookCurrentData(rawget(_datCtrl, "CurrentData"))
+        end)
+    end)
 end
 
 local _origGet = _datCtrl.Get
-_datCtrl.Get = function(self, key)
-    local _val = _origGet(self, key)
-    if key == "CosmeticInventory" then
-        local _prx = {}
-        if _val then
-            for k, v in pairs(_val) do
-                local c = _cosLib.Cosmetics[k]
-                if c and _isCosType(c) then _prx[k] = v end
+if type(_origGet) == "function" then
+    _datCtrl.Get = function(self, key)
+        local sp = _getSpoofedField(key)
+        if sp ~= nil then return sp end
+        return _origGet(self, key)
+    end
+end
+
+local function _triggerDataChanged(key)
+    local curData = (_dataRestore and _dataRestore.Current) or rawget(_datCtrl, "CurrentData")
+    if not curData then return end
+    local evs = rawget(curData, "_value_changed_events")
+    local ev = evs and rawget(evs, key)
+    if ev ~= nil then
+        local mt = getmetatable(ev)
+        local idx = mt and rawget(mt, "__index")
+        local fire = type(idx) == "table" and rawget(idx, "Fire")
+        if fire then
+            coroutine.wrap(fire)(ev)
+        end
+    end
+end
+
+-- Scene Refreshers (ec in あいうえお5)
+local function _callMethod(obj, methodName)
+    if not obj then return end
+    local mt = getmetatable(obj)
+    local idx = mt and rawget(mt, "__index")
+    local fn = type(idx) == "table" and rawget(idx, methodName) or rawget(obj, methodName)
+    if type(fn) == "function" then
+        coroutine.wrap(fn)(obj)
+    end
+end
+
+local function _cosmeticsSelectionScene()
+    task.spawn(function()
+        local oldId = _getid()
+        _setid(2)
+        pcall(function()
+            local cosUI = _equipment and _equipment.Interface and _equipment.Interface.Customize and _equipment.Interface.Customize.Cosmetics
+            _callMethod(cosUI, "OnStateChanged")
+        end)
+        _restoreId(oldId)
+    end)
+end
+
+local function _equipmentScene()
+    task.spawn(function()
+        local oldId = _getid()
+        _setid(2)
+        pcall(function()
+            local cosUI = _equipment and _equipment.Interface and _equipment.Interface.Customize and _equipment.Interface.Customize.Cosmetics
+            local fltMod = _equipment and rawget(_equipment, "FloatingModel")
+            local btns = _lobby and rawget(_lobby, "Buttons")
+            _callMethod(cosUI, "_BulkUpdateEquipped")
+            _callMethod(btns, "_UpdateButtonInformation")
+            _callMethod(fltMod, "_GenerateViewModel")
+        end)
+        _restoreId(oldId)
+    end)
+end
+
+-- ItemDataHook / GetWeaponData (eh in あいうえお5)
+local function _buildPatchedWeaponData(origWep, wn)
+    if not origWep then return nil end
+    local sel = _eq[wn]
+    if not sel then return origWep end
+    local m = table.clone(origWep)
+    m.Name = wn
+    for ct in pairs(_itemCosSet) do
+        local cd = sel[ct]
+        if cd ~= nil then
+            if cd.Name == _noneCosmetic or cd.Name == "None" then
+                m[ct] = nil
+            elseif ct == "Wrap" then
+                m.Wrap = { Name = cd.Name, Inverted = cd.Inverted or nil, OnlyUseFavorites = cd.OnlyUseFavorites or nil }
+            else
+                m[ct] = { Name = cd.Name, OnlyUseFavorites = cd.OnlyUseFavorites or nil }
             end
         end
-        return setmetatable(_prx, {
-            __index = function(t, k)
-                local c = _cosLib.Cosmetics[k]
-                if c and _isCosType(c) then return true end
-                return nil
-            end
-        })
     end
-    if key == "FavoritedCosmetics" then
-        local _res = _val and table.clone(_val) or {}
-        for wep, fv in pairs(_favs) do
-            _res[wep] = _res[wep] or {}
-            for nm, isFav in pairs(fv) do
-                local c = _cosLib.Cosmetics[nm]
-                if c and _isCosType(c) then
-                    _res[wep][nm] = isFav
+    m.Level = rawget(origWep, "Level")
+    m.Prestige = rawget(origWep, "Prestige")
+    m.XP = rawget(origWep, "XP")
+    return m
+end
+
+pcall(function()
+    local mt = getmetatable(_datCtrl)
+    local idx = mt and rawget(mt, "__index")
+    local gwd = idx and rawget(idx, "GetWeaponData")
+    if type(gwd) == "function" and debug and debug.getconstants and debug.setconstant then
+        for k, v in debug.getconstants(gwd) do
+            if v == "GetWeaponData" then
+                debug.setconstant(gwd, k, "GetWeaponData\0ohaio")
+                break
+            end
+        end
+        rawset(_datUtil, "GetWeaponData\0ohaio", function(selfUtil, dataObj, wn)
+            local origInv = _getOriginalData("WeaponInventory")
+            local origWep = nil
+            if origInv then
+                for _, item in next, origInv, nil do
+                    if rawget(item, "Name") == wn then
+                        origWep = item
+                        break
+                    end
+                end
+            end
+            if not origWep and _datUtil.GetWeaponData then
+                pcall(function() origWep = _datUtil:GetWeaponData(dataObj, wn) end)
+            end
+            return _buildPatchedWeaponData(origWep, wn)
+        end)
+    end
+end)
+
+local _origGetWep = _datCtrl.GetWeaponData
+if type(_origGetWep) == "function" then
+    _datCtrl.GetWeaponData = function(self, wn)
+        local d = _origGetWep(self, wn)
+        return _buildPatchedWeaponData(d, wn)
+    end
+end
+
+-- ViewModel Cosmetic Application & Reloader (ev, ew, eA in あいうえお5)
+local _vmRestoreDatas = {}
+local function _applyVmCosmetics(wn, dataTbl, encFn)
+    local sel = _eq[wn]
+    if not sel or not dataTbl then return dataTbl end
+    encFn = encFn or function(x) return x end
+    if sel.Skin and sel.Skin.Name then
+        dataTbl[encFn("Name")] = sel.Skin.Name == _noneCosmetic and wn or sel.Skin.Name
+    end
+    if sel.Wrap and sel.Wrap.Name then
+        if sel.Wrap.Name == _noneCosmetic then
+            dataTbl[encFn("Wrap")] = nil
+        else
+            dataTbl[encFn("Wrap")] = { Name = sel.Wrap.Name, Inverted = sel.Wrap.Inverted == true }
+        end
+    end
+    if sel.Charm and sel.Charm.Name then
+        if sel.Charm.Name == _noneCosmetic then
+            dataTbl[encFn("Charm")] = nil
+        else
+            dataTbl[encFn("Charm")] = { Name = sel.Charm.Name }
+        end
+    end
+    return dataTbl
+end
+
+local function _getLocalFighter()
+    if not _fightCtrl then return nil end
+    local ptf = rawget(_fightCtrl, "_player_to_fighter")
+    if ptf and ptf[_lp] then return ptf[_lp] end
+    local ok, f = pcall(_fightCtrl.GetFighter, _fightCtrl, _lp)
+    return ok and f or nil
+end
+
+local function _reloadViewModel(wn)
+    pcall(function()
+        local f = _getLocalFighter()
+        if not f or not rawget(f, "Items") or not _clientItem or not _clientViewModel then return end
+        for _, itm in pairs(rawget(f, "Items")) do
+            if rawget(itm, "Name") == wn then
+                local vm = rawget(itm, "ViewModel")
+                local data = vm and rawget(vm, "Data")
+                if vm and data then
+                    if _eq[wn] and not _vmRestoreDatas[wn] then
+                        _vmRestoreDatas[wn] = table.clone(data)
+                    end
+                    local restoreData = _vmRestoreDatas[wn]
+                    coroutine.wrap(function()
+                        local oldId = _getid()
+                        _setid(2)
+                        coroutine.wrap(rawget(_clientViewModel, "Destroy"))(vm)
+                        _restoreId(oldId)
+                    end)()
+                    local newData
+                    if _eq[wn] then
+                        newData = _applyVmCosmetics(wn, { Name = wn }, nil)
+                    else
+                        newData = restoreData or data
+                    end
+                    local payload = _encTable({ Data = _encTable(newData) })
+                    local newVm = coroutine.wrap(function()
+                        local oldId = _getid()
+                        _setid(2)
+                        local created = coroutine.wrap(rawget(_clientItem, "_CreateViewModel"))(itm, payload)
+                        _restoreId(oldId)
+                        return created
+                    end)()
+                    if newVm then
+                        rawset(itm, "ViewModel", newVm)
+                        local fMt = getmetatable(f)
+                        local getArms = fMt and rawget(fMt, "__index") and rawget(rawget(fMt, "__index"), "GetArmsData")
+                        if type(getArms) == "function" then
+                            local armsData = table.pack(coroutine.wrap(getArms)(f))
+                            coroutine.wrap(function()
+                                local oldId = _getid()
+                                _setid(2)
+                                coroutine.wrap(rawget(_clientViewModel, "SetArmsData"))(newVm, unpack(armsData, 1, armsData.n))
+                                coroutine.wrap(rawget(_clientViewModel, "Equip"))(newVm, true)
+                                _restoreId(oldId)
+                            end)()
+                        end
+                        local eqSpring = rawget(newVm, "_equip_spring")
+                        if eqSpring then
+                            rawset(eqSpring, "_position0", 0)
+                            rawset(eqSpring, "_velocity0", 0)
+                        end
+                    end
                 end
             end
         end
-        return _res
-    end
-    return _val
+    end)
 end
 
-local _origGetWep = _datCtrl.GetWeaponData
-_datCtrl.GetWeaponData = function(self, wn)
-    local _d = _origGetWep(self, wn)
-    if not _d then return nil end
-    local _m = {}
-    for k, v in pairs(_d) do _m[k] = v end
-    _m.Name = wn
-    if _eq[wn] then
-        for ct, cd in pairs(_eq[wn]) do
-            _m[ct] = cd
+-- ViewModelHook on ClientItem.new prototype (ew in あいうえお5)
+pcall(function()
+    if not _clientItem or not debug or not debug.getupvalues or not debug.getstack then return end
+    local newFn = rawget(_clientItem, "new")
+    if type(newFn) ~= "function" then return end
+    local upTbl, upKey, proto = nil, nil, nil
+    for _, uv in debug.getupvalues(newFn) do
+        if type(uv) == "table" then
+            for k, v in next, uv, nil do
+                if type(v) == "table" and rawget(v, "CreateSpectatorSound") ~= nil then
+                    upTbl, upKey, proto = uv, k, v
+                    break
+                end
+            end
+            if proto then break end
         end
     end
-    return _m
-end
-
-local _fightCtrl
-pcall(function()
-    _fightCtrl = require(_ctrl:WaitForChild("FighterController", 10))
+    if upTbl and upKey and proto then
+        upTbl[upKey] = {
+            __index = function(_, k) return proto[k] end,
+            __newindex = function(itemSelf, k, v)
+                if k ~= "Info" then
+                    rawset(itemSelf, k, v)
+                    return
+                end
+                rawset(itemSelf, "Info", v)
+                setmetatable(itemSelf, proto)
+                pcall(function()
+                    local st = debug.getstack(2, 1)
+                    if type(st) ~= "table" then st = debug.getstack(2) end
+                    local arg1 = type(st) == "table" and (st[1] or st)
+                    local vmDataWrap = type(arg1) == "table" and rawget(arg1, "ViewModel")
+                    local cf = rawget(itemSelf, "ClientFighter")
+                    local plr = cf and rawget(cf, "Player")
+                    local wn = rawget(itemSelf, "Name")
+                    if plr == _lp and wn and vmDataWrap then
+                        local dTbl = vmDataWrap[_encKey("Data")]
+                        if type(dTbl) == "table" and _eq[wn] then
+                            if not _vmRestoreDatas[wn] then
+                                _vmRestoreDatas[wn] = table.clone(dTbl)
+                            end
+                            _applyVmCosmetics(wn, dTbl, _encKey)
+                        end
+                    end
+                end)
+            end,
+        }
+    end
 end)
 
+-- Fallback hook on ClientViewModel.new
+if _clientViewModel and _clientViewModel.new then
+    local _origVmNew = _clientViewModel.new
+    _clientViewModel.new = function(repData, cliItm)
+        pcall(function()
+            local wp = cliItm and cliItm.ClientFighter and cliItm.ClientFighter.Player
+            local wn = cliItm and cliItm.Name
+            if wp == _lp and wn and _eq[wn] and type(repData) == "table" then
+                local dk = _encKey("Data")
+                repData[dk] = repData[dk] or {}
+                _applyVmCosmetics(wn, repData[dk], _encKey)
+            end
+        end)
+        return _origVmNew(repData, cliItm)
+    end
+end
+
+local function _refreshWeaponCosmetics(wn)
+    _triggerDataChanged("WeaponInventory")
+    _triggerDataChanged("WeaponData")
+    _equipmentScene()
+    if wn then _reloadViewModel(wn) end
+    _saveCfg()
+end
+
+-- Interactions: RemoteEventBlocker (eM), InvertedState (eL), SlotBinder (eN), Favorited (eK) (あいうえお5 lines 39948-40388)
+local function _pushItemChoiceFromUI()
+    if not _equipment then return end
+    local eqState = rawget(_equipment, "EquipmentState")
+    if not eqState then return end
+    local wn = rawget(eqState, "SelectedWeapon")
+    local ct = rawget(eqState, "CustomizingType")
+    local cn = rawget(eqState, "SelectedCosmetic")
+    if not wn or not ct or not _itemCosSet[ct] then return end
+    _eq[wn] = _eq[wn] or {}
+    if not cn or cn == "None" or cn == "" or cn == _noneCosmetic then
+        _eq[wn][ct] = nil
+        if not next(_eq[wn]) then _eq[wn] = nil end
+    else
+        local cloned = _mkCosmetic(cn, ct, {
+            inverted = (ct == "Wrap") and (_isInvertedState == true) or nil,
+            favoritesOnly = _eq[wn][ct] and _eq[wn][ct].OnlyUseFavorites
+        })
+        if cloned then _eq[wn][ct] = cloned end
+    end
+    _refreshWeaponCosmetics(wn)
+end
+
+-- RemoteEventBlocker (eM): prevent Options._Init from firing server remotes
+pcall(function()
+    local opts = _equipment and _equipment.Interface and _equipment.Interface.Customize and _equipment.Interface.Customize.Options
+    local mt = opts and getmetatable(opts)
+    local idx = mt and rawget(mt, "__index")
+    local initFn = idx and rawget(idx, "_Init")
+    if type(initFn) == "function" and debug and debug.getprotos and debug.getproto and debug.getconstants and debug.setconstant then
+        for k in debug.getprotos(initFn) do
+            local protos = debug.getproto(initFn, k, true)
+            local p = type(protos) == "table" and protos[1]
+            if p then
+                for k2, c in debug.getconstants(p) do
+                    if c == "FireServer" then
+                        debug.setconstant(p, k2, "GetChildren")
+                        break
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- InvertedState hook on Equipment.EquipmentState (eL)
+pcall(function()
+    local eqState = _equipment and rawget(_equipment, "EquipmentState")
+    local mt = eqState and getmetatable(eqState)
+    local idx = mt and rawget(mt, "__index")
+    if eqState and mt and idx then
+        rawset(eqState, "CosmeticInverted", nil)
+        setmetatable(eqState, {
+            __index = function(_, k)
+                if k == "CosmeticInverted" then
+                    local wn = rawget(eqState, "SelectedWeapon")
+                    if wn then
+                        local inv = _eq[wn] and _eq[wn].Wrap and _eq[wn].Wrap.Inverted == true or false
+                        _isInvertedState = inv
+                        return inv
+                    end
+                end
+                return rawget(idx, k)
+            end,
+            __newindex = function(t, k, v)
+                if k ~= "CosmeticInverted" or v == nil then
+                    rawset(t, k, v)
+                    return
+                end
+                _isInvertedState = (v == true)
+                _pushItemChoiceFromUI()
+            end,
+        })
+    end
+end)
+
+-- SlotBinder hook on CosmeticSlot.new upvalue 1 (eN in あいうえお5)
+pcall(function()
+    if not _cosmeticSlot or not debug or not debug.getupvalue or not debug.setupvalue or not debug.info then return end
+    local newFn = rawget(_cosmeticSlot, "new")
+    if type(newFn) ~= "function" then return end
+    local proto = debug.getupvalue(newFn, 1)
+    if type(proto) ~= "table" then return end
+    debug.setupvalue(newFn, 1, {
+        __index = function(slotSelf, k)
+            if k ~= "Frame" then
+                return rawget(proto, k)
+            end
+            local src, callerFn = debug.info(2, "sf")
+            if src ~= nil and callerFn ~= nil and src:match("Cosmetics$") ~= nil then
+                local uvs = debug.getupvalues(callerFn)
+                if type(uvs) == "table" and type(uvs[9]) == "boolean" then
+                    debug.setupvalue(callerFn, 9, false)
+                end
+            end
+            return rawget(slotSelf, "Frame\0rahh")
+        end,
+        __newindex = function(slotSelf, k, v)
+            if k ~= "Frame" then
+                rawset(slotSelf, k, v)
+                return
+            end
+            local src = debug.info(3, "s")
+            if src ~= nil and src:match("Cosmetics$") ~= nil and not rawget(slotSelf, "IsLocked") then
+                local btn = typeof(v) == "Instance" and v:FindFirstChild("Button")
+                if btn and btn:IsA("GuiButton") then
+                    btn.MouseButton1Click:Connect(function()
+                        _pushItemChoiceFromUI()
+                    end)
+                end
+            end
+            rawset(slotSelf, "Frame\0rahh", v)
+        end,
+    })
+end)
+
+-- Favorited & OnlyUseFavorites UI button hooks (eJ, eK in あいうえお5)
+pcall(function()
+    local opts = _equipment and _equipment.Interface and _equipment.Interface.Customize and _equipment.Interface.Customize.Options
+    local container = opts and rawget(opts, "Container")
+    if container then
+        task.spawn(function()
+            local favFrame = container:WaitForChild("Favorited", 15)
+            local favBtn = favFrame and favFrame:WaitForChild("Container", 5) and favFrame.Container:WaitForChild("Button", 5)
+            if favBtn then
+                favBtn.MouseButton1Click:Connect(function()
+                    local eqState = _equipment and rawget(_equipment, "EquipmentState")
+                    local wn = eqState and rawget(eqState, "SelectedWeapon")
+                    local ct = eqState and rawget(eqState, "CustomizingType")
+                    local cn = eqState and rawget(eqState, "SelectedCosmetic")
+                    if wn and ct and _itemCosSet[ct] and cn then
+                        _favs[wn] = _favs[wn] or {}
+                        _favs[wn][cn] = not _favs[wn][cn] or nil
+                        _triggerDataChanged("FavoritedCosmetics")
+                        _saveCfg()
+                    end
+                end)
+            end
+        end)
+    end
+end)
+
+-- Trigger initial inventory refresh so UI unlocks all slots immediately (eP in あいうえお5)
+_triggerDataChanged("CosmeticInventory")
+_cosmeticsSelectionScene()
+_refreshWeaponCosmetics(nil)
+
+-- Fallback Namecall hook for EquipCosmetic / FavoriteCosmetic / UseItem
 if hookmetamethod then
     local _remotes   = _rs:FindFirstChild("Remotes")
     local _dataRem   = _remotes and _remotes:FindFirstChild("Data")
@@ -6658,41 +8072,26 @@ if hookmetamethod then
 
     if _equipRem and getgenv().KETY_HookNamecall then
         getgenv().KETY_HookNamecall({"FireServer"}, function(_onc) return function(self, ...)
-            if self ~= _equipRem and self ~= _favRem and self ~= _useItmRem then
+            if _useItmRem and self == _useItmRem then
+                local _f = _getLocalFighter()
+                local _eqItm = _f and rawget(_f, "EquippedItem")
+                if _eqItm and _eqItm.Name then
+                    _lastWep = _eqItm.Name
+                end
+                return _onc(self, ...)
+            end
+            if self ~= _equipRem and self ~= _favRem then
                 return _onc(self, ...)
             end
             local _a = {...}
-
-            if _useItmRem and self == _useItmRem then
-                local _oid = _a[1]
-                if _fightCtrl then
-                    pcall(function()
-                        local _f = _fightCtrl:GetFighter(_lp)
-                        if _f and _f.Items then
-                            for _, itm in pairs(_f.Items) do
-                                if itm:Get("ObjectID") == _oid then
-                                    _lastWep = itm.Name
-                                    break
-                                end
-                            end
-                        end
-                    end)
-                end
-            end
 
             if self == _equipRem then
                 local _wn   = _a[1]
                 local _ct   = _a[2]
                 local _cn   = _a[3]
                 local _opts = _a[4] or {}
-                if _cn and _cn ~= "None" and _cn ~= "" then
-                    local _inv = _datCtrl:Get("CosmeticInventory")
-                    if _inv and rawget(_inv, _cn) then
-                        return _onc(self, ...)
-                    end
-                end
                 _eq[_wn] = _eq[_wn] or {}
-                if not _cn or _cn == "None" or _cn == "" then
+                if not _cn or _cn == "None" or _cn == "" or _cn == _noneCosmetic then
                     _eq[_wn][_ct] = nil
                     if not next(_eq[_wn]) then _eq[_wn] = nil end
                 else
@@ -6703,9 +8102,9 @@ if hookmetamethod then
                     if _cloned then _eq[_wn][_ct] = _cloned end
                 end
                 task.defer(function()
-                    pcall(function() _datCtrl.CurrentData:Replicate("WeaponInventory") end)
+                    _restoreId(8)
+                    _refreshWeaponCosmetics(_wn)
                 end)
-                _saveCfg()
                 return
             end
 
@@ -6714,10 +8113,11 @@ if hookmetamethod then
                 if _cos then
                     _favs[_a[1]] = _favs[_a[1]] or {}
                     _favs[_a[1]][_a[2]] = _a[3] or nil
-                    task.spawn(function()
-                        pcall(function() _datCtrl.CurrentData:Replicate("FavoritedCosmetics") end)
+                    task.defer(function()
+                        _restoreId(8)
+                        _triggerDataChanged("FavoritedCosmetics")
+                        _saveCfg()
                     end)
-                    _saveCfg()
                 end
                 return
             end
@@ -6727,57 +8127,221 @@ if hookmetamethod then
     end
 end
 
-local _cliItem
+-- FinisherCloneCache (et) & FinisherHook (eu) from あいうえお5 (lines 37877-38250)
 pcall(function()
-    _cliItem = require(_lp.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem)
-end)
+    local _finFolder = _mods:FindFirstChild("Finishers")
+    if not (_clientEntity and _finFolder) then return end
+    local _repFromServer = rawget(_clientEntity, "ReplicateFromServer")
+    local _origPlayFinisher = rawget(_clientEntity, "_PlayFinisher")
+    if type(_repFromServer) ~= "function" or type(_origPlayFinisher) ~= "function" then return end
 
-if _cliItem and _cliItem._CreateViewModel then
-    local _origCVM = _cliItem._CreateViewModel
-    _cliItem._CreateViewModel = function(self, vmRef)
-        local _wn  = self.Name
-        local _wp  = self.ClientFighter and self.ClientFighter.Player
-        _buildingWep = (_wp == _lp) and _wn or nil
-        if _wp == _lp and _eq[_wn] then
-            local _dk = self:ToEnum("Data")
-            if vmRef[_dk] then
-                if _eq[_wn].Skin then
-                    vmRef[_dk][self:ToEnum("Skin")] = _eq[_wn].Skin
-                    vmRef[_dk][self:ToEnum("Name")] = _eq[_wn].Skin.Name
+    local _stripClasses = {
+        LocalScript = true, Script = true, ModuleScript = true,
+        BillboardGui = true, SurfaceGui = true, Beam = true,
+        Trail = true, Fire = true, Sparkles = true,
+        ForceField = true, Smoke = true, Light = true, IKControl = true,
+    }
+    local _r15Parts = {
+        "HumanoidRootPart", "Humanoid", "Head", "UpperTorso", "LowerTorso",
+        "LeftFoot", "LeftLowerLeg", "LeftUpperLeg", "RightFoot", "RightLowerLeg", "RightUpperLeg",
+        "LeftHand", "LeftLowerArm", "LeftUpperArm", "RightHand", "RightLowerArm", "RightUpperArm",
+    }
+
+    local function _rawClone(model)
+        if not model then return nil end
+        local arch = model.Archivable
+        model.Archivable = true
+        local ok, c = pcall(model.Clone, model)
+        model.Archivable = arch
+        return ok and c or nil
+    end
+
+    local function _cleanClone(model)
+        local c = _rawClone(model)
+        if not c then return nil end
+        for _, d in ipairs(c:GetDescendants()) do
+            if _stripClasses[d.ClassName] then
+                d:Destroy()
+            elseif d:IsA("BasePart") then
+                d.Anchored = false
+                if d.Transparency < 1 then
+                    d.Transparency = 0
                 end
-                if _eq[_wn].Charm then vmRef[_dk][self:ToEnum("Charm")] = _eq[_wn].Charm end
-                if _eq[_wn].Wrap  then vmRef[_dk][self:ToEnum("Wrap")]  = _eq[_wn].Wrap  end
-            elseif vmRef.Data then
-                if _eq[_wn].Skin  then vmRef.Data.Skin  = _eq[_wn].Skin; vmRef.Data.Name = _eq[_wn].Skin.Name end
-                if _eq[_wn].Charm then vmRef.Data.Charm = _eq[_wn].Charm end
-                if _eq[_wn].Wrap  then vmRef.Data.Wrap  = _eq[_wn].Wrap  end
+            elseif d:IsA("ParticleEmitter") then
+                d:Clear()
+                d:Destroy()
             end
         end
-        local _r = _origCVM(self, vmRef)
-        _buildingWep = nil
-        return _r
-    end
-end
-
-local _vmMod = _lp.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem:FindFirstChild("ClientViewModel")
-if _vmMod then
-    local _CVM = require(_vmMod)
-    local _origNew = _CVM.new
-    _CVM.new = function(repData, cliItm)
-        local _wp  = cliItm.ClientFighter and cliItm.ClientFighter.Player
-        local _wn  = _buildingWep or cliItm.Name
-        if _wp == _lp and _eq[_wn] then
-            local _RC  = require(_rs.Modules.ReplicatedClass)
-            local _dk  = _RC:ToEnum("Data")
-            repData[_dk] = repData[_dk] or {}
-            local _cos = _eq[_wn]
-            if _cos.Skin  then repData[_dk][_RC:ToEnum("Skin")]  = _cos.Skin  end
-            if _cos.Charm then repData[_dk][_RC:ToEnum("Charm")] = _cos.Charm end
-            if _cos.Wrap  then repData[_dk][_RC:ToEnum("Wrap")]  = _cos.Wrap  end
+        for _, tag in ipairs(_cs:GetTags(c)) do
+            _cs:RemoveTag(c, tag)
         end
-        return _origNew(repData, cliItm)
+        return c
     end
-end
+
+    local _cloneByPlayer = {}
+    local function _hasAnyFinisherEquipped()
+        for _, slots in pairs(_eq) do
+            if type(slots) == "table" and slots.Finisher ~= nil then
+                return true
+            end
+        end
+        return false
+    end
+    local function _cachePlayerCharacter(plr, char)
+        if not plr or plr == _lp or not char then return end
+        if not _hasAnyFinisherEquipped() then return end
+        if getgenv().KETY_IsEnemy and not getgenv().KETY_IsEnemy(plr) then return end
+        task.spawn(function()
+            for _, pName in ipairs(_r15Parts) do
+                if not char:WaitForChild(pName, 10) then return end
+            end
+            if plr.Character ~= char then return end
+            if _cloneByPlayer[plr] then
+                pcall(function() _cloneByPlayer[plr]:Destroy() end)
+            end
+            _cloneByPlayer[plr] = _cleanClone(char)
+        end)
+    end
+
+    for _, plr in ipairs(_plrs:GetPlayers()) do
+        if plr ~= _lp then
+            plr.CharacterAdded:Connect(function(ch) _cachePlayerCharacter(plr, ch) end)
+            plr.CharacterRemoving:Connect(function()
+                if _cloneByPlayer[plr] then
+                    pcall(function() _cloneByPlayer[plr]:Destroy() end)
+                    _cloneByPlayer[plr] = nil
+                end
+            end)
+            if plr.Character then _cachePlayerCharacter(plr, plr.Character) end
+        end
+    end
+    _plrs.PlayerAdded:Connect(function(plr)
+        if plr ~= _lp then
+            plr.CharacterAdded:Connect(function(ch) _cachePlayerCharacter(plr, ch) end)
+            plr.CharacterRemoving:Connect(function()
+                if _cloneByPlayer[plr] then
+                    pcall(function() _cloneByPlayer[plr]:Destroy() end)
+                    _cloneByPlayer[plr] = nil
+                end
+            end)
+        end
+    end)
+    _plrs.PlayerRemoving:Connect(function(plr)
+        if _cloneByPlayer[plr] then
+            pcall(function() _cloneByPlayer[plr]:Destroy() end)
+            _cloneByPlayer[plr] = nil
+        end
+    end)
+
+    local function _acquireClone(model)
+        local plr = _plrs:GetPlayerFromCharacter(model)
+        if plr and _cloneByPlayer[plr] then
+            local c = _cloneByPlayer[plr]
+            _cloneByPlayer[plr] = nil
+            return c
+        end
+        return _cleanClone(model)
+    end
+
+    local function _hideVictim(m)
+        for _, d in ipairs(m:GetDescendants()) do
+            if d:IsA("BasePart") then
+                d.Transparency = 1
+            elseif d:IsA("Decal") then
+                d:Destroy()
+            elseif d:IsA("BillboardGui") then
+                d.Enabled = false
+            end
+        end
+    end
+
+    local function _runFinisher(clone, origModel, finMod, arg4, arg5, arg6, entSelf)
+        local hum = clone:FindFirstChildOfClass("Humanoid")
+        local hrp = clone:FindFirstChild("HumanoidRootPart")
+        if not hum or not hrp then clone:Destroy() return end
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        hum.Health = 0
+        local parts = {}
+        for _, c in ipairs(clone:GetChildren()) do
+            if c:IsA("BasePart") then
+                c.CollisionGroup = "Players"
+                table.insert(parts, c)
+            end
+        end
+        for i = 1, #parts do
+            for j = i + 1, #parts do
+                local nc = Instance.new("NoCollisionConstraint")
+                nc.Part0 = parts[i]
+                nc.Part1 = parts[j]
+                nc.Parent = parts[i]
+            end
+        end
+        clone:PivotTo(origModel:GetPivot())
+        clone.Parent = origModel.Parent
+        coroutine.wrap(function()
+            local oldId = _getid()
+            _setid(2)
+            local curFin = rawget(entSelf, "_current_finisher")
+            if curFin ~= nil then
+                coroutine.wrap(curFin.Destroy)(curFin)
+            end
+            local finObj = coroutine.wrap(rawget(finMod, "new"))(hum, arg4, arg5)
+            rawset(entSelf, "_current_finisher", finObj)
+            finObj:SetSerial(arg6)
+            origModel.Destroying:Once(function()
+                if clone.Parent ~= nil then clone:Destroy() end
+            end)
+            task.spawn(pcall, finObj.PlayServer, finObj)
+            task.spawn(pcall, finObj.PlayClient, finObj)
+            _restoreId(oldId)
+        end)()
+    end
+
+    local _hookedFinisher = function(entSelf, arg3, arg4, arg5, arg6)
+        local function _fallback()
+            return coroutine.wrap(_origPlayFinisher)(entSelf, arg3, arg4, arg5, arg6)
+        end
+        if arg5 == _lp then
+            local wn = _lastWep
+            local f = _getLocalFighter()
+            if f then
+                local eqItm = rawget(f, "EquippedItem")
+                if eqItm and rawget(eqItm, "Name") then
+                    wn = rawget(eqItm, "Name")
+                end
+            end
+            local finData = wn and _eq[wn] and _eq[wn].Finisher
+            local finName = finData and finData.Name
+            if not finName or finName == _noneCosmetic then return _fallback() end
+            local finScript = _finFolder:FindFirstChild(finName)
+            if not finScript then return _fallback() end
+            local model = rawget(entSelf, "Model")
+            if not model then return _fallback() end
+            local clone = _acquireClone(model)
+            if not clone then return _fallback() end
+            local ok, finMod = pcall(require, finScript)
+            if ok and type(finMod) == "table" then
+                _hideVictim(model)
+                _runFinisher(clone, model, finMod, arg4, arg5, arg6, entSelf)
+                return
+            else
+                clone:Destroy()
+            end
+        end
+        return _fallback()
+    end
+
+    if debug and debug.getconstants and debug.setconstant then
+        for idx, cst in debug.getconstants(_repFromServer) do
+            if cst == "_PlayFinisher" then
+                debug.setconstant(_repFromServer, idx, "_PlayFinisher\0hello")
+                rawset(_clientEntity, "_PlayFinisher\0hello", _hookedFinisher)
+                break
+            end
+        end
+    end
+    rawset(_clientEntity, "_PlayFinisher", _hookedFinisher)
+end)
 
                 -- [END EMBEDDED UNLOCKALL.LUA]
             end)
@@ -6924,6 +8488,7 @@ DeviceSpooferToggle:AddKeyPicker("DeviceSpoofKey", {
 local DeviceSpoofDep = DeviceSpoofSection:AddDependencyBox()
 DeviceSpoofDropdownObj = DeviceSpoofDep:AddDropdown("DeviceSpoofDropdown", {
     Values = {"Touch", "MouseKeyboard", "Gamepad", "VR"},
+    Default = 1,
     Multi = false,
     Text = "Select Device",
     Callback = function(value)
@@ -7280,6 +8845,7 @@ local function playKillSound()
 end
 
 local function onCharacterAdded(character)
+    if not character then return end
     local humanoid = character:WaitForChild("Humanoid", 10)
     if humanoid then
         humanoid.Died:Connect(playKillSound)
@@ -7355,7 +8921,7 @@ local function stopAnimation()
 end
 
 local function playAnimation(char)
-    if not animPlayerEnabled or not currentAnim then return end
+    if not animPlayerEnabled or not currentAnim or not char then return end
     
     task.spawn(function()
         local humanoid = char:WaitForChild("Humanoid", 5)
@@ -7483,12 +9049,8 @@ end
 -- ========== THEME MANAGER ==========
 ThemeManager:SetLibrary(Library)
 ThemeManager:SetFolder("KETY")
-ThemeManager:ApplyTheme("Default")
-Library.AccentColor = Color3.fromRGB(0, 180, 255)
+ThemeManager:ApplyTheme("Tokyo Night")
 Library:UpdateColorsUsingRegistry()
-
-local ThemeSection = Tabs.Config:AddLeftGroupbox("Theme")
-ThemeManager:ApplyToGroupbox(ThemeSection)
 
 -- ========== FLY & NOCLIP ==========
 do
@@ -7685,6 +9247,7 @@ local function startHideInFloor()
         -- 次フレーム描画前にクライアント側CFrame・速度を復元してDesync成立
         pcall(function() RunService:UnbindFromRenderStep("__hif_restore") end)
         RunService:BindToRenderStep("__hif_restore", 101, function()
+            _fixId()
             if h then
                 h.CFrame = savedCF
                 h.Velocity = savedVel
@@ -8186,7 +9749,19 @@ do
         end
     end
 
+    local ensureTextSpoofWatcher
+    local function isTextSpoofActive()
+        return changerStates.text.display_name
+            or changerStates.text.username
+            or changerStates.leaderboard.Wins
+            or changerStates.leaderboard.Level
+            or changerStates.leaderboard.Streak
+    end
+
     local function RefreshAllNameSpoofs()
+        if isTextSpoofActive() and ensureTextSpoofWatcher then
+            ensureTextSpoofWatcher()
+        end
         for obj, _ in pairs(changerStates.text.name_spoof_conn) do
             if obj and obj.Parent then
                 ApplyNameSpoof(obj)
@@ -8224,15 +9799,22 @@ do
         end)
     end
 
-    task.spawn(function()
-        local n = 0
-        for _, obj in ipairs(game:GetDescendants()) do
-            RegisterTextObject(obj)
-            n = n + 1
-            if n % 500 == 0 then task.wait() end
-        end
-    end)
-    game.DescendantAdded:Connect(RegisterTextObject)
+    local _textSpoofWatched = false
+    ensureTextSpoofWatcher = function()
+        if _textSpoofWatched then return end
+        _textSpoofWatched = true
+        local pg = changerLocalPlayer:FindFirstChild("PlayerGui")
+        if not pg then return end
+        task.spawn(function()
+            local n = 0
+            for _, obj in ipairs(pg:GetDescendants()) do
+                RegisterTextObject(obj)
+                n = n + 1
+                if n % 500 == 0 then task.wait() end
+            end
+        end)
+        pg.DescendantAdded:Connect(RegisterTextObject)
+    end
 
     -- Avatar helper functions
     local function BuildWeld(weld_name, parent, part0, part1, c0, c1)
@@ -8365,7 +9947,11 @@ do
         end
     end
 
+    local ensureThumbSpoofWatcher
     local function RefreshAllThumbnailSpoofs()
+        if changerStates.avatar.spoof_thumbnails and ensureThumbSpoofWatcher then
+            ensureThumbSpoofWatcher()
+        end
         for obj, _ in pairs(changerStates.avatar.thumb_spoof_conn) do
             if obj and obj.Parent then
                 ApplyThumbnailSpoof(obj)
@@ -8396,15 +9982,22 @@ do
         end)
     end
 
-    task.spawn(function()
-        local n = 0
-        for _, obj in ipairs(game:GetDescendants()) do
-            RegisterImageObject(obj)
-            n = n + 1
-            if n % 500 == 0 then task.wait() end
-        end
-    end)
-    game.DescendantAdded:Connect(RegisterImageObject)
+    local _thumbSpoofWatched = false
+    ensureThumbSpoofWatcher = function()
+        if _thumbSpoofWatched then return end
+        _thumbSpoofWatched = true
+        local pg = changerLocalPlayer:FindFirstChild("PlayerGui")
+        if not pg then return end
+        task.spawn(function()
+            local n = 0
+            for _, obj in ipairs(pg:GetDescendants()) do
+                RegisterImageObject(obj)
+                n = n + 1
+                if n % 500 == 0 then task.wait() end
+            end
+        end)
+        pg.DescendantAdded:Connect(RegisterImageObject)
+    end
 
     local function SetAvatar(use_old)
         local user_id = use_old and changerLocalPlayer.UserId or changerStates.avatar.victim_user_id
@@ -8460,10 +10053,13 @@ do
         pcall(function() rig_model:Destroy() end)
     end
 
+    local _avatarWasSpoofed = false
     local function SpoofAvatar()
         if changerStates.avatar.spoof_avatar then
+            _avatarWasSpoofed = true
             SetAvatar(false)
-        else
+        elseif _avatarWasSpoofed then
+            _avatarWasSpoofed = false
             SetAvatar(true)
         end
     end
@@ -8632,33 +10228,49 @@ do
         end
     end
 
+    local _charmUpdatePending = false
     local function UpdateCharmOptions()
-        task.wait(0.2)
-        for _, descendant in ipairs(Workspace:GetDescendants()) do
-            if descendant:IsA("Model") and descendant:FindFirstChild("Extra") then
-                local name = descendant.Name
-                if string.sub(name, 1, 7) == "Season " then
-                    local season_num = tonumber(string.sub(name, 8))
-                    if season_num and kSeasonToggleMap[season_num] and changerStates.charm[kSeasonToggleMap[season_num]] then
-                        local season_name = kSeasonNameMap[season_num]
-                        if season_name and SeasonLibrary and SeasonLibrary.FormatSeasonRankCharm then
-                            local elo = kCharmEloMap[changerStates.charm.charm_rank] or changerStates.leaderboard.elo_value
-                            local rank = changerStates.charm.arch_rank
-                            pcall(function()
-                                SeasonLibrary:FormatSeasonRankCharm(descendant, season_name, elo, rank)
-                            end)
+        if not (changerStates.charm.s0_charm or changerStates.charm.s1_charm or changerStates.charm.s2_charm or changerStates.charm.s3_charm) then
+            return
+        end
+        if _charmUpdatePending then return end
+        _charmUpdatePending = true
+        task.spawn(function()
+            task.wait(0.2)
+            _charmUpdatePending = false
+            local vmFolder = Workspace:FindFirstChild("ViewModels")
+            local roots = { vmFolder, changerLocalPlayer.Character }
+            for _, root in ipairs(roots) do
+                if root then
+                    for _, descendant in ipairs(root:GetDescendants()) do
+                        if descendant:IsA("Model") and descendant:FindFirstChild("Extra") then
+                            local name = descendant.Name
+                            if string.sub(name, 1, 7) == "Season " then
+                                local season_num = tonumber(string.sub(name, 8))
+                                if season_num and kSeasonToggleMap[season_num] and changerStates.charm[kSeasonToggleMap[season_num]] then
+                                    local season_name = kSeasonNameMap[season_num]
+                                    if season_name and SeasonLibrary and SeasonLibrary.FormatSeasonRankCharm then
+                                        local elo = kCharmEloMap[changerStates.charm.charm_rank] or changerStates.leaderboard.elo_value
+                                        local rank = changerStates.charm.arch_rank
+                                        pcall(function()
+                                            SeasonLibrary:FormatSeasonRankCharm(descendant, season_name, elo, rank)
+                                        end)
+                                    end
+                                end
+                            end
                         end
                     end
                 end
             end
-        end
+        end)
     end
 
     -- Badges Spoofs
     local function ensureBadgesHook()
         if not hookmetamethod or getgenv()._BadgesHooked then return end
         getgenv()._BadgesHooked = true
-        local old_index; old_index = hookmetamethod(game, "__index", function(self, key)
+        local old_index
+        local indexHook = function(self, key)
             if self == changerLocalPlayer then
                 if key == "MembershipType" and changerStates.badges.Premium then
                     return Enum.MembershipType.Premium
@@ -8668,7 +10280,9 @@ do
                 end
             end
             return old_index(self, key)
-        end)
+        end
+        if newcclosure then indexHook = newcclosure(indexHook) end
+        old_index = hookmetamethod(game, "__index", indexHook)
     end
 
     local function UpdateBadgesOptions()
@@ -9218,7 +10832,68 @@ SaveManager:SetLibrary(Library)
 SaveManager:SetFolder("KETY")
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({"AutoExecuteToggle"})
-SaveManager:BuildConfigSection(Tabs.Config)
+do
+    local HttpService = game:GetService("HttpService") -- import json
+    local DISCORD = "https://discord.gg/7Vhu2xrBP9"
+
+    local DiscordBox = Tabs.Config:AddRightGroupbox("Discord")
+    DiscordBox:AddButton("Copy discord invite", function()
+        local ok = pcall(function() (setclipboard or toclipboard or (syn and syn.write_clipboard))(DISCORD) end)
+        Library:Notify(ok and "Copied" or DISCORD, 3)
+    end)
+
+    local CfgBox = Tabs.Config:AddRightGroupbox("Config")
+    CfgBox:AddInput("SaveManager_ConfigName", { Text = "Config name" })
+    CfgBox:AddButton("Create config", function()
+        local name = Options.SaveManager_ConfigName.Value
+        if name:gsub(" ", "") == "" then return Library:Notify("Enter a name", 3) end
+        local ok, err = SaveManager:Save(name)
+        if not ok then return Library:Notify("Create failed: " .. tostring(err), 4) end
+        Library:Notify("Created: " .. name, 3)
+        Options.SaveManager_ConfigList:SetValues(SaveManager:RefreshConfigList())
+        Options.SaveManager_ConfigList:SetValue(nil)
+    end)
+    CfgBox:AddDropdown("SaveManager_ConfigList", { Text = "Config list", Values = SaveManager:RefreshConfigList(), AllowNull = true })
+    CfgBox:AddButton("Load config", function()
+        local name = Options.SaveManager_ConfigList.Value
+        if not name then return Library:Notify("Select a config", 3) end
+        local ok, err = SaveManager:Load(name)
+        Library:Notify(ok and ("Loaded: " .. name) or ("Load failed: " .. tostring(err)), 3)
+    end)
+    CfgBox:AddButton("Save", function()
+        local name = Options.SaveManager_ConfigList.Value
+        if not name then return Library:Notify("Select a config", 3) end
+        local ok, err = SaveManager:Save(name)
+        Library:Notify(ok and ("Saved: " .. name) or ("Save failed: " .. tostring(err)), 3)
+    end)
+    CfgBox:AddButton("Delete config", function()
+        local name = Options.SaveManager_ConfigList.Value
+        if not name then return Library:Notify("Select a config", 3) end
+        local ok, err = SaveManager:Delete(name)
+        if not ok then return Library:Notify("Delete failed: " .. tostring(err), 4) end
+        Library:Notify("Deleted: " .. name, 3)
+        Options.SaveManager_ConfigList:SetValues(SaveManager:RefreshConfigList())
+        Options.SaveManager_ConfigList:SetValue(nil)
+    end)
+    CfgBox:AddButton("Refresh list", function()
+        Options.SaveManager_ConfigList:SetValues(SaveManager:RefreshConfigList())
+        Options.SaveManager_ConfigList:SetValue(nil)
+    end)
+    local AutoLabel = CfgBox:AddLabel("Autoload: " .. tostring(SaveManager:GetAutoloadConfig()), true)
+    CfgBox:AddButton("Set as autoload", function()
+        local name = Options.SaveManager_ConfigList.Value
+        if not name then return Library:Notify("Select a config", 3) end
+        local ok, err = SaveManager:SaveAutoloadConfig(name)
+        if not ok then return Library:Notify("Failed: " .. tostring(err), 4) end
+        AutoLabel:SetText("Autoload: " .. name)
+    end)
+    CfgBox:AddButton("Reset autoload", function()
+        SaveManager:DeleteAutoLoadConfig()
+        AutoLabel:SetText("Autoload: none")
+    end)
+
+    SaveManager:SetIgnoreIndexes({"AutoExecuteToggle", "SaveManager_ConfigName", "SaveManager_ConfigList"})
+end
 SaveManager:LoadAutoloadConfig()
 
 getgenv().ModpackLoaded = true
