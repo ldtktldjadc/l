@@ -6524,20 +6524,7 @@ do
             end
             spinDelta = spinCur * dt
         end
-        pcall(function()
-            local char = lp.Character
-            local hum = char and char:FindFirstChildWhichIsA("Humanoid")
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            if not (hum and root) then return end
-            if spinMode ~= "None" then
-                hum.AutoRotate = false
-                root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(spinDelta), 0)
-                aaSpinning = true
-            elseif aaSpinning then
-                hum.AutoRotate = true
-                aaSpinning = false
-            end
-        end)
+        spinAngle = (spinAngle + spinDelta) % 360
 
         if pitchMode == "Glitch" then
             pitchOverride = glitchPitchVal or 99999
@@ -6571,20 +6558,36 @@ do
             end
         end
 
-        if visualize then
-            pcall(function()
-                local fc = getAAFighterController()
-                local lf = fc and fc.LocalFighter
-                if lf and util then
-                    local p = pitchOverride
-                    local y = yawOverride % 360
-                    if p < 0 then p = p % 360 end
-                    local pv = math.clamp(math.floor(math.rad(p) / (2 * math.pi) * 256 + 0.5), 0, 1114111)
-                    local yv = math.clamp(math.floor(math.rad(y) / (2 * math.pi) * 256 + 0.5), 0, 1114111)
-                    lf:SetReplicate("CameraRotation", util:FromXYToCameraRotation(pv, yv))
+    end)
+
+    pcall(function() RunService:UnbindFromRenderStep("KETY_AA_Late") end)
+    RunService:BindToRenderStep("KETY_AA_Late", Enum.RenderPriority.Last.Value + 1, function()
+        if not aaEnabled then return end
+        pcall(function()
+            local char = lp.Character
+            local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if not (hum and root) then return end
+            local yaw = nil
+            if spinMode ~= "None" then yaw = spinAngle elseif visualize then yaw = yawOverride % 360 end
+            if yaw then
+                hum.AutoRotate = false
+                root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, math.rad(yaw), 0)
+            end
+            if visualize then
+                local pd = pitchOverride % 360
+                if pd > 180 then pd = pd - 360 end
+                local pr = math.rad(math.clamp(pd, -90, 90))
+                local waist = char:FindFirstChild("Waist", true)
+                local neck = char:FindFirstChild("Neck", true)
+                if waist and waist:IsA("Motor6D") then
+                    waist.C0 = CFrame.new(waist.C0.Position) * CFrame.Angles(pr * 0.25, 0, 0)
                 end
-            end)
-        end
+                if neck and neck:IsA("Motor6D") then
+                    neck.C0 = CFrame.new(neck.C0.Position) * CFrame.Angles(pr * 0.75, 0, 0)
+                end
+            end
+        end)
     end)
 end
 -- ===== GUN MODS (MISC) =====
@@ -10850,60 +10853,67 @@ SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({"AutoExecuteToggle"})
 do
     local HttpService = game:GetService("HttpService") -- import json
+    local function OPT() return Library.Options or getgenv().Options end
+    local function B(box, text, fn)
+        box:AddButton(text, function()
+            local ok, e = pcall(fn)
+            if not ok then Library:Notify(tostring(e), 6) end
+        end)
+    end
     local DISCORD = "https://discord.gg/7Vhu2xrBP9"
 
     local DiscordBox = Tabs.Config:AddRightGroupbox("Discord")
-    DiscordBox:AddButton("Copy discord invite", function()
+    B(DiscordBox, "Copy discord invite", function()
         local ok = pcall(function() (setclipboard or toclipboard or (syn and syn.write_clipboard))(DISCORD) end)
         Library:Notify(ok and "Copied" or DISCORD, 3)
     end)
 
     local CfgBox = Tabs.Config:AddRightGroupbox("Config")
     CfgBox:AddInput("SaveManager_ConfigName", { Text = "Config name" })
-    CfgBox:AddButton("Create config", function()
-        local name = Options.SaveManager_ConfigName.Value
+    B(CfgBox, "Create config", function()
+        local name = OPT().SaveManager_ConfigName.Value
         if name:gsub(" ", "") == "" then return Library:Notify("Enter a name", 3) end
         local ok, err = SaveManager:Save(name)
         if not ok then return Library:Notify("Create failed: " .. tostring(err), 4) end
         Library:Notify("Created: " .. name, 3)
-        Options.SaveManager_ConfigList:SetValues(SaveManager:RefreshConfigList())
-        Options.SaveManager_ConfigList:SetValue(nil)
+        OPT().SaveManager_ConfigList:SetValues(SaveManager:RefreshConfigList())
+        OPT().SaveManager_ConfigList:SetValue(nil)
     end)
     CfgBox:AddDropdown("SaveManager_ConfigList", { Text = "Config list", Values = SaveManager:RefreshConfigList(), AllowNull = true })
-    CfgBox:AddButton("Load config", function()
-        local name = Options.SaveManager_ConfigList.Value
+    B(CfgBox, "Load config", function()
+        local name = OPT().SaveManager_ConfigList.Value
         if not name then return Library:Notify("Select a config", 3) end
         local ok, err = SaveManager:Load(name)
         Library:Notify(ok and ("Loaded: " .. name) or ("Load failed: " .. tostring(err)), 3)
     end)
-    CfgBox:AddButton("Save", function()
-        local name = Options.SaveManager_ConfigList.Value
+    B(CfgBox, "Save", function()
+        local name = OPT().SaveManager_ConfigList.Value
         if not name then return Library:Notify("Select a config", 3) end
         local ok, err = SaveManager:Save(name)
         Library:Notify(ok and ("Saved: " .. name) or ("Save failed: " .. tostring(err)), 3)
     end)
-    CfgBox:AddButton("Delete config", function()
-        local name = Options.SaveManager_ConfigList.Value
+    B(CfgBox, "Delete config", function()
+        local name = OPT().SaveManager_ConfigList.Value
         if not name then return Library:Notify("Select a config", 3) end
         local ok, err = SaveManager:Delete(name)
         if not ok then return Library:Notify("Delete failed: " .. tostring(err), 4) end
         Library:Notify("Deleted: " .. name, 3)
-        Options.SaveManager_ConfigList:SetValues(SaveManager:RefreshConfigList())
-        Options.SaveManager_ConfigList:SetValue(nil)
+        OPT().SaveManager_ConfigList:SetValues(SaveManager:RefreshConfigList())
+        OPT().SaveManager_ConfigList:SetValue(nil)
     end)
-    CfgBox:AddButton("Refresh list", function()
-        Options.SaveManager_ConfigList:SetValues(SaveManager:RefreshConfigList())
-        Options.SaveManager_ConfigList:SetValue(nil)
+    B(CfgBox, "Refresh list", function()
+        OPT().SaveManager_ConfigList:SetValues(SaveManager:RefreshConfigList())
+        OPT().SaveManager_ConfigList:SetValue(nil)
     end)
     local AutoLabel = CfgBox:AddLabel("Autoload: " .. tostring(SaveManager:GetAutoloadConfig()), true)
-    CfgBox:AddButton("Set as autoload", function()
-        local name = Options.SaveManager_ConfigList.Value
+    B(CfgBox, "Set as autoload", function()
+        local name = OPT().SaveManager_ConfigList.Value
         if not name then return Library:Notify("Select a config", 3) end
         local ok, err = SaveManager:SaveAutoloadConfig(name)
         if not ok then return Library:Notify("Failed: " .. tostring(err), 4) end
         AutoLabel:SetText("Autoload: " .. name)
     end)
-    CfgBox:AddButton("Reset autoload", function()
+    B(CfgBox, "Reset autoload", function()
         SaveManager:DeleteAutoLoadConfig()
         AutoLabel:SetText("Autoload: none")
     end)
