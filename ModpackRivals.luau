@@ -6063,7 +6063,7 @@ do
                 if curSlot == "Knife" then
                     ox = 0
                     oy = 5
-                    oz = -3
+                    oz = 0
                 else
                     local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
                     ox = (offsets and offsets.X) or 0
@@ -6192,7 +6192,7 @@ do
             if ping <= 0 then
                 pcall(function() ping = lplr:GetNetworkPing() end)
             end
-            local minTpDelay = isKnife and ping or (ping + 0.025)
+            local minTpDelay = isKnife and (ping + 0.01) or (ping + 0.05)
             if tick() - tpStartTime < minTpDelay then return end
 
             if not canAttack then
