@@ -6185,7 +6185,8 @@ do
             end
 
             local isKnife = (getgenv().Config.WeaponSlot == "Knife")
-            if tick() - tpStartTime < 0.05 then return end
+            local minTpDelay = isKnife and 0.05 or ((autoAttack and 0.15) or 0.05)
+            if tick() - tpStartTime < minTpDelay then return end
 
             if not canAttack then
                 if isKnife and MechanicsController then
