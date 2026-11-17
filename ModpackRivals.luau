@@ -5034,6 +5034,7 @@ do
     if getgenv().Config.KR_Offset == nil then getgenv().Config.KR_Offset = -0.002 end
     if getgenv().Config.KR_VoidTime == nil then getgenv().Config.KR_VoidTime = 0.3 end
     if getgenv().Config.KR_GroundTime == nil then getgenv().Config.KR_GroundTime = 0.3 end
+    if getgenv().Config.DevMode == nil then getgenv().Config.DevMode = false end
     getgenv().RageBotConfig = getgenv().Config
     getgenv().RageBotConfig.AntiHit = false
 
@@ -5245,6 +5246,14 @@ do
         Callback = function(value)
             getgenv().Config.Method = value
             if getgenv().RageBotConfig then getgenv().RageBotConfig.Method = value end
+        end
+    })
+    RageEnabledDep:AddToggle("RageBot_DevMode", {
+        Text = "DevMode",
+        Default = false,
+        Callback = function(value)
+            getgenv().Config.DevMode = value
+            if getgenv().RageBotConfig then getgenv().RageBotConfig.DevMode = value end
         end
     })
     RageEnabledDep:SetupDependencies({ { RageBotToggle, true } })
@@ -6087,6 +6096,8 @@ do
                     desyncCF = krStep(myRoot) or myRoot.CFrame
                 elseif tc == false then
                     desyncCF = myRoot.CFrame + Vector3.new(0, 900000000, 0)
+                elseif getgenv().Config.DevMode then
+                    desyncCF = myRoot.CFrame + Vector3.new(0, 10, 0)
                 else
                     local randomDir = Vector3.new(
                         math.random(-100, 100),
@@ -6317,38 +6328,14 @@ do
     local aaEnabled = false
     local pitchMode = "Glitch"
     local yawMode   = "0"
-    local spinMode  = "None"
     local customYaw = 0
     local customPitch = 179
-    local _aaFC = nil
-    local function getAAFighterController()
-        if not _aaFC then pcall(function() _aaFC = require(lp.PlayerScripts.Controllers.FighterController) end) end
-        return _aaFC
-    end
-    local function restoreNeck()
-        pcall(function()
-            local fc = getAAFighterController()
-            local lf = fc and fc.LocalFighter
-            local cam = workspace.CurrentCamera
-            if lf and cam then
-                local x, y = cam.CFrame:ToOrientation()
-                lf:SetReplicate("CameraRotation", Vector2.new(x, y))
-            end
-        end)
-    end
-    local spinSpeed = 360
-    local visualize = false
     local pitchOverride = 99999
     local yawOverride   = 0
     local toggleVal     = 4999
     local glitchPitchVal = 99999
     local glitchTask    = nil
     local camRemote     = nil
-    local spinAngle     = 0
-    local aaSpinning    = false
-    local util = nil
-    pcall(function() util = require(ReplicatedStorage.Modules.Utility) end)
-    local spinCur       = 0
 
     local function encodeUnclamped(pitchDeg, yawDeg)
         if pitchDeg < 0 then pitchDeg = pitchDeg % 360 end
@@ -6395,8 +6382,6 @@ do
             if value and pitchMode == "Glitch" then triggerGlitchPitch() end
             if not value then
                 local hum = lp and lp.Character and lp.Character:FindFirstChildWhichIsA("Humanoid")
-                if hum then hum.AutoRotate = true end
-                restoreNeck()
             end
         end
     })
@@ -6451,38 +6436,6 @@ do
     })
     YawCustomDep:SetupDependencies({ { AntiAimToggle, true }, { YawDropdown, "Custom" } })
 
-    local SpinDropdown = AntiAimDep:AddDropdown("AntiAim_SpinType", {
-        Values = {"None", "JustSpin", "Random"},
-        Default = 1,
-        Multi = false,
-        Text = "SpinType",
-        Callback = function(value) spinMode = value end
-    })
-
-    local SpinSpeedDep = AntiAimSection:AddDependencyBox()
-    SpinSpeedDep:AddSlider("AntiAim_SpinSpeed", {
-        Text = "Spin Speed",
-        Default = 360,
-        Min = 10,
-        Max = 2000,
-        Rounding = 0,
-        Callback = function(value) spinSpeed = value end
-    })
-    SpinSpeedDep:SetupDependencies({ { AntiAimToggle, true }, { SpinDropdown, "JustSpin" } })
-
-    AntiAimDep:AddToggle("AntiAim_Visualize", {
-        Text = "Visualize",
-        Default = false,
-        Callback = function(value)
-            visualize = value
-            if not value then
-                local hum = lp and lp.Character and lp.Character:FindFirstChildWhichIsA("Humanoid")
-                if hum then hum.AutoRotate = true end
-                restoreNeck()
-            end
-        end
-    })
-
     AntiAimDep:SetupDependencies({ { AntiAimToggle, true } })
 
     task.spawn(function()
@@ -6510,21 +6463,8 @@ do
     end
 
     local lastSend = 0
-    local lastSpinRoll = 0
     RunService.Heartbeat:Connect(function(dt)
         if not aaEnabled then return end
-
-        local spinDelta = 0
-        if spinMode == "JustSpin" then
-            spinDelta = spinSpeed * dt
-        elseif spinMode == "Random" then
-            if tick() - lastSpinRoll >= 0.1 then
-                lastSpinRoll = tick()
-                spinCur = math.random(-spinSpeed, spinSpeed)
-            end
-            spinDelta = spinCur * dt
-        end
-        spinAngle = (spinAngle + spinDelta) % 360
 
         if pitchMode == "Glitch" then
             pitchOverride = glitchPitchVal or 99999
@@ -6558,36 +6498,6 @@ do
             end
         end
 
-    end)
-
-    pcall(function() RunService:UnbindFromRenderStep("KETY_AA_Late") end)
-    RunService:BindToRenderStep("KETY_AA_Late", Enum.RenderPriority.Last.Value + 1, function()
-        if not aaEnabled then return end
-        pcall(function()
-            local char = lp.Character
-            local hum = char and char:FindFirstChildWhichIsA("Humanoid")
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            if not (hum and root) then return end
-            local yaw = nil
-            if spinMode ~= "None" then yaw = spinAngle elseif visualize then yaw = yawOverride % 360 end
-            if yaw then
-                hum.AutoRotate = false
-                root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, math.rad(yaw), 0)
-            end
-            if visualize then
-                local pd = pitchOverride % 360
-                if pd > 180 then pd = pd - 360 end
-                local pr = math.rad(math.clamp(pd, -90, 90))
-                local waist = char:FindFirstChild("Waist", true)
-                local neck = char:FindFirstChild("Neck", true)
-                if waist and waist:IsA("Motor6D") then
-                    waist.C0 = CFrame.new(waist.C0.Position) * CFrame.Angles(pr * 0.25, 0, 0)
-                end
-                if neck and neck:IsA("Motor6D") then
-                    neck.C0 = CFrame.new(neck.C0.Position) * CFrame.Angles(pr * 0.75, 0, 0)
-                end
-            end
-        end)
     end)
 end
 -- ===== GUN MODS (MISC) =====
@@ -6873,7 +6783,10 @@ task.spawn(function()
         if getgenv().RageSettings and getgenv().RageSettings.Enabled and getgenv().RageSettings.InstantScope then
             if not cameraControllerCache then
                 pcall(function()
-                    cameraControllerCache = require(lp.PlayerScripts:WaitForChild("Controllers", 5):WaitForChild("CameraController", 5))
+                    local ps = lp:FindFirstChild("PlayerScripts")
+                    local ctrl = ps and ps:FindFirstChild("Controllers")
+                    local cc = ctrl and ctrl:FindFirstChild("CameraController")
+                    if cc then cameraControllerCache = require(cc) end
                 end)
             end
             if cameraControllerCache and type(cameraControllerCache) == "table" then
@@ -7173,7 +7086,12 @@ enforceAutoLoadout = function()
     
     local PlayerGui = lp:WaitForChild("PlayerGui")
     PlayerGui.DescendantAdded:Connect(hideExpectedUI)
-    for _, desc in ipairs(PlayerGui:GetDescendants()) do hideExpectedUI(desc) end
+    task.spawn(function()
+        for i, desc in ipairs(PlayerGui:GetDescendants()) do
+            hideExpectedUI(desc)
+            if i % 300 == 0 then task.wait() end
+        end
+    end)
 
     local function attachToFighter()
         if AutoLoadout_FighterController and AutoLoadout_FighterController.LocalFighter and type(AutoLoadout_FighterController.LocalFighter.GetPropertyChangedSignal) == "function" then
@@ -9366,7 +9284,10 @@ HideInFloorDep:SetupDependencies({ { HideInFloorToggle, true } })
         if not infJumpEnabled then return end
         if not fighterControllerCache then
             pcall(function()
-                fighterControllerCache = require(lp.PlayerScripts:WaitForChild("Controllers"):WaitForChild("FighterController"))
+                local ps = lp:FindFirstChild("PlayerScripts")
+                local ctrl = ps and ps:FindFirstChild("Controllers")
+                local fc = ctrl and ctrl:FindFirstChild("FighterController")
+                if fc then fighterControllerCache = require(fc) end
             end)
         end
         if fighterControllerCache and fighterControllerCache.LocalFighter then
@@ -10920,7 +10841,9 @@ do
 
     SaveManager:SetIgnoreIndexes({"AutoExecuteToggle", "SaveManager_ConfigName", "SaveManager_ConfigList"})
 end
-SaveManager:LoadAutoloadConfig()
+task.delay(0.1, function()
+    pcall(function() SaveManager:LoadAutoloadConfig() end)
+end)
 
 getgenv().ModpackLoaded = true
 if not getgenv().DeviceSpoofEnabled and getgenv()._LastPendingControls then
