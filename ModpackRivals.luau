@@ -6061,9 +6061,9 @@ do
                 if not desyncCF then
                 local ox, oy, oz
                 if curSlot == "Knife" then
-                    ox = 3
-                    oy = 4
-                    oz = -4
+                    ox = 0
+                    oy = 5
+                    oz = -3
                 else
                     local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
                     ox = (offsets and offsets.X) or 0
@@ -6185,15 +6185,14 @@ do
             end
 
             local isKnife = (getgenv().Config.WeaponSlot == "Knife")
-            local minTpDelay = 0
-            if not isKnife then
-                pcall(function()
-                    minTpDelay = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
-                end)
-                if minTpDelay <= 0 then
-                    pcall(function() minTpDelay = lplr:GetNetworkPing() end)
-                end
+            local ping = 0
+            pcall(function()
+                ping = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+            end)
+            if ping <= 0 then
+                pcall(function() ping = lplr:GetNetworkPing() end)
             end
+            local minTpDelay = isKnife and ping or (ping + 0.025)
             if tick() - tpStartTime < minTpDelay then return end
 
             if not canAttack then
