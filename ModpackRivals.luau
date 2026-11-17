@@ -5736,6 +5736,7 @@ do
         local tpStartTime = 0
         local antiHitStart = 0
         local antiHitUntil = 0
+        local knifeAiming = false
         local DeflectingPlayers = getgenv().DeflectingPlayers or {}
         local function isPlayerParrying(player)
             if not player then return false end
@@ -6039,6 +6040,13 @@ do
 
                 local baseCFrame = targetRoot.CFrame
                 local p, y, r = baseCFrame:ToOrientation()
+                pcall(function()
+                    local tf = FighterController and FighterController:GetFighter(targetPlayer)
+                    local tCam = tf and tf:Get("CameraRotation")
+                    if typeof(tCam) == "Vector2" then
+                        p = tCam.X
+                    end
+                end)
                 currentTargetPitch, currentTargetYaw, currentTargetRoll = p, y, r
 
 
@@ -6073,12 +6081,7 @@ do
 
                 local desyncPos = (baseCFrame * CFrame.new(ox, oy, oz)).Position
                 if curSlot == "Knife" then
-                    local lookTarget = Vector3.new(targetPart.Position.X, desyncPos.Y, targetPart.Position.Z)
-                    if (desyncPos - lookTarget).Magnitude > 0.001 then
-                        desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
-                    else
-                        desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
-                    end
+                    desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
                 else
                     if (desyncPos - targetPart.Position).Magnitude > 0.001 then
                         desyncCF = CFrame.lookAt(desyncPos, targetPart.Position)
@@ -6168,7 +6171,8 @@ do
             if (not canTarget) or isAntiHitDelay then
                 lastTarget = nil
                 tpStartTime = 0
-                if MechanicsController and getgenv().Config.WeaponSlot == "Knife" then
+                if (not isAntiHitDelay) and knifeAiming and MechanicsController and getgenv().Config.WeaponSlot == "Knife" then
+                    knifeAiming = false
                     pcall(function()
                         MechanicsController:EquippedItemInput("FinishAiming")
                     end)
@@ -6192,11 +6196,12 @@ do
             if ping <= 0 then
                 pcall(function() ping = lplr:GetNetworkPing() end)
             end
-            local minTpDelay = isKnife and (ping + 0.025) or (ping + 0.1)
+            local minTpDelay = isKnife and (ping + 0.05) or (ping + 0.12)
             if tick() - tpStartTime < minTpDelay then return end
 
             if not canAttack then
-                if isKnife and MechanicsController then
+                if knifeAiming and isKnife and MechanicsController then
+                    knifeAiming = false
                     pcall(function()
                         MechanicsController:EquippedItemInput("FinishAiming")
                     end)
@@ -6207,7 +6212,8 @@ do
             if tick() - lastFire < getgenv().Config.FireRate then return end
             lastFire = tick()
 
-            if isKnife and MechanicsController then
+            if isKnife and MechanicsController and not knifeAiming then
+                knifeAiming = true
                 pcall(function()
                     MechanicsController:EquippedItemInput("StartAiming")
                 end)
