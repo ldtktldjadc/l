@@ -6097,7 +6097,7 @@ do
                 elseif tc == false then
                     desyncCF = myRoot.CFrame + Vector3.new(0, 900000000, 0)
                 elseif getgenv().Config.DevMode then
-                    desyncCF = targetRoot and targetRoot.CFrame or myRoot.CFrame
+                    desyncCF = targetRoot and (targetRoot.CFrame + Vector3.new(0, 5, 0)) or myRoot.CFrame
                 else
                     local randomDir = Vector3.new(
                         math.random(-100, 100),
