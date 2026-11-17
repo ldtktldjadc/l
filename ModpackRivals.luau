@@ -6040,13 +6040,6 @@ do
 
                 local baseCFrame = targetRoot.CFrame
                 local p, y, r = baseCFrame:ToOrientation()
-                pcall(function()
-                    local tf = FighterController and FighterController:GetFighter(targetPlayer)
-                    local tCam = tf and tf:Get("CameraRotation")
-                    if typeof(tCam) == "Vector2" then
-                        p = tCam.X
-                    end
-                end)
                 currentTargetPitch, currentTargetYaw, currentTargetRoll = p, y, r
 
 
@@ -6081,7 +6074,12 @@ do
 
                 local desyncPos = (baseCFrame * CFrame.new(ox, oy, oz)).Position
                 if curSlot == "Knife" then
-                    desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
+                    local lookTarget = Vector3.new(targetPart.Position.X, desyncPos.Y, targetPart.Position.Z)
+                    if (desyncPos - lookTarget).Magnitude > 0.001 then
+                        desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
+                    else
+                        desyncCF = CFrame.new(desyncPos) * (baseCFrame - baseCFrame.Position)
+                    end
                 else
                     if (desyncPos - targetPart.Position).Magnitude > 0.001 then
                         desyncCF = CFrame.lookAt(desyncPos, targetPart.Position)
@@ -6196,7 +6194,7 @@ do
             if ping <= 0 then
                 pcall(function() ping = lplr:GetNetworkPing() end)
             end
-            local minTpDelay = isKnife and (ping + 0.05) or (ping + 0.12)
+            local minTpDelay = isKnife and (ping + 0.025) or (ping + 0.1)
             if tick() - tpStartTime < minTpDelay then return end
 
             if not canAttack then
