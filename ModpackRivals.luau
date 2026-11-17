@@ -5033,7 +5033,6 @@ do
     if getgenv().Config.KR_VoidTime == nil then getgenv().Config.KR_VoidTime = 0.3 end
     if getgenv().Config.KR_GroundTime == nil then getgenv().Config.KR_GroundTime = 0.3 end
     if getgenv().Config.DevMode == nil then getgenv().Config.DevMode = false end
-    if getgenv().Config.KnifeMinTPDelay == nil then getgenv().Config.KnifeMinTPDelay = 0.15 end
     getgenv().RageBotConfig = getgenv().Config
     getgenv().RageBotConfig.AntiHit = false
 
@@ -5486,19 +5485,6 @@ do
         end
     })
     MeleeTPDep:SetupDependencies({ { RageBotToggle, true }, { RageMethodDropdown, "Normal" }, { WeaponSlotDropdown, "Melee" } })
-
-    local KnifeTPDep = RageBotSection:AddDependencyBox()
-    KnifeTPDep:AddSlider("RageBot_Knife_MinTPDelay", {
-        Text = "Knife MinTPDelay",
-        Default = 0.15,
-        Min = 0,
-        Max = 1,
-        Rounding = 2,
-        Callback = function(value)
-            getgenv().Config.KnifeMinTPDelay = value
-        end
-    })
-    KnifeTPDep:SetupDependencies({ { RageBotToggle, true }, { WeaponSlotDropdown, "Knife" } })
 
     local AntiHitToggle = RageEnabledDep:AddToggle("RageBot_AntiHit", {
         Text = "AntiHit",
@@ -6199,8 +6185,7 @@ do
             end
 
             local isKnife = (getgenv().Config.WeaponSlot == "Knife")
-            local minTpDelay = isKnife and (getgenv().Config.KnifeMinTPDelay or 0.15) or ((autoAttack and 0.15) or 0.05)
-            if minTpDelay > 0 and (tick() - tpStartTime < minTpDelay) then return end
+            if tick() - tpStartTime < 0.05 then return end
 
             if not canAttack then
                 if isKnife and MechanicsController then
