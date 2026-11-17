@@ -87,15 +87,13 @@ end
 if not getgenv()._SetControlsHooked and getgenv().KETY_HookNamecall then
     getgenv()._SetControlsHooked = true
     local _setCtrlRemote = nil
-    local _setCtrlLookedUp = false
+    task.spawn(function()
+        pcall(function()
+            _setCtrlRemote = game:GetService("ReplicatedStorage"):WaitForChild("Remotes", 10):WaitForChild("Replication", 10):WaitForChild("Fighter", 10):WaitForChild("SetControls", 10)
+        end)
+    end)
     getgenv().KETY_HookNamecall({"FireServer", "fireServer", "fireserver"}, function(old)
         return function(self, ...)
-            if not _setCtrlLookedUp then
-                _setCtrlLookedUp = true
-                pcall(function()
-                    _setCtrlRemote = game:GetService("ReplicatedStorage").Remotes.Replication.Fighter.SetControls
-                end)
-            end
             if _setCtrlRemote and self == _setCtrlRemote then
                 if not getgenv().ModpackLoaded then
                     getgenv()._LastPendingControls = ...
@@ -6063,9 +6061,9 @@ do
                 if not desyncCF then
                 local ox, oy, oz
                 if curSlot == "Knife" then
-                    ox = math.random(-50, 50) / 10
-                    oy = math.random(-50, 50) / 10
-                    oz = math.random(-50, 50) / 10
+                    ox = 3
+                    oy = 4
+                    oz = -4
                 else
                     local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
                     ox = (offsets and offsets.X) or 0
@@ -6186,10 +6184,17 @@ do
                 tpStartTime = tick()
             end
 
-            local minTpDelay = (autoAttack and 0.15) or 0.05
-            if tick() - tpStartTime < minTpDelay then return end
-
             local isKnife = (getgenv().Config.WeaponSlot == "Knife")
+            local minTpDelay = 0
+            if not isKnife then
+                pcall(function()
+                    minTpDelay = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+                end)
+                if minTpDelay <= 0 then
+                    pcall(function() minTpDelay = lplr:GetNetworkPing() end)
+                end
+            end
+            if tick() - tpStartTime < minTpDelay then return end
 
             if not canAttack then
                 if isKnife and MechanicsController then
