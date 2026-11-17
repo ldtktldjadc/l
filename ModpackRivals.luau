@@ -5033,6 +5033,7 @@ do
     if getgenv().Config.KR_VoidTime == nil then getgenv().Config.KR_VoidTime = 0.3 end
     if getgenv().Config.KR_GroundTime == nil then getgenv().Config.KR_GroundTime = 0.3 end
     if getgenv().Config.DevMode == nil then getgenv().Config.DevMode = false end
+    if getgenv().Config.KnifeMinTpDelay == nil then getgenv().Config.KnifeMinTpDelay = 0 end
     getgenv().RageBotConfig = getgenv().Config
     getgenv().RageBotConfig.AntiHit = false
 
@@ -5486,6 +5487,19 @@ do
     })
     MeleeTPDep:SetupDependencies({ { RageBotToggle, true }, { RageMethodDropdown, "Normal" }, { WeaponSlotDropdown, "Melee" } })
 
+    local KnifeDelayDep = RageBotSection:AddDependencyBox()
+    KnifeDelayDep:AddSlider("RageBot_Knife_MinTpDelay", {
+        Text = "Knife TP Delay",
+        Default = 0,
+        Min = 0,
+        Max = 1,
+        Rounding = 2,
+        Callback = function(value)
+            getgenv().Config.KnifeMinTpDelay = value
+        end
+    })
+    KnifeDelayDep:SetupDependencies({ { RageBotToggle, true }, { WeaponSlotDropdown, "Knife" } })
+
     local AntiHitToggle = RageEnabledDep:AddToggle("RageBot_AntiHit", {
         Text = "AntiHit",
         Default = false,
@@ -5736,7 +5750,6 @@ do
         local tpStartTime = 0
         local antiHitStart = 0
         local antiHitUntil = 0
-        local knifeAiming = false
         local DeflectingPlayers = getgenv().DeflectingPlayers or {}
         local function isPlayerParrying(player)
             if not player then return false end
@@ -6062,9 +6075,9 @@ do
                 if not desyncCF then
                 local ox, oy, oz
                 if curSlot == "Knife" then
-                    ox = 0
-                    oy = 5
-                    oz = 0
+                    ox = 3
+                    oy = 4
+                    oz = -4
                 else
                     local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
                     ox = (offsets and offsets.X) or 0
@@ -6169,8 +6182,7 @@ do
             if (not canTarget) or isAntiHitDelay then
                 lastTarget = nil
                 tpStartTime = 0
-                if (not isAntiHitDelay) and knifeAiming and MechanicsController and getgenv().Config.WeaponSlot == "Knife" then
-                    knifeAiming = false
+                if MechanicsController and getgenv().Config.WeaponSlot == "Knife" then
                     pcall(function()
                         MechanicsController:EquippedItemInput("FinishAiming")
                     end)
@@ -6187,19 +6199,11 @@ do
             end
 
             local isKnife = (getgenv().Config.WeaponSlot == "Knife")
-            local ping = 0
-            pcall(function()
-                ping = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
-            end)
-            if ping <= 0 then
-                pcall(function() ping = lplr:GetNetworkPing() end)
-            end
-            local minTpDelay = isKnife and (ping + 0.025) or (ping + 0.1)
+            local minTpDelay = isKnife and (getgenv().Config.KnifeMinTpDelay or 0) or ((autoAttack and 0.15) or 0.05)
             if tick() - tpStartTime < minTpDelay then return end
 
             if not canAttack then
-                if knifeAiming and isKnife and MechanicsController then
-                    knifeAiming = false
+                if isKnife and MechanicsController then
                     pcall(function()
                         MechanicsController:EquippedItemInput("FinishAiming")
                     end)
@@ -6210,8 +6214,7 @@ do
             if tick() - lastFire < getgenv().Config.FireRate then return end
             lastFire = tick()
 
-            if isKnife and MechanicsController and not knifeAiming then
-                knifeAiming = true
+            if isKnife and MechanicsController then
                 pcall(function()
                     MechanicsController:EquippedItemInput("StartAiming")
                 end)
