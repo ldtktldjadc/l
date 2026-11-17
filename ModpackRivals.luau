@@ -5033,7 +5033,7 @@ do
     if getgenv().Config.KR_VoidTime == nil then getgenv().Config.KR_VoidTime = 0.3 end
     if getgenv().Config.KR_GroundTime == nil then getgenv().Config.KR_GroundTime = 0.3 end
     if getgenv().Config.DevMode == nil then getgenv().Config.DevMode = false end
-    if getgenv().Config.KnifeMinTpDelay == nil then getgenv().Config.KnifeMinTpDelay = 0 end
+    if getgenv().Config.KnifeMinTPDelay == nil then getgenv().Config.KnifeMinTPDelay = 0.15 end
     getgenv().RageBotConfig = getgenv().Config
     getgenv().RageBotConfig.AntiHit = false
 
@@ -5487,18 +5487,18 @@ do
     })
     MeleeTPDep:SetupDependencies({ { RageBotToggle, true }, { RageMethodDropdown, "Normal" }, { WeaponSlotDropdown, "Melee" } })
 
-    local KnifeDelayDep = RageBotSection:AddDependencyBox()
-    KnifeDelayDep:AddSlider("RageBot_Knife_MinTpDelay", {
-        Text = "Knife TP Delay",
-        Default = 0,
+    local KnifeTPDep = RageBotSection:AddDependencyBox()
+    KnifeTPDep:AddSlider("RageBot_Knife_MinTPDelay", {
+        Text = "Knife MinTPDelay",
+        Default = 0.15,
         Min = 0,
         Max = 1,
         Rounding = 2,
         Callback = function(value)
-            getgenv().Config.KnifeMinTpDelay = value
+            getgenv().Config.KnifeMinTPDelay = value
         end
     })
-    KnifeDelayDep:SetupDependencies({ { RageBotToggle, true }, { WeaponSlotDropdown, "Knife" } })
+    KnifeTPDep:SetupDependencies({ { RageBotToggle, true }, { WeaponSlotDropdown, "Knife" } })
 
     local AntiHitToggle = RageEnabledDep:AddToggle("RageBot_AntiHit", {
         Text = "AntiHit",
@@ -6075,9 +6075,9 @@ do
                 if not desyncCF then
                 local ox, oy, oz
                 if curSlot == "Knife" then
-                    ox = 3
-                    oy = 4
-                    oz = -4
+                    ox = 0
+                    oy = 5
+                    oz = 0
                 else
                     local offsets = (getgenv().Config.TPOffsets and getgenv().Config.TPOffsets[curSlot])
                     ox = (offsets and offsets.X) or 0
@@ -6193,14 +6193,14 @@ do
             currentTargetPart = targetPart
             currentDesyncCF = desyncCF
 
-            if lastTarget ~= targetPlayer then
+            if lastTarget ~= targetPlayer or tpStartTime == 0 then
                 lastTarget = targetPlayer
                 tpStartTime = tick()
             end
 
             local isKnife = (getgenv().Config.WeaponSlot == "Knife")
-            local minTpDelay = isKnife and (getgenv().Config.KnifeMinTpDelay or 0) or ((autoAttack and 0.15) or 0.05)
-            if tick() - tpStartTime < minTpDelay then return end
+            local minTpDelay = isKnife and (getgenv().Config.KnifeMinTPDelay or 0.15) or ((autoAttack and 0.15) or 0.05)
+            if minTpDelay > 0 and (tick() - tpStartTime < minTpDelay) then return end
 
             if not canAttack then
                 if isKnife and MechanicsController then
