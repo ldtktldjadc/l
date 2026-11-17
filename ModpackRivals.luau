@@ -6192,7 +6192,7 @@ do
             if ping <= 0 then
                 pcall(function() ping = lplr:GetNetworkPing() end)
             end
-            local minTpDelay = isKnife and (ping + 0.01) or (ping + 0.05)
+            local minTpDelay = isKnife and (ping + 0.025) or (ping + 0.1)
             if tick() - tpStartTime < minTpDelay then return end
 
             if not canAttack then
