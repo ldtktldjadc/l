@@ -9121,7 +9121,7 @@ FlyDep:AddSlider("FlySpeedSlider", {
     Text = "Fly Speed",
     Default = 70,
     Min = 30,
-    Max = 1000,
+    Max = 5000,
     Rounding = 0,
     Callback = function(value)
         flySpeed = value
