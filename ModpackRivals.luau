@@ -9030,9 +9030,11 @@ local function startFly()
             local humCurrent = char:FindFirstChildOfClass("Humanoid")
             if humCurrent then
                 local moveDir = humCurrent.MoveDirection
+                local upVec = (_RealUIS and _RealUIS:IsKeyDown(Enum.KeyCode.Space) and not _RealUIS:GetFocusedTextBox()) and Vector3.new(0, 1, 0) or Vector3.zero
+                local velDir = moveDir + upVec
                 if bodyVelocity then
-                    if moveDir.Magnitude > 0 then
-                        bodyVelocity.Velocity = moveDir * flySpeed
+                    if velDir.Magnitude > 0 then
+                        bodyVelocity.Velocity = velDir.Unit * flySpeed
                     else
                         bodyVelocity.Velocity = Vector3.new(0, 0, 0)
                     end
@@ -9118,7 +9120,7 @@ local FlyDep = MovementSection:AddDependencyBox()
 FlyDep:AddSlider("FlySpeedSlider", {
     Text = "Fly Speed",
     Default = 70,
-    Min = 20,
+    Min = 30,
     Max = 1000,
     Rounding = 0,
     Callback = function(value)
@@ -9298,25 +9300,60 @@ HideInFloorDep:SetupDependencies({ { HideInFloorToggle, true } })
         end
     end)
 
-    -- Slide Boost
+    -- Slide Boost & Air Slide
     local slideBoostEnabled = false
     local slideBoostMultiplier = 1.0
     local autoSlideJumpEnabled = false
+    local airSlideEnabled = false
 
     local function setupSlideBoost()
-        local MechanicsController
+        local MechanicsController, InputLibrary
         local ok = pcall(function()
             local controllers = lp:WaitForChild("PlayerScripts", 10):WaitForChild("Controllers", 10)
             MechanicsController = require(controllers:WaitForChild("MechanicsController", 10))
+            InputLibrary = require(ReplicatedStorage:WaitForChild("Modules", 10):WaitForChild("InputLibrary", 10))
         end)
 
         if not ok or type(MechanicsController) ~= "table" then return end
+
+        local oldSimInputBegan = MechanicsController.SimulateInputBegan
+        if type(oldSimInputBegan) == "function" and not MechanicsController._isAirSlideHooked then
+            MechanicsController._isAirSlideHooked = true
+            MechanicsController.SimulateInputBegan = function(self, inputObj, ...)
+                local fighter = airSlideEnabled and self.LocalFighter
+                local isSlideKey = fighter and InputLibrary and (InputLibrary:InputIs(inputObj, "Slide") or InputLibrary:InputIs(inputObj, "Crouch"))
+                if isSlideKey and type(fighter.IsGrounded) == "function" then
+                    local origIsGrounded = fighter.IsGrounded
+                    fighter.IsGrounded = function() return true end
+                    local res = table.pack(pcall(oldSimInputBegan, self, inputObj, ...))
+                    fighter.IsGrounded = origIsGrounded
+                    if res[1] then return table.unpack(res, 2, res.n) end
+                    error(res[2])
+                end
+                return oldSimInputBegan(self, inputObj, ...)
+            end
+        end
 
         local oldSlide = MechanicsController.Slide
         if type(oldSlide) ~= "function" or MechanicsController._isSlideHooked then return end
         MechanicsController._isSlideHooked = true
 
         MechanicsController.Slide = function(self)
+            local fCan = self.LocalFighter
+            if airSlideEnabled and fCan and type(fCan.CanSlide) == "function" and not fCan._airSlideCanHooked then
+                fCan._airSlideCanHooked = true
+                local origCanSlide = fCan.CanSlide
+                fCan.CanSlide = function(fs, ...)
+                    if airSlideEnabled and type(fs.IsGrounded) == "function" then
+                        local origIG = fs.IsGrounded
+                        fs.IsGrounded = function() return true end
+                        local r = table.pack(pcall(origCanSlide, fs, ...))
+                        fs.IsGrounded = origIG
+                        if r[1] then return table.unpack(r, 2, r.n) end
+                    end
+                    return origCanSlide(fs, ...)
+                end
+            end
             if slideBoostEnabled then
                 local fighter = self.LocalFighter
                 if fighter and fighter.Get then
@@ -9404,6 +9441,21 @@ HideInFloorDep:SetupDependencies({ { HideInFloorToggle, true } })
         SyncToggleState = true,
         Mode = "Toggle",
         Text = "Auto Slide Jump",
+    })
+
+    local AirSlideToggle = MovementSection:AddToggle("AirSlideToggle", {
+        Text = "Air Slide",
+        Default = false,
+        Callback = function(v)
+            airSlideEnabled = v
+        end
+    })
+
+    AirSlideToggle:AddKeyPicker("AirSlideKey", {
+        Default = "None",
+        SyncToggleState = true,
+        Mode = "Toggle",
+        Text = "Air Slide",
     })
 
     if getgenv then
@@ -10159,7 +10211,7 @@ end
             local elo = kCharmEloMap[changerStates.charm.charm_rank] or changerStates.leaderboard.elo_value
             if season_num and kSeasonToggleMap[season_num] and changerStates.charm[kSeasonToggleMap[season_num]] then
                 p4 = elo or p4
-                p5 = changerStates.charm.arch_rank
+                p5 = (changerStates.charm.charm_rank == "Archnemesis") and changerStates.charm.arch_rank or nil
             end
             return original_fsrc(self, p2, p3, p4, p5)
         end
@@ -10188,7 +10240,7 @@ end
                                     local season_name = kSeasonNameMap[season_num]
                                     if season_name and SeasonLibrary and SeasonLibrary.FormatSeasonRankCharm then
                                         local elo = kCharmEloMap[changerStates.charm.charm_rank] or changerStates.leaderboard.elo_value
-                                        local rank = changerStates.charm.arch_rank
+                                        local rank = (changerStates.charm.charm_rank == "Archnemesis") and changerStates.charm.arch_rank or nil
                                         pcall(function()
                                             SeasonLibrary:FormatSeasonRankCharm(descendant, season_name, elo, rank)
                                         end)
