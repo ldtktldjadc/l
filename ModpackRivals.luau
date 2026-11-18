@@ -9014,8 +9014,10 @@ local function startFly()
     cleanupFly()
     
     bodyVelocity = Instance.new("BodyVelocity", root)
-    bodyVelocity.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+    bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bodyVelocity.P = 1e9
     bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    if root.Anchored then root.Anchored = false end
     
     bodyGyro = Instance.new("BodyGyro", root)
     bodyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
@@ -9027,18 +9029,17 @@ local function startFly()
     
     flyThread = task.spawn(function()
         while flyEnabled and char and char.Parent and root and root.Parent do
+            if root.Anchored then root.Anchored = false end
             local humCurrent = char:FindFirstChildOfClass("Humanoid")
             if humCurrent then
                 local moveDir = humCurrent.MoveDirection
                 local upVec = (_RealUIS and _RealUIS:IsKeyDown(Enum.KeyCode.Space) and not _RealUIS:GetFocusedTextBox()) and Vector3.new(0, 1, 0) or Vector3.zero
                 local velDir = moveDir + upVec
+                local targetVel = (velDir.Magnitude > 0) and (velDir.Unit * flySpeed) or Vector3.zero
                 if bodyVelocity then
-                    if velDir.Magnitude > 0 then
-                        bodyVelocity.Velocity = velDir.Unit * flySpeed
-                    else
-                        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-                    end
+                    bodyVelocity.Velocity = targetVel
                 end
+                root.AssemblyLinearVelocity = targetVel
                 if bodyGyro then
                     bodyGyro.CFrame = workspace.CurrentCamera.CFrame
                 end
