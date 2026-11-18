@@ -8995,10 +8995,12 @@ local flySpeed = 70
 local bodyVelocity = nil
 local bodyGyro = nil
 local flyThread = nil
+local flyAnchorConn = nil
 local noclipEnabled = false
 local noclipConnection = nil
 
 local function cleanupFly()
+    if flyAnchorConn then pcall(function() flyAnchorConn:Disconnect() end) flyAnchorConn = nil end
     if flyThread then pcall(task.cancel, flyThread) flyThread = nil end
     if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
     if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
@@ -9018,6 +9020,11 @@ local function startFly()
     bodyVelocity.P = 1e9
     bodyVelocity.Velocity = Vector3.new(0, 0, 0)
     if root.Anchored then root.Anchored = false end
+    flyAnchorConn = root:GetPropertyChangedSignal("Anchored"):Connect(function()
+        if flyEnabled and root and root.Parent and root.Anchored then
+            root.Anchored = false
+        end
+    end)
     
     bodyGyro = Instance.new("BodyGyro", root)
     bodyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
